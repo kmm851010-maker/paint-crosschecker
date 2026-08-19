@@ -300,6 +300,23 @@ class MultiFileRequest(BaseModel):
     api_key: str = ""
 
 
+def _detect_doc_type_from_data(data: dict) -> str:
+    """추출된 데이터에서 문서 유형을 판별합니다."""
+    doc_type = data.get("doc_type", "unknown")
+    if doc_type in ("plan", "receipt"):
+        return doc_type
+
+    # items의 quantity_label로 추측
+    items = data.get("items", [])
+    for item in items:
+        label = str(item.get("quantity_label", "")).lower()
+        if any(k in label for k in ["신규", "new", "발주", "계획"]):
+            return "plan"
+        if any(k in label for k in ["입고", "receipt", "drum", "lot"]):
+            return "receipt"
+    return "unknown"
+
+
 @app.post("/api/cross-check-multi")
 async def run_cross_check_multi(req: MultiFileRequest):
     """다중 좌측 파일 + 우측 파일로 교차검증을 수행합니다."""
@@ -307,18 +324,18 @@ async def run_cross_check_multi(req: MultiFileRequest):
 
     key = get_api_key(req.api_key)
 
-    # 좌측 파일 모두 분석 후 합치기
+    # 좌측 파일 모두 분석
+    all_plan_data = []
     all_plan_rows = []
     for i, (file_b64, filename) in enumerate(zip(req.plan_files, req.plan_filenames)):
         plan_bytes = base64.b64decode(file_b64)
         try:
             plan_data = extract_production_plan(plan_bytes, filename, key)
+            all_plan_data.append(plan_data)
             rows = flatten_production_plan(plan_data)
             all_plan_rows.extend(rows)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"좌측 문서 {i+1} 분석 실패: {str(e)}")
-
-    plan_df = pd.DataFrame(all_plan_rows)
 
     # 우측 파일 분석
     erp_bytes = base64.b64decode(req.erp_file)
@@ -327,11 +344,54 @@ async def run_cross_check_multi(req: MultiFileRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"우측 문서 분석 실패: {str(e)}")
 
+    # 우측 문서 유형 감지 (엑셀이면 컬럼명으로, 이미지면 이미 OCR된 결과 활용)
+    from modules.vision_ocr import _is_document_file
+    if _is_document_file(req.erp_filename, erp_bytes):
+        # 엑셀/CSV → 컬럼명으로 유형 추정 (추가 비용 없음)
+        erp_type = "receipt"  # 엑셀은 기본 입고로 간주
+    else:
+        erp_type = "receipt"  # 이미지는 추가 OCR 없이 입고로 간주
+
+    # 문서 유형 자동 감지 (좌측 데이터 기반, 추가 비용 없음)
+    plan_type = _detect_doc_type_from_data(all_plan_data[0]) if all_plan_data else "unknown"
+    swapped = False
+
+    # 양쪽 다 계획 문서이면 거부 (좌측이 plan이고 우측도 plan 느낌이면)
+    # → 좌측이 receipt이면 swap 시도
+    if plan_type == "receipt":
+        # 좌측이 입고 문서 → 우측과 교체
+        # 우측 데이터를 계획으로 파싱
+        try:
+            erp_as_plan = extract_production_plan(erp_bytes, req.erp_filename, key)
+            erp_as_plan_type = _detect_doc_type_from_data(erp_as_plan)
+        except Exception:
+            erp_as_plan_type = "unknown"
+
+        if erp_as_plan_type == "receipt":
+            # 양쪽 다 입고 문서
+            raise HTTPException(
+                status_code=400,
+                detail="양쪽 모두 입고 문서입니다. 한쪽은 계획 문서를 넣어주세요."
+            )
+
+        # 우측이 계획 문서 → swap
+        swap_plan_rows = flatten_production_plan(erp_as_plan)
+        plan_df = pd.DataFrame(swap_plan_rows)
+        # 좌측 데이터를 입고로 재파싱
+        erp_df = process_erp_file(
+            base64.b64decode(req.plan_files[0]), req.plan_filenames[0], key
+        )
+        all_plan_rows = swap_plan_rows
+        swapped = True
+    else:
+        plan_df = pd.DataFrame(all_plan_rows)
+
     result_df = cross_check(plan_df, erp_df)
     summary = format_summary(result_df)
 
     return {
         "success": True,
+        "swapped": swapped,
         "plan_items": all_plan_rows,
         "erp_items": erp_df.to_dict(orient="records"),
         "results": result_df.to_dict(orient="records"),
