@@ -137,7 +137,7 @@ export default function HomeScreen() {
     else setErpFile(file);
   };
 
-  const pickDocument = async () => {
+  const pickDocument = async (target: "plan" | "erp") => {
     try {
       const docResult = await DocumentPicker.getDocumentAsync({
         type: [
@@ -154,7 +154,10 @@ export default function HomeScreen() {
       const asset = docResult.assets[0];
       const ext = asset.name.toLowerCase().split(".").pop() || "";
       const isImage = ["jpg", "jpeg", "png", "webp"].includes(ext);
-      setErpFile({ uri: asset.uri, name: asset.name, isImage });
+      const file = { uri: asset.uri, name: asset.name, isImage };
+
+      if (target === "plan") setPlanFile(file);
+      else setErpFile(file);
     } catch (e) {
       Alert.alert("오류", "파일을 선택할 수 없습니다.");
     }
@@ -315,7 +318,7 @@ export default function HomeScreen() {
           fileUri={planFile?.uri}
           isImage={planFile?.isImage}
           onPickImage={() => handleImagePick("plan")}
-          onPickFile={pickDocument}
+          onPickFile={() => pickDocument("plan")}
           onClear={() => setPlanFile(null)}
         />
 
@@ -326,7 +329,7 @@ export default function HomeScreen() {
           fileUri={erpFile?.uri}
           isImage={erpFile?.isImage}
           onPickImage={() => handleImagePick("erp")}
-          onPickFile={pickDocument}
+          onPickFile={() => pickDocument("erp")}
           onClear={() => setErpFile(null)}
         />
 

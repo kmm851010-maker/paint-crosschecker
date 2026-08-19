@@ -1,7 +1,5 @@
-// 백엔드 서버 주소 (개발 시 로컬 IP로 변경)
-// Android 에뮬레이터: 10.0.2.2, iOS 시뮬레이터: localhost
-// 실제 기기: 같은 Wi-Fi 네트워크의 PC IP 주소
-export const API_BASE_URL = "http://192.168.45.48:8000";
+// 클라우드 백엔드 서버
+export const API_BASE_URL = "https://kgcounter.up.railway.app";
 
 export const COLORS = {
   primary: "#4B2D8E",      // KG스틸 보라

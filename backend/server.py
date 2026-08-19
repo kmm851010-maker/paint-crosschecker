@@ -15,7 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-# 상위 디렉토리의 modules 참조
+# 로컬 또는 상위 디렉토리의 modules 참조
+sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from modules.vision_ocr import extract_production_plan, flatten_production_plan
@@ -24,6 +25,7 @@ from modules.matcher import cross_check
 from modules.excel_generator import generate_report
 from utils.formatter import format_summary
 
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 app = FastAPI(title="페인트 입고 검증 API", version="1.0.0")
