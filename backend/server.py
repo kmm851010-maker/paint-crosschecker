@@ -208,6 +208,79 @@ async def export_excel(
     )
 
 
+# --- Base64 엔드포인트 (React Native 모바일 앱용) ---
+
+class Base64FileRequest(BaseModel):
+    plan_file: str  # base64 encoded
+    plan_filename: str
+    erp_file: str  # base64 encoded
+    erp_filename: str
+    api_key: str = ""
+
+
+@app.post("/api/cross-check-base64")
+async def run_cross_check_base64(req: Base64FileRequest):
+    """Base64 인코딩된 파일로 교차검증을 수행합니다."""
+    import base64
+
+    key = get_api_key(req.api_key)
+    plan_bytes = base64.b64decode(req.plan_file)
+    erp_bytes = base64.b64decode(req.erp_file)
+
+    try:
+        plan_data = extract_production_plan(plan_bytes, req.plan_filename, key)
+        plan_rows = flatten_production_plan(plan_data)
+        plan_df = pd.DataFrame(plan_rows)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"생산계획서 분석 실패: {str(e)}")
+
+    try:
+        erp_df = process_erp_file(erp_bytes, req.erp_filename, key)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ERP 분석 실패: {str(e)}")
+
+    result_df = cross_check(plan_df, erp_df)
+    summary = format_summary(result_df)
+
+    return {
+        "success": True,
+        "plan_items": plan_rows,
+        "erp_items": erp_df.to_dict(orient="records"),
+        "results": result_df.to_dict(orient="records"),
+        "summary": summary,
+    }
+
+
+@app.post("/api/export-excel-base64")
+async def export_excel_base64(req: Base64FileRequest):
+    """Base64 파일로 교차검증 후 엑셀을 Base64로 반환합니다."""
+    import base64
+
+    key = get_api_key(req.api_key)
+    plan_bytes = base64.b64decode(req.plan_file)
+    erp_bytes = base64.b64decode(req.erp_file)
+
+    try:
+        plan_data = extract_production_plan(plan_bytes, req.plan_filename, key)
+        plan_rows = flatten_production_plan(plan_data)
+        plan_df = pd.DataFrame(plan_rows)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"생산계획서 분석 실패: {str(e)}")
+
+    try:
+        erp_df = process_erp_file(erp_bytes, req.erp_filename, key)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ERP 분석 실패: {str(e)}")
+
+    result_df = cross_check(plan_df, erp_df)
+    excel_bytes = generate_report(result_df)
+
+    return {
+        "success": True,
+        "excel_base64": base64.b64encode(excel_bytes).decode("utf-8"),
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -1,3 +1,4 @@
+import * as FileSystem from "expo-file-system";
 import { API_BASE_URL } from "../constants/config";
 
 export interface PlanItem {
@@ -53,30 +54,40 @@ export async function crossCheck(
   erpFileName: string,
   apiKey: string
 ): Promise<CrossCheckResponse> {
-  const formData = new FormData();
+  const result = await FileSystem.uploadAsync(
+    `${API_BASE_URL}/api/cross-check`,
+    planFileUri,
+    {
+      httpMethod: "POST",
+      uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+      fieldName: "plan_file",
+      parameters: apiKey ? { api_key: apiKey } : {},
+    }
+  );
 
-  formData.append("plan_file", {
-    uri: planFileUri,
-    name: planFileName,
-    type: getMimeType(planFileName),
-  } as any);
+  // For cross-check we need both files. Use a two-step approach:
+  // First upload plan as base64, then send both via JSON
+  // Actually, FileSystem.uploadAsync only supports 1 file.
+  // Use fetch with proper blob handling instead.
 
-  formData.append("erp_file", {
-    uri: erpFileUri,
-    name: erpFileName,
-    type: getMimeType(erpFileName),
-  } as any);
+  const planBase64 = await FileSystem.readAsStringAsync(planFileUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
 
-  if (apiKey) {
-    formData.append("api_key", apiKey);
-  }
+  const erpBase64 = await FileSystem.readAsStringAsync(erpFileUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
 
-  const response = await fetch(`${API_BASE_URL}/api/cross-check`, {
+  const response = await fetch(`${API_BASE_URL}/api/cross-check-base64`, {
     method: "POST",
-    body: formData,
-    headers: {
-      "Content-Type": "multipart/form-data",
-    },
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      plan_file: planBase64,
+      plan_filename: planFileName,
+      erp_file: erpBase64,
+      erp_filename: erpFileName,
+      api_key: apiKey || "",
+    }),
   });
 
   if (!response.ok) {
@@ -87,33 +98,37 @@ export async function crossCheck(
   return response.json();
 }
 
-export async function downloadExcel(
+export async function downloadExcelBase64(
   planFileUri: string,
   planFileName: string,
   erpFileUri: string,
   erpFileName: string,
   apiKey: string
 ): Promise<string> {
-  const formData = new FormData();
+  const planBase64 = await FileSystem.readAsStringAsync(planFileUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
 
-  formData.append("plan_file", {
-    uri: planFileUri,
-    name: planFileName,
-    type: getMimeType(planFileName),
-  } as any);
+  const erpBase64 = await FileSystem.readAsStringAsync(erpFileUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
 
-  formData.append("erp_file", {
-    uri: erpFileUri,
-    name: erpFileName,
-    type: getMimeType(erpFileName),
-  } as any);
+  const response = await fetch(`${API_BASE_URL}/api/export-excel-base64`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      plan_file: planBase64,
+      plan_filename: planFileName,
+      erp_file: erpBase64,
+      erp_filename: erpFileName,
+      api_key: apiKey || "",
+    }),
+  });
 
-  if (apiKey) {
-    formData.append("api_key", apiKey);
-  }
+  if (!response.ok) throw new Error("엑셀 생성 실패");
 
-  // Return the URL for FileSystem to download
-  return `${API_BASE_URL}/api/export-excel`;
+  const data = await response.json();
+  return data.excel_base64;
 }
 
 export async function healthCheck(): Promise<boolean> {
@@ -123,18 +138,4 @@ export async function healthCheck(): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-function getMimeType(fileName: string): string {
-  const ext = fileName.toLowerCase().split(".").pop() || "";
-  const mimeMap: Record<string, string> = {
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    png: "image/png",
-    webp: "image/webp",
-    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    xls: "application/vnd.ms-excel",
-    csv: "text/csv",
-  };
-  return mimeMap[ext] || "application/octet-stream";
 }

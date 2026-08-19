@@ -20,8 +20,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import FileUploadCard from "../src/components/FileUploadCard";
 import SummaryCards from "../src/components/SummaryCards";
 import ResultTable from "../src/components/ResultTable";
-import { COLORS, API_BASE_URL } from "../src/constants/config";
-import { crossCheck, type CrossCheckResponse } from "../src/services/api";
+import { COLORS } from "../src/constants/config";
+import { crossCheck, downloadExcelBase64, type CrossCheckResponse } from "../src/services/api";
 
 interface PickedFile {
   uri: string;
@@ -169,42 +169,17 @@ export default function HomeScreen() {
     try {
       setLoading(true);
 
-      const formData = new FormData();
-      formData.append("plan_file", {
-        uri: planFile.uri,
-        name: planFile.name,
-        type: "image/jpeg",
-      } as any);
-      formData.append("erp_file", {
-        uri: erpFile.uri,
-        name: erpFile.name,
-        type: "application/octet-stream",
-      } as any);
-      if (apiKey) formData.append("api_key", apiKey);
+      const excelBase64 = await downloadExcelBase64(
+        planFile.uri,
+        planFile.name,
+        erpFile.uri,
+        erpFile.name,
+        apiKey
+      );
 
       const downloadPath = `${FileSystem.cacheDirectory}report_${Date.now()}.xlsx`;
-
-      const response = await fetch(`${API_BASE_URL}/api/export-excel`, {
-        method: "POST",
-        body: formData,
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-
-      if (!response.ok) throw new Error("엑셀 생성 실패");
-
-      const blob = await response.blob();
-      const reader = new FileReader();
-
-      await new Promise<void>((resolve, reject) => {
-        reader.onload = async () => {
-          const base64 = (reader.result as string).split(",")[1];
-          await FileSystem.writeAsStringAsync(downloadPath, base64, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          resolve();
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
+      await FileSystem.writeAsStringAsync(downloadPath, excelBase64, {
+        encoding: FileSystem.EncodingType.Base64,
       });
 
       if (await Sharing.isAvailableAsync()) {
