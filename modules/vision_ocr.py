@@ -77,10 +77,15 @@ def parse_json_response(text: str) -> dict:
     # Try extracting from code block
     match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
     if match:
+        raw = match.group(1).strip()
         try:
-            return json.loads(match.group(1).strip())
+            return json.loads(raw)
         except json.JSONDecodeError:
-            pass
+            fixed = re.sub(r",\s*([}\]])", r"\1", raw)
+            try:
+                return json.loads(fixed)
+            except json.JSONDecodeError:
+                pass
 
     # Try finding JSON object
     match = re.search(r"\{[\s\S]*\}", text)
@@ -202,7 +207,7 @@ def extract_document_data(
 
     response = client.messages.create(
         model=model,
-        max_tokens=4096,
+        max_tokens=16000,
         messages=[
             {
                 "role": "user",
@@ -228,10 +233,12 @@ def extract_document_data(
     text = ""
     for block in response.content:
         if getattr(block, "type", "") == "text":
-            text = block.text
-            break
+            text = getattr(block, "text", "")
+            if text:
+                break
+
     if not text:
-        text = response.content[0].text if response.content else ""
+        raise ValueError("OCR 응답에서 텍스트를 찾을 수 없습니다.")
 
     return parse_json_response(text)
 
