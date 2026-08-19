@@ -12,71 +12,38 @@ from typing import Optional
 import anthropic
 
 
-PRODUCTION_PLAN_PROMPT = """당신은 스마트 팩토리 생산계획서 표 데이터 추출 전문가입니다.
+UNIVERSAL_DOC_PROMPT = """당신은 제조업 자재 문서 데이터 추출 전문가입니다.
 
-이 이미지는 출력 직후 촬영한 깨끗한 인쇄 상태의 생산계획서입니다.
-수기 메모 없이 순수 인쇄된 텍스트와 숫자만 존재합니다.
+이 이미지/문서에서 품목(자재) 관련 데이터를 추출하세요.
+문서 유형(생산계획서, 입고명세서, 발주서, 재고표 등)을 자동으로 판별합니다.
 
-다음 규칙에 따라 표 데이터를 정밀하게 추출하세요:
-
-1. 라인 구분: 5CCL, 6CCL 등 생산 라인을 식별합니다.
-2. 도료 위치: TOP, BACK, 프라이머(PRIMER), 클리어(CLEAR) 등을 구분합니다.
-3. 컬럼 항목을 정확히 매핑합니다:
-   - 규격/색상코드 (품목을 식별하는 코드)
-   - 제조사
-   - 재고 (기존 재고 수량)
-   - 신규 (신규 요청/발주 수량)
-   - 생산량
-
-4. 모든 숫자는 정수형으로 추출합니다. 빈 칸은 0으로 처리합니다.
-5. 색상코드는 원본 텍스트 그대로 정확히 추출합니다.
+규칙:
+1. 문서에 보이는 모든 품목코드/색상코드/자재코드를 추출합니다.
+2. 각 품목의 수량을 추출합니다 (신규, 입고, 재고, 발주 등 어떤 수량이든).
+3. 동일 품목이 여러 행이면 각 행을 개별로 추출합니다 (나중에 집계).
+4. 숫자는 정수형으로. 빈 칸은 0으로.
+5. 품목코드는 원본 텍스트 그대로 정확히 추출합니다.
 
 반드시 아래 JSON 형식으로만 응답하세요. 다른 텍스트는 포함하지 마세요:
 
 {
-  "production_date": "YYYY-MM-DD 또는 식별된 날짜",
-  "lines": [
-    {
-      "line_name": "5CCL 또는 6CCL 등",
-      "items": [
-        {
-          "position": "TOP/BACK/PRIMER/CLEAR",
-          "color_code": "규격/색상코드",
-          "manufacturer": "제조사명",
-          "stock": 0,
-          "new_order": 0,
-          "production_qty": 0
-        }
-      ]
-    }
-  ]
-}
-"""
-
-ERP_IMAGE_PROMPT = """당신은 ERP 시스템 페인트 입고명세서 데이터 추출 전문가입니다.
-
-이 이미지는 ERP에서 출력하거나 화면을 캡처한 페인트 입고명세서입니다.
-LOT 및 DRUM 단위로 개별 등록된 입고 데이터가 포함되어 있습니다.
-
-다음 규칙에 따라 데이터를 추출하세요:
-
-1. 각 행(row)은 개별 DRUM 1개의 입고 기록입니다.
-2. 품목코드/색상코드, LOT번호, 중량(kg) 등을 추출합니다.
-3. 동일 색상코드로 여러 행이 존재할 수 있습니다 (각각 1 DRUM).
-4. 숫자는 정확하게 추출하며, 중량은 소수점까지 포함합니다.
-
-반드시 아래 JSON 형식으로만 응답하세요:
-
-{
-  "entries": [
+  "doc_type": "문서 유형 (plan/receipt/inventory/unknown)",
+  "items": [
     {
       "color_code": "품목코드/색상코드",
-      "lot_number": "LOT번호",
-      "weight_kg": 0.0,
-      "drum_count": 1
+      "quantity": 0,
+      "quantity_label": "해당 수량의 의미 (신규/입고/재고/발주 등)",
+      "weight_kg": 0,
+      "manufacturer": "",
+      "extra_info": ""
     }
   ]
 }
+
+주의:
+- "신규" 컬럼이 있으면 quantity에 신규 값을 넣으세요.
+- LOT/DRUM별 개별 행이면 각각 quantity=1로 추출하세요.
+- 표에 여러 종류의 수량이 있으면, 가장 핵심적인 수량(신규, 입고, 발주 등)을 선택하세요.
 """
 
 
@@ -124,12 +91,14 @@ def parse_json_response(text: str) -> dict:
 
 
 def _is_document_file(file_name: str, file_bytes: bytes = b"") -> bool:
-    """엑셀/CSV 등 문서 파일인지 확인합니다. 파일 내용도 검사합니다."""
+    """엑셀/CSV 등 문서 파일인지 확인합니다. 파일 내용(magic bytes)도 검사합니다."""
     ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
+    if file_bytes:
+        is_zip = file_bytes[:4] == b"PK\x03\x04"
+        is_ole = file_bytes[:8] == bytes.fromhex("d0cf11e0a1b011ae") if len(file_bytes) >= 8 else False
+        if is_zip and ext in ("xlsx", ""): return True
+        if is_ole and ext in ("xls", ""): return True
     if ext in ("xlsx", "xls", "csv"):
-        # xlsx는 ZIP 형식이므로 실제 ZIP인지 확인
-        if ext in ("xlsx", "xls") and file_bytes:
-            return file_bytes[:4] == b"PK\x03\x04"  # ZIP magic bytes
         return True
     return False
 
@@ -141,6 +110,8 @@ def _parse_plan_from_document(file_bytes: bytes, file_name: str) -> dict:
 
     ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
 
+    is_ole = file_bytes[:8] == bytes.fromhex("d0cf11e0a1b011ae") if len(file_bytes) >= 8 else False
+
     if ext == "csv":
         for encoding in ["utf-8", "cp949", "euc-kr", "latin-1"]:
             try:
@@ -150,6 +121,8 @@ def _parse_plan_from_document(file_bytes: bytes, file_name: str) -> dict:
                 continue
         else:
             raise ValueError("CSV 파일 인코딩을 인식할 수 없습니다.")
+    elif is_ole or ext == "xls":
+        df = pd.read_excel(BytesIO(file_bytes), engine="xlrd")
     else:
         df = pd.read_excel(BytesIO(file_bytes), engine="openpyxl")
 
@@ -202,16 +175,16 @@ def _parse_plan_from_document(file_bytes: bytes, file_name: str) -> dict:
     }
 
 
-def extract_production_plan(
+def extract_document_data(
     file_bytes: bytes,
     file_name: str,
     api_key: str,
     model: str = "claude-haiku-4-5-20251001",
 ) -> dict:
-    """생산계획서 이미지 또는 문서에서 표 데이터를 추출합니다."""
+    """어떤 문서든(이미지/엑셀/CSV) 품목코드+수량을 추출합니다."""
     # 엑셀/CSV인 경우 직접 파싱
     if _is_document_file(file_name, file_bytes):
-        return _parse_plan_from_document(file_bytes, file_name)
+        return _parse_document_to_universal(file_bytes, file_name)
 
     # 이미지인 경우 Claude Vision OCR
     client = anthropic.Anthropic(api_key=api_key)
@@ -235,7 +208,7 @@ def extract_production_plan(
                     },
                     {
                         "type": "text",
-                        "text": PRODUCTION_PLAN_PROMPT,
+                        "text": UNIVERSAL_DOC_PROMPT,
                     },
                 ],
             }
@@ -245,59 +218,146 @@ def extract_production_plan(
     return parse_json_response(response.content[0].text)
 
 
-def extract_erp_from_image(
-    image_bytes: bytes,
-    file_name: str,
-    api_key: str,
-    model: str = "claude-haiku-4-5-20251001",
-) -> dict:
-    """ERP 입고명세서 이미지에서 데이터를 추출합니다."""
-    client = anthropic.Anthropic(api_key=api_key)
-    b64_image = encode_image_to_base64(image_bytes)
-    media_type = detect_media_type(file_name)
+def _parse_document_to_universal(file_bytes: bytes, file_name: str) -> dict:
+    """엑셀/CSV 문서를 범용 JSON 형식으로 변환합니다."""
+    from io import BytesIO
+    import pandas as pd
 
-    response = client.messages.create(
-        model=model,
-        max_tokens=4096,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": b64_image,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": ERP_IMAGE_PROMPT,
-                    },
-                ],
-            }
-        ],
-    )
+    ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
+    is_ole = file_bytes[:8] == bytes.fromhex("d0cf11e0a1b011ae") if len(file_bytes) >= 8 else False
 
-    return parse_json_response(response.content[0].text)
+    if ext == "csv":
+        for encoding in ["utf-8", "cp949", "euc-kr", "latin-1"]:
+            try:
+                df = pd.read_csv(BytesIO(file_bytes), encoding=encoding)
+                break
+            except (UnicodeDecodeError, Exception):
+                continue
+        else:
+            raise ValueError("CSV 파일 인코딩을 인식할 수 없습니다.")
+    elif is_ole or ext == "xls":
+        df = pd.read_excel(BytesIO(file_bytes), engine="xlrd")
+    else:
+        df = pd.read_excel(BytesIO(file_bytes), engine="openpyxl")
+
+    return _dataframe_to_universal(df)
+
+
+def _dataframe_to_universal(df) -> dict:
+    """DataFrame을 범용 items 형식으로 변환합니다."""
+    import pandas as pd
+
+    # 컬럼 자동 감지
+    color_col = None
+    qty_col = None
+    weight_col = None
+    mfr_col = None
+
+    color_kw = ["색상", "품목", "코드", "color", "품명", "clrcd", "clr", "colorcd", "pmcode"]
+    qty_kw = ["신규", "수량", "new", "qty", "입고", "발주", "quantity", "drum"]
+    weight_kw = ["중량", "무게", "kg", "weight", "wgt", "pkgwgt", "netwgt"]
+    mfr_kw = ["제조", "maker", "manufacturer", "회사"]
+
+    for col in df.columns:
+        cl = str(col).lower()
+        if color_col is None and any(k in cl for k in color_kw):
+            color_col = col
+        if qty_col is None and any(k in cl for k in qty_kw):
+            qty_col = col
+        if weight_col is None and any(k in cl for k in weight_kw):
+            weight_col = col
+        if mfr_col is None and any(k in cl for k in mfr_kw):
+            mfr_col = col
+
+    # Fallback
+    cols = list(df.columns)
+    if color_col is None and len(cols) >= 1:
+        color_col = cols[0]
+
+    items = []
+    for _, row in df.iterrows():
+        code = str(row[color_col]).strip() if color_col and pd.notna(row[color_col]) else ""
+        if not code or code == "nan":
+            continue
+
+        qty = 0
+        qty_label = "행"
+        if qty_col and pd.notna(row[qty_col]):
+            try:
+                qty = int(float(row[qty_col]))
+                qty_label = str(qty_col)
+            except (ValueError, TypeError):
+                qty = 1
+
+        wgt = 0
+        if weight_col and pd.notna(row[weight_col]):
+            try:
+                wgt = float(row[weight_col])
+            except (ValueError, TypeError):
+                pass
+
+        mfr = ""
+        if mfr_col and pd.notna(row[mfr_col]):
+            mfr = str(row[mfr_col]).strip()
+
+        items.append({
+            "color_code": code,
+            "quantity": qty if qty > 0 else 1,
+            "quantity_label": qty_label,
+            "weight_kg": wgt,
+            "manufacturer": mfr,
+            "extra_info": "",
+        })
+
+    # 문서 유형 추측
+    doc_type = "unknown"
+    if qty_col:
+        ql = str(qty_col).lower()
+        if any(k in ql for k in ["신규", "new", "발주"]):
+            doc_type = "plan"
+        elif any(k in ql for k in ["입고", "drum"]):
+            doc_type = "receipt"
+
+    return {"doc_type": doc_type, "items": items}
+
+
+# 하위 호환용 래퍼
+def extract_production_plan(file_bytes, file_name, api_key, model="claude-haiku-4-5-20251001"):
+    return extract_document_data(file_bytes, file_name, api_key, model)
+
+def extract_erp_from_image(file_bytes, file_name, api_key, model="claude-haiku-4-5-20251001"):
+    return extract_document_data(file_bytes, file_name, api_key, model)
 
 
 def flatten_production_plan(plan_data: dict) -> list[dict]:
-    """추출된 생산계획서 JSON을 flat한 리스트로 변환합니다."""
+    """추출된 JSON을 flat한 리스트로 변환합니다. 범용/기존 형식 모두 지원."""
     rows = []
+
+    # 범용 형식 (doc_type + items)
+    if "items" in plan_data and "lines" not in plan_data:
+        for item in plan_data.get("items", []):
+            rows.append({
+                "라인": "",
+                "위치": "",
+                "색상코드": item.get("color_code", ""),
+                "제조사": item.get("manufacturer", ""),
+                "재고": 0,
+                "신규": int(item.get("quantity", 0)),
+                "생산량": 0,
+            })
+        return rows
+
+    # 기존 형식 (lines > items)
     for line in plan_data.get("lines", []):
         line_name = line.get("line_name", "")
         for item in line.get("items", []):
-            rows.append(
-                {
-                    "라인": line_name,
-                    "위치": item.get("position", ""),
-                    "색상코드": item.get("color_code", ""),
-                    "제조사": item.get("manufacturer", ""),
-                    "재고": int(item.get("stock", 0)),
-                    "신규": int(item.get("new_order", 0)),
-                    "생산량": int(item.get("production_qty", 0)),
-                }
-            )
+            rows.append({
+                "라인": line_name,
+                "위치": item.get("position", ""),
+                "색상코드": item.get("color_code", ""),
+                "제조사": item.get("manufacturer", ""),
+                "재고": int(item.get("stock", 0)),
+                "신규": int(item.get("new_order", item.get("quantity", 0))),
+                "생산량": int(item.get("production_qty", 0)),
+            })
     return rows

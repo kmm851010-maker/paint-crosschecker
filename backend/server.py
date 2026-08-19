@@ -229,17 +229,24 @@ async def run_cross_check_base64(req: Base64FileRequest):
     plan_bytes = base64.b64decode(req.plan_file)
     erp_bytes = base64.b64decode(req.erp_file)
 
+    # 동일 파일 감지
+    if plan_bytes == erp_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail="동일한 파일이 양쪽에 업로드되었습니다. 서로 다른 문서를 넣어주세요."
+        )
+
     try:
         plan_data = extract_production_plan(plan_bytes, req.plan_filename, key)
         plan_rows = flatten_production_plan(plan_data)
         plan_df = pd.DataFrame(plan_rows)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"생산계획서 분석 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"좌측 문서 분석 실패: {str(e)}")
 
     try:
         erp_df = process_erp_file(erp_bytes, req.erp_filename, key)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"ERP 분석 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"우측 문서 분석 실패: {str(e)}")
 
     result_df = cross_check(plan_df, erp_df)
     summary = format_summary(result_df)

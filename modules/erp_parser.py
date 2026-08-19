@@ -22,9 +22,10 @@ def normalize_color_code(code: str) -> str:
 def parse_excel(file_bytes: bytes, file_name: str) -> pd.DataFrame:
     """엑셀 또는 CSV 파일을 파싱하여 DataFrame으로 반환합니다."""
     ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
+    is_ole = file_bytes[:8] == bytes.fromhex("d0cf11e0a1b011ae") if len(file_bytes) >= 8 else False
+    is_zip = file_bytes[:4] == b"PK\x03\x04" if len(file_bytes) >= 4 else False
 
     if ext == "csv":
-        # Try multiple encodings
         for encoding in ["utf-8", "cp949", "euc-kr", "latin-1"]:
             try:
                 df = pd.read_csv(BytesIO(file_bytes), encoding=encoding)
@@ -33,8 +34,18 @@ def parse_excel(file_bytes: bytes, file_name: str) -> pd.DataFrame:
                 continue
         else:
             raise ValueError("CSV 파일 인코딩을 인식할 수 없습니다.")
-    else:
+    elif is_ole or ext == "xls":
+        # 구형 .xls (OLE2 형식) → xlrd 엔진
+        df = pd.read_excel(BytesIO(file_bytes), engine="xlrd")
+    elif is_zip or ext == "xlsx":
+        # 신형 .xlsx (ZIP 형식) → openpyxl 엔진
         df = pd.read_excel(BytesIO(file_bytes), engine="openpyxl")
+    else:
+        # 자동 감지 시도
+        try:
+            df = pd.read_excel(BytesIO(file_bytes), engine="openpyxl")
+        except Exception:
+            df = pd.read_excel(BytesIO(file_bytes), engine="xlrd")
 
     return df
 
@@ -43,9 +54,9 @@ def detect_columns(df: pd.DataFrame) -> dict:
     """DataFrame에서 색상코드, LOT번호, 중량 컬럼을 자동 감지합니다."""
     col_map = {"color_code": None, "lot_number": None, "weight_kg": None}
 
-    color_keywords = ["색상", "품목", "코드", "color", "품명", "도료", "페인트", "품목코드"]
-    lot_keywords = ["lot", "로트", "배치", "batch"]
-    weight_keywords = ["중량", "무게", "kg", "weight", "수량"]
+    color_keywords = ["색상", "품목", "코드", "color", "품명", "도료", "페인트", "품목코드", "clrcd", "clr", "colorcd"]
+    lot_keywords = ["lot", "로트", "배치", "batch", "lotno"]
+    weight_keywords = ["중량", "무게", "kg", "weight", "wgt", "pkgwgt", "netwgt"]
 
     for col in df.columns:
         col_lower = str(col).lower()
@@ -101,28 +112,38 @@ def aggregate_erp_data(df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
 def parse_erp_image(
     image_bytes: bytes, file_name: str, api_key: str
 ) -> pd.DataFrame:
-    """ERP 입고명세서 이미지를 OCR 처리하여 집계 DataFrame을 반환합니다."""
+    """이미지를 OCR 처리하여 집계 DataFrame을 반환합니다. 범용 형식 지원."""
     data = extract_erp_from_image(image_bytes, file_name, api_key)
-    entries = data.get("entries", [])
 
-    if not entries:
+    # 범용 형식 (items)
+    items = data.get("items", data.get("entries", []))
+    if not items:
         return pd.DataFrame(columns=["색상코드", "입고_DRUM수", "총중량_kg"])
 
-    df = pd.DataFrame(entries)
-    df["color_code"] = df["color_code"].apply(normalize_color_code)
-    df = df[df["color_code"] != ""]
+    df = pd.DataFrame(items)
+    code_col = "color_code" if "color_code" in df.columns else df.columns[0]
+    df["_code"] = df[code_col].apply(lambda x: normalize_color_code(str(x)))
+    df = df[df["_code"] != ""]
 
-    grouped = df.groupby("color_code")
-    result = pd.DataFrame(
-        {
-            "색상코드": [name for name, _ in grouped],
-            "입고_DRUM수": [len(group) for _, group in grouped],
-            "총중량_kg": [
-                group["weight_kg"].sum() if "weight_kg" in group.columns else 0.0
-                for _, group in grouped
-            ],
-        }
-    )
+    grouped = df.groupby("_code")
+
+    qty_col = None
+    for c in ["quantity", "drum_count"]:
+        if c in df.columns:
+            qty_col = c
+            break
+
+    result = pd.DataFrame({
+        "색상코드": [name for name, _ in grouped],
+        "입고_DRUM수": [
+            int(group[qty_col].sum()) if qty_col else len(group)
+            for _, group in grouped
+        ],
+        "총중량_kg": [
+            group["weight_kg"].sum() if "weight_kg" in group.columns else 0.0
+            for _, group in grouped
+        ],
+    })
     return result.reset_index(drop=True)
 
 
@@ -136,11 +157,18 @@ def process_erp_file(
 
     # 실제 파일 내용(magic bytes)으로 타입 판별 — 확장자보다 우선
     is_zip = file_bytes[:4] == b"PK\x03\x04" if file_bytes else False
+    is_ole = file_bytes[:8] == bytes.fromhex("d0cf11e0a1b011ae") if len(file_bytes) >= 8 else False
     is_image = (file_bytes[:3] in (b"\xff\xd8\xff", b"\x89PN") or file_bytes[:4] == b"RIFF") if file_bytes else False
+    is_pdf = file_bytes[:5] == b"%PDF-" if file_bytes else False
 
-    # 1. 실제 ZIP(엑셀) 파일 → 확장자 무관하게 엑셀 파싱
-    if is_zip:
-        df = parse_excel(file_bytes, file_name if ext in ("xlsx", "xls") else file_name.rsplit(".", 1)[0] + ".xlsx")
+    # 1. ZIP 기반 파일 (xlsx, docx 등) → 엑셀 파싱
+    if is_zip and ext in ("xlsx", "xls", ""):
+        df = parse_excel(file_bytes, file_name if ext else file_name + ".xlsx")
+        col_map = detect_columns(df)
+        return aggregate_erp_data(df, col_map)
+    # 2. OLE2 기반 파일 (xls, doc, hwp 등) → xls로 파싱 시도
+    elif is_ole or ext in ("xls",):
+        df = parse_excel(file_bytes, file_name if ext == "xls" else file_name.rsplit(".", 1)[0] + ".xls")
         col_map = detect_columns(df)
         return aggregate_erp_data(df, col_map)
     # 2. 실제 이미지 파일 → 확장자 무관하게 OCR
