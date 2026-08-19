@@ -46,6 +46,7 @@ export interface CrossCheckResponse {
   results: ResultItem[];
   summary: Summary;
   overlay_image?: string | null;
+  overlay_error?: string | null;
 }
 
 export async function crossCheck(

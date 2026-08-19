@@ -254,14 +254,17 @@ async def run_cross_check_base64(req: Base64FileRequest):
 
     # 오버레이 이미지 생성 (이미지 파일 + bbox가 있는 경우)
     overlay_base64 = None
+    overlay_error = None
     has_bbox = "bbox" in plan_df.columns and plan_df["bbox"].notna().any()
     is_image = req.plan_filename.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
     if has_bbox and is_image:
         try:
             overlay_bytes = annotate_image(plan_bytes, plan_df, result_df)
             overlay_base64 = base64.b64encode(overlay_bytes).decode("utf-8")
-        except Exception:
-            pass  # 오버레이 실패 시 무시
+        except Exception as e:
+            overlay_error = str(e)
+    elif not has_bbox:
+        overlay_error = "bbox 좌표 없음"
 
     return {
         "success": True,
@@ -270,6 +273,7 @@ async def run_cross_check_base64(req: Base64FileRequest):
         "results": result_df.to_dict(orient="records"),
         "summary": summary,
         "overlay_image": overlay_base64,
+        "overlay_error": overlay_error,
     }
 
 
@@ -404,6 +408,7 @@ async def run_cross_check_multi(req: MultiFileRequest):
 
     # 오버레이 이미지 생성
     overlay_base64 = None
+    overlay_error = None
     has_bbox = "bbox" in plan_df.columns and plan_df["bbox"].notna().any()
     first_plan_filename = req.plan_filenames[0] if req.plan_filenames else ""
     is_image = first_plan_filename.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
@@ -412,8 +417,12 @@ async def run_cross_check_multi(req: MultiFileRequest):
             first_plan_bytes = base64.b64decode(req.plan_files[0])
             overlay_bytes = annotate_image(first_plan_bytes, plan_df, result_df)
             overlay_base64 = base64.b64encode(overlay_bytes).decode("utf-8")
-        except Exception:
-            pass
+        except Exception as e:
+            overlay_error = str(e)
+    elif not has_bbox:
+        overlay_error = "bbox 좌표 없음"
+    elif not is_image:
+        overlay_error = f"이미지 파일 아님: {first_plan_filename}"
 
     return {
         "success": True,
@@ -423,6 +432,7 @@ async def run_cross_check_multi(req: MultiFileRequest):
         "results": result_df.to_dict(orient="records"),
         "summary": summary,
         "overlay_image": overlay_base64,
+        "overlay_error": overlay_error,
     }
 
 

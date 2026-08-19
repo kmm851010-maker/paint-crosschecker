@@ -31,9 +31,13 @@ def _load_korean_font(size: int = 18) -> ImageFont.FreeTypeFont:
         # Windows 나눔고딕
         "C:/Windows/Fonts/NanumGothic.ttf",
         "C:/Windows/Fonts/NanumGothicBold.ttf",
-        # Linux
+        # Linux (apt: fonts-nanum)
         "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+        "/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf",
         "/usr/share/fonts/nanum/NanumGothic.ttf",
+        "/usr/share/fonts/opentype/nanum/NanumGothic.ttf",
+        # Linux (nix)
+        "/nix/store/fonts-nanum/share/fonts/truetype/NanumGothic.ttf",
         # macOS
         "/System/Library/Fonts/AppleSDGothicNeo.ttc",
         "/Library/Fonts/NanumGothic.ttf",
@@ -41,6 +45,29 @@ def _load_korean_font(size: int = 18) -> ImageFont.FreeTypeFont:
     for path in candidates:
         if Path(path).exists():
             return ImageFont.truetype(path, size)
+
+    # 시스템에서 한글 폰트 동적 탐색
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["fc-list", ":lang=ko", "file"], capture_output=True, text=True, timeout=5
+        )
+        for line in result.stdout.strip().split("\n"):
+            fpath = line.strip().rstrip(":")
+            if fpath and Path(fpath).exists():
+                return ImageFont.truetype(fpath, size)
+    except Exception:
+        pass
+
+    # 시스템 폰트 디렉토리 탐색
+    for font_dir in ["/usr/share/fonts", "/nix/store"]:
+        try:
+            for p in Path(font_dir).rglob("*.ttf"):
+                if "nanum" in p.name.lower() or "gothic" in p.name.lower():
+                    return ImageFont.truetype(str(p), size)
+        except Exception:
+            pass
+
     return ImageFont.load_default()
 
 

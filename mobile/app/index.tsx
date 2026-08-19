@@ -367,6 +367,14 @@ export default function HomeScreen() {
 
             <SummaryCards summary={result.summary} />
 
+            {/* 오버레이 디버그 (에러 시) */}
+            {!result.overlay_image && result.overlay_error && (
+              <View style={styles.overlaySection}>
+                <Text style={styles.overlayTitle}>시각화 오류</Text>
+                <Text style={{ color: COLORS.error, fontSize: 12 }}>{result.overlay_error}</Text>
+              </View>
+            )}
+
             {/* 오버레이 시각화 이미지 */}
             {result.overlay_image && (
               <View style={styles.overlaySection}>
