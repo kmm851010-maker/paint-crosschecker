@@ -195,7 +195,7 @@ def extract_document_data(
     file_bytes: bytes,
     file_name: str,
     api_key: str,
-    model: str = "claude-sonnet-5",
+    model: str = "claude-opus-4-8",
 ) -> dict:
     """어떤 문서든(이미지/엑셀/CSV) 품목코드+수량을 추출합니다."""
     # 엑셀/CSV인 경우 직접 파싱
@@ -210,7 +210,6 @@ def extract_document_data(
     response = client.messages.create(
         model=model,
         max_tokens=16000,
-        temperature=0,
         messages=[
             {
                 "role": "user",
@@ -350,10 +349,10 @@ def _dataframe_to_universal(df) -> dict:
 
 
 # 하위 호환용 래퍼
-def extract_production_plan(file_bytes, file_name, api_key, model="claude-sonnet-5"):
+def extract_production_plan(file_bytes, file_name, api_key, model="claude-opus-4-8"):
     return extract_document_data(file_bytes, file_name, api_key, model)
 
-def extract_erp_from_image(file_bytes, file_name, api_key, model="claude-sonnet-5"):
+def extract_erp_from_image(file_bytes, file_name, api_key, model="claude-opus-4-8"):
     return extract_document_data(file_bytes, file_name, api_key, model)
 
 

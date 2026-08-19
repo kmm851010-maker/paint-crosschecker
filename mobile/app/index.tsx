@@ -293,7 +293,7 @@ export default function HomeScreen() {
         {/* Upload Cards */}
         <FileUploadCard
           title={activeSlot?.leftLabel || "좌측 문서"}
-          hint="생산계획 또는 입고계획 문서/이미지를 첨부해주세요"
+          hint="생산계획 또는 입고계획 문서/이미지를 첨부해주세요. 이미지도 인식 가능하나 문서 첨부 시 확실한 검증이 가능합니다."
           icon="camera"
           fileName={planFile?.name}
           fileUri={planFile?.uri}
@@ -305,7 +305,7 @@ export default function HomeScreen() {
 
         <FileUploadCard
           title={activeSlot?.rightLabel || "우측 문서"}
-          hint="입고명세 문서/이미지를 첨부해주세요"
+          hint="입고명세 문서/이미지를 첨부해주세요. 이미지도 인식 가능하나 문서 첨부 시 확실한 검증이 가능합니다."
           icon="document-text"
           fileName={erpFile?.name}
           fileUri={erpFile?.uri}
