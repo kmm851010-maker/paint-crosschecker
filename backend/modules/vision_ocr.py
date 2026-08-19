@@ -123,10 +123,15 @@ def parse_json_response(text: str) -> dict:
     raise ValueError(f"JSON 파싱 실패. 원본 응답:\n{text[:500]}")
 
 
-def _is_document_file(file_name: str) -> bool:
-    """엑셀/CSV 등 문서 파일인지 확인합니다."""
+def _is_document_file(file_name: str, file_bytes: bytes = b"") -> bool:
+    """엑셀/CSV 등 문서 파일인지 확인합니다. 파일 내용도 검사합니다."""
     ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
-    return ext in ("xlsx", "xls", "csv")
+    if ext in ("xlsx", "xls", "csv"):
+        # xlsx는 ZIP 형식이므로 실제 ZIP인지 확인
+        if ext in ("xlsx", "xls") and file_bytes:
+            return file_bytes[:4] == b"PK\x03\x04"  # ZIP magic bytes
+        return True
+    return False
 
 
 def _parse_plan_from_document(file_bytes: bytes, file_name: str) -> dict:
@@ -201,11 +206,11 @@ def extract_production_plan(
     file_bytes: bytes,
     file_name: str,
     api_key: str,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = "claude-haiku-4-5-20251001",
 ) -> dict:
     """생산계획서 이미지 또는 문서에서 표 데이터를 추출합니다."""
     # 엑셀/CSV인 경우 직접 파싱
-    if _is_document_file(file_name):
+    if _is_document_file(file_name, file_bytes):
         return _parse_plan_from_document(file_bytes, file_name)
 
     # 이미지인 경우 Claude Vision OCR
@@ -244,7 +249,7 @@ def extract_erp_from_image(
     image_bytes: bytes,
     file_name: str,
     api_key: str,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = "claude-haiku-4-5-20251001",
 ) -> dict:
     """ERP 입고명세서 이미지에서 데이터를 추출합니다."""
     client = anthropic.Anthropic(api_key=api_key)

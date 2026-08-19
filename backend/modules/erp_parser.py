@@ -134,13 +134,27 @@ def process_erp_file(
     """ERP 파일(엑셀/CSV/이미지)을 처리하여 품목별 집계 결과를 반환합니다."""
     ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
 
-    if ext in ("jpg", "jpeg", "png", "gif", "webp"):
+    # 실제 파일 내용(magic bytes)으로 타입 판별 — 확장자보다 우선
+    is_zip = file_bytes[:4] == b"PK\x03\x04" if file_bytes else False
+    is_image = (file_bytes[:3] in (b"\xff\xd8\xff", b"\x89PN") or file_bytes[:4] == b"RIFF") if file_bytes else False
+
+    # 1. 실제 ZIP(엑셀) 파일 → 확장자 무관하게 엑셀 파싱
+    if is_zip:
+        df = parse_excel(file_bytes, file_name if ext in ("xlsx", "xls") else file_name.rsplit(".", 1)[0] + ".xlsx")
+        col_map = detect_columns(df)
+        return aggregate_erp_data(df, col_map)
+    # 2. 실제 이미지 파일 → 확장자 무관하게 OCR
+    elif is_image:
         if not api_key:
             raise ValueError("이미지 파싱에는 API 키가 필요합니다.")
         return parse_erp_image(file_bytes, file_name, api_key)
-    elif ext in ("xlsx", "xls", "csv"):
+    # 3. CSV (텍스트 파일)
+    elif ext == "csv":
         df = parse_excel(file_bytes, file_name)
         col_map = detect_columns(df)
         return aggregate_erp_data(df, col_map)
+    # 4. 판별 불가 → API 키 있으면 OCR 시도
     else:
+        if api_key:
+            return parse_erp_image(file_bytes, file_name, api_key)
         raise ValueError(f"지원하지 않는 파일 형식: {ext}")
