@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "@/constants/config";
+import { API_BASE_URL } from "../constants/config";
 
 export interface PlanItem {
   라인: string;

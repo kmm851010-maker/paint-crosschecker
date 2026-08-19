@@ -1,7 +1,7 @@
 import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { COLORS, STATUS_COLORS, STATUS_TEXT_COLORS } from "@/constants/config";
-import type { ResultItem } from "@/services/api";
+import { COLORS, STATUS_COLORS, STATUS_TEXT_COLORS } from "../constants/config";
+import type { ResultItem } from "../services/api";
 
 interface ResultTableProps {
   results: ResultItem[];

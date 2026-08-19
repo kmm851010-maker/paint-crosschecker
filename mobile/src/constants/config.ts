@@ -1,11 +1,11 @@
 // 백엔드 서버 주소 (개발 시 로컬 IP로 변경)
 // Android 에뮬레이터: 10.0.2.2, iOS 시뮬레이터: localhost
 // 실제 기기: 같은 Wi-Fi 네트워크의 PC IP 주소
-export const API_BASE_URL = "http://192.168.0.100:8000";
+export const API_BASE_URL = "http://192.168.45.48:8000";
 
 export const COLORS = {
-  primary: "#C8102E",      // KG스틸 레드
-  primaryDark: "#9B0D23",
+  primary: "#4B2D8E",      // KG스틸 보라
+  primaryDark: "#3A2270",
   success: "#2e7d32",
   successLight: "#c6efce",
   warning: "#ed6c02",

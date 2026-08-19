@@ -7,7 +7,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { COLORS } from "@/constants/config";
+import { COLORS } from "../constants/config";
 
 interface FileUploadCardProps {
   title: string;

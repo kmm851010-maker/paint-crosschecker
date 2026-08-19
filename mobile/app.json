@@ -1,15 +1,15 @@
 {
   "expo": {
-    "name": "KG스틸 페인트 검증",
+    "name": "KG Counter",
     "slug": "kg-steel-paint-checker",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "kg-paint-checker",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
-      "backgroundColor": "#C8102E"
+      "backgroundColor": "#4B2D8E"
     },
     "ios": {
       "supportsTablet": true,
@@ -17,27 +17,40 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#C8102E"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
       },
       "package": "com.kgsteel.paintchecker",
-      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE"]
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "owner": "sergekang",
-    "extra": {
-      "eas": {
-        "projectId": ""
-      }
-    },
     "plugins": [
       "expo-router",
       [
         "expo-camera",
-        { "cameraPermission": "생산계획서 촬영을 위해 카메라 접근이 필요합니다." }
+        {
+          "cameraPermission": "생산계획서 촬영을 위해 카메라 접근이 필요합니다."
+        }
       ],
       [
         "expo-image-picker",
-        { "photosPermission": "생산계획서 사진을 선택하기 위해 갤러리 접근이 필요합니다." }
-      ]
-    ]
+        {
+          "photosPermission": "생산계획서 사진을 선택하기 위해 갤러리 접근이 필요합니다."
+        }
+      ],
+      "expo-asset",
+      "expo-font"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "d5eafbc7-6a18-4e72-b118-34b7d801d7f9"
+      }
+    }
   }
 }

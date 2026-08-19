@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { COLORS } from "@/constants/config";
-import type { Summary } from "@/services/api";
+import { COLORS } from "../constants/config";
+import type { Summary } from "../services/api";
 
 interface SummaryCardsProps {
   summary: Summary;

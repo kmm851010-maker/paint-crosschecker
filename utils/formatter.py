@@ -5,7 +5,7 @@
 import pandas as pd
 
 
-def style_result_table(df: pd.DataFrame) -> pd.io.formats.style.Styler:
+def style_result_table(df: pd.DataFrame):
     """교차검증 결과 테이블에 조건부 스타일을 적용합니다."""
     def highlight_status(row):
         status = row.get("상태", "")
