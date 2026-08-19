@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { router, Stack } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { COLORS } from "../src/constants/config";
+import { COLORS, API_BASE_URL } from "../src/constants/config";
 
 export default function LoginScreen() {
   const [employeeId, setEmployeeId] = useState("");
@@ -31,7 +31,6 @@ export default function LoginScreen() {
     try {
       // 사내 인증 API 연동 시 여기를 수정하세요
       // 현재는 간단한 로컬 인증 (사번 입력만으로 통과)
-      const { API_BASE_URL } = require("../src/constants/config");
       const response = await fetch(`${API_BASE_URL}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

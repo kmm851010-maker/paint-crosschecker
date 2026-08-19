@@ -123,15 +123,94 @@ def parse_json_response(text: str) -> dict:
     raise ValueError(f"JSON 파싱 실패. 원본 응답:\n{text[:500]}")
 
 
+def _is_document_file(file_name: str) -> bool:
+    """엑셀/CSV 등 문서 파일인지 확인합니다."""
+    ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
+    return ext in ("xlsx", "xls", "csv")
+
+
+def _parse_plan_from_document(file_bytes: bytes, file_name: str) -> dict:
+    """엑셀/CSV 생산계획서를 파싱하여 표준 JSON 형식으로 변환합니다."""
+    from io import BytesIO
+    import pandas as pd
+
+    ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
+
+    if ext == "csv":
+        for encoding in ["utf-8", "cp949", "euc-kr", "latin-1"]:
+            try:
+                df = pd.read_csv(BytesIO(file_bytes), encoding=encoding)
+                break
+            except (UnicodeDecodeError, Exception):
+                continue
+        else:
+            raise ValueError("CSV 파일 인코딩을 인식할 수 없습니다.")
+    else:
+        df = pd.read_excel(BytesIO(file_bytes), engine="openpyxl")
+
+    # DataFrame을 표준 JSON 구조로 변환
+    items = []
+    for _, row in df.iterrows():
+        item = {}
+        for col in df.columns:
+            col_lower = str(col).lower()
+            val = row[col]
+            if pd.isna(val):
+                val = ""
+            if any(k in col_lower for k in ["색상", "코드", "품목", "규격", "color"]):
+                item["color_code"] = str(val).strip()
+            elif any(k in col_lower for k in ["제조", "maker", "manufacturer"]):
+                item["manufacturer"] = str(val).strip()
+            elif any(k in col_lower for k in ["재고", "stock"]):
+                item["stock"] = int(float(val)) if val != "" else 0
+            elif any(k in col_lower for k in ["신규", "new", "발주", "요청"]):
+                item["new_order"] = int(float(val)) if val != "" else 0
+            elif any(k in col_lower for k in ["생산", "production", "수량"]):
+                item["production_qty"] = int(float(val)) if val != "" else 0
+            elif any(k in col_lower for k in ["라인", "line"]):
+                item["line"] = str(val).strip()
+            elif any(k in col_lower for k in ["위치", "position", "top", "back"]):
+                item["position"] = str(val).strip()
+
+        if item.get("color_code"):
+            items.append({
+                "position": item.get("position", ""),
+                "color_code": item.get("color_code", ""),
+                "manufacturer": item.get("manufacturer", ""),
+                "stock": item.get("stock", 0),
+                "new_order": item.get("new_order", 0),
+                "production_qty": item.get("production_qty", 0),
+            })
+
+    line_name = ""
+    for _, row in df.iterrows():
+        for col in df.columns:
+            if any(k in str(col).lower() for k in ["라인", "line"]):
+                v = str(row[col]).strip()
+                if v and v != "nan":
+                    line_name = v
+                    break
+
+    return {
+        "production_date": "",
+        "lines": [{"line_name": line_name or "기본", "items": items}],
+    }
+
+
 def extract_production_plan(
-    image_bytes: bytes,
+    file_bytes: bytes,
     file_name: str,
     api_key: str,
     model: str = "claude-sonnet-4-20250514",
 ) -> dict:
-    """생산계획서 이미지에서 표 데이터를 추출합니다."""
+    """생산계획서 이미지 또는 문서에서 표 데이터를 추출합니다."""
+    # 엑셀/CSV인 경우 직접 파싱
+    if _is_document_file(file_name):
+        return _parse_plan_from_document(file_bytes, file_name)
+
+    # 이미지인 경우 Claude Vision OCR
     client = anthropic.Anthropic(api_key=api_key)
-    b64_image = encode_image_to_base64(image_bytes)
+    b64_image = encode_image_to_base64(file_bytes)
     media_type = detect_media_type(file_name)
 
     response = client.messages.create(
