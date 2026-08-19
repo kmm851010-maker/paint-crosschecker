@@ -91,13 +91,9 @@ export default function LoginScreen() {
         <View style={styles.inner}>
           {/* 로고 영역 */}
           <View style={styles.logoSection}>
-            <View style={styles.logoBox}>
-              {/* KG스틸 로고 파일이 있으면 아래 Image 주석 해제 */}
-              {/* <Image source={require("../assets/kg-logo.png")} style={styles.logoImage} resizeMode="contain" /> */}
-              <Text style={styles.logoText}>KG스틸</Text>
-            </View>
-            <Text style={styles.appTitle}>페인트 입고 검증 시스템</Text>
-            <Text style={styles.appSubtitle}>Paint Incoming Verification</Text>
+            <Image source={require("../assets/kg.jpg")} style={styles.logoImage} resizeMode="contain" />
+            <Text style={styles.appTitle}>KG Counter</Text>
+            <Text style={styles.appSubtitle}>자재 입출고 관리 시스템</Text>
           </View>
 
           {/* 로그인 폼 */}
@@ -165,29 +161,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 40,
   },
-  logoBox: {
-    width: 100,
-    height: 100,
-    borderRadius: 20,
-    backgroundColor: COLORS.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-  },
   logoImage: {
-    width: 70,
-    height: 70,
-  },
-  logoText: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: "#fff",
-    letterSpacing: 2,
+    width: 200,
+    height: 100,
+    marginBottom: 16,
   },
   appTitle: {
     fontSize: 22,
