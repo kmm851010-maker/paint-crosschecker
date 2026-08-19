@@ -59,7 +59,9 @@ def cross_check(
             actual_qty = erp_info["drum_count"]
             weight = erp_info["weight"]
             diff = actual_qty - plan_qty
-            if diff == 0:
+            if actual_qty == 0:
+                status = "미입고"
+            elif diff == 0:
                 status = "일치"
             elif diff > 0:
                 status = "초과"
