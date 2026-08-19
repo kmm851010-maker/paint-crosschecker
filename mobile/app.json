@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "KG스틸 페인트 검증",
+    "slug": "kg-steel-paint-checker",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "kg-paint-checker",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#C8102E"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kgsteel.paintchecker"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#C8102E"
+      },
+      "package": "com.kgsteel.paintchecker",
+      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE"]
+    },
+    "owner": "sergekang",
+    "extra": {
+      "eas": {
+        "projectId": ""
+      }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        { "cameraPermission": "생산계획서 촬영을 위해 카메라 접근이 필요합니다." }
+      ],
+      [
+        "expo-image-picker",
+        { "photosPermission": "생산계획서 사진을 선택하기 위해 갤러리 접근이 필요합니다." }
+      ]
+    ]
+  }
+}
