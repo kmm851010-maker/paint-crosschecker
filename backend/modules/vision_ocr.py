@@ -34,6 +34,12 @@ UNIVERSAL_DOC_PROMPT = """당신은 제조업 자재 문서의 표 데이터를 
 - 같은 행에 재고=11, 신규=빈칸이면 → quantity=0 (재고 11을 넣으면 안 됨!)
 - LOT/DRUM별 개별 행이면 각각 quantity=1로 추출하세요.
 
+## Bounding Box 좌표 추출 (필수!)
+- 각 품목 행(row) 전체 영역의 위치를 이미지 내 정규화 좌표로 함께 반환하세요.
+- 좌표는 [ymin, xmin, ymax, xmax] 형식이며, 각 값은 0~1000 범위의 정수입니다.
+  - 0 = 이미지 최상단/최좌측, 1000 = 이미지 최하단/최우측
+- 해당 행의 품목코드와 신규 수량 셀을 포함하는 전체 행 영역을 감싸세요.
+
 반드시 아래 JSON 형식으로만 응답하세요. 다른 텍스트 없이 JSON만:
 
 {
@@ -45,7 +51,8 @@ UNIVERSAL_DOC_PROMPT = """당신은 제조업 자재 문서의 표 데이터를 
       "quantity_label": "신규/입고/재고 중 해당",
       "weight_kg": 0,
       "manufacturer": "제조사 한글명 정확히",
-      "extra_info": ""
+      "extra_info": "",
+      "bbox": [ymin, xmin, ymax, xmax]
     }
   ]
 }
@@ -363,7 +370,7 @@ def flatten_production_plan(plan_data: dict) -> list[dict]:
     # 범용 형식 (doc_type + items)
     if "items" in plan_data and "lines" not in plan_data:
         for item in plan_data.get("items", []):
-            rows.append({
+            row = {
                 "라인": "",
                 "위치": "",
                 "색상코드": item.get("color_code", ""),
@@ -371,14 +378,17 @@ def flatten_production_plan(plan_data: dict) -> list[dict]:
                 "재고": 0,
                 "신규": int(item.get("quantity", 0)),
                 "생산량": 0,
-            })
+            }
+            if "bbox" in item:
+                row["bbox"] = item["bbox"]
+            rows.append(row)
         return rows
 
     # 기존 형식 (lines > items)
     for line in plan_data.get("lines", []):
         line_name = line.get("line_name", "")
         for item in line.get("items", []):
-            rows.append({
+            row = {
                 "라인": line_name,
                 "위치": item.get("position", ""),
                 "색상코드": item.get("color_code", ""),
@@ -386,5 +396,8 @@ def flatten_production_plan(plan_data: dict) -> list[dict]:
                 "재고": int(item.get("stock", 0)),
                 "신규": int(item.get("new_order", item.get("quantity", 0))),
                 "생산량": int(item.get("production_qty", 0)),
-            })
+            }
+            if "bbox" in item:
+                row["bbox"] = item["bbox"]
+            rows.append(row)
     return rows

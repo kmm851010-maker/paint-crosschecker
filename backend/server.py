@@ -23,6 +23,7 @@ from modules.vision_ocr import extract_production_plan, flatten_production_plan
 from modules.erp_parser import process_erp_file
 from modules.matcher import cross_check
 from modules.excel_generator import generate_report
+from modules.image_annotator import annotate_image
 from utils.formatter import format_summary
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
@@ -251,12 +252,24 @@ async def run_cross_check_base64(req: Base64FileRequest):
     result_df = cross_check(plan_df, erp_df)
     summary = format_summary(result_df)
 
+    # 오버레이 이미지 생성 (이미지 파일 + bbox가 있는 경우)
+    overlay_base64 = None
+    has_bbox = "bbox" in plan_df.columns and plan_df["bbox"].notna().any()
+    is_image = req.plan_filename.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
+    if has_bbox and is_image:
+        try:
+            overlay_bytes = annotate_image(plan_bytes, plan_df, result_df)
+            overlay_base64 = base64.b64encode(overlay_bytes).decode("utf-8")
+        except Exception:
+            pass  # 오버레이 실패 시 무시
+
     return {
         "success": True,
         "plan_items": plan_rows,
         "erp_items": erp_df.to_dict(orient="records"),
         "results": result_df.to_dict(orient="records"),
         "summary": summary,
+        "overlay_image": overlay_base64,
     }
 
 
@@ -389,6 +402,19 @@ async def run_cross_check_multi(req: MultiFileRequest):
     result_df = cross_check(plan_df, erp_df)
     summary = format_summary(result_df)
 
+    # 오버레이 이미지 생성
+    overlay_base64 = None
+    has_bbox = "bbox" in plan_df.columns and plan_df["bbox"].notna().any()
+    first_plan_filename = req.plan_filenames[0] if req.plan_filenames else ""
+    is_image = first_plan_filename.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
+    if has_bbox and is_image and not swapped:
+        try:
+            first_plan_bytes = base64.b64decode(req.plan_files[0])
+            overlay_bytes = annotate_image(first_plan_bytes, plan_df, result_df)
+            overlay_base64 = base64.b64encode(overlay_bytes).decode("utf-8")
+        except Exception:
+            pass
+
     return {
         "success": True,
         "swapped": swapped,
@@ -396,6 +422,7 @@ async def run_cross_check_multi(req: MultiFileRequest):
         "erp_items": erp_df.to_dict(orient="records"),
         "results": result_df.to_dict(orient="records"),
         "summary": summary,
+        "overlay_image": overlay_base64,
     }
 
 
