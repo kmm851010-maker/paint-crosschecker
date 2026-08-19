@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -38,8 +37,6 @@ interface Slot {
 
 export default function HomeScreen() {
   const [userName, setUserName] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [showApiKey, setShowApiKey] = useState(false);
   const [planFile, setPlanFile] = useState<PickedFile | null>(null);
   const [erpFile, setErpFile] = useState<PickedFile | null>(null);
   const [loading, setLoading] = useState(false);
@@ -103,7 +100,9 @@ export default function HomeScreen() {
 
     const pickerResult = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
-      quality: 0.9,
+      quality: 0.5,
+      maxWidth: 1600,
+      maxHeight: 1600,
     });
 
     if (pickerResult.canceled) return;
@@ -124,7 +123,9 @@ export default function HomeScreen() {
     }
 
     const pickerResult = await ImagePicker.launchCameraAsync({
-      quality: 0.9,
+      quality: 0.5,
+      maxWidth: 1600,
+      maxHeight: 1600,
     });
 
     if (pickerResult.canceled) return;
@@ -186,7 +187,7 @@ export default function HomeScreen() {
         planFile.name,
         erpFile.uri,
         erpFile.name,
-        apiKey
+        ""
       );
       setResult(response);
     } catch (e: any) {
@@ -207,7 +208,7 @@ export default function HomeScreen() {
         planFile.name,
         erpFile.uri,
         erpFile.name,
-        apiKey
+        ""
       );
 
       const downloadPath = `${FileSystem.cacheDirectory}report_${Date.now()}.xlsx`;
@@ -288,27 +289,6 @@ export default function HomeScreen() {
         >
           <Text style={styles.settingsButtonText}>슬롯 관리</Text>
         </TouchableOpacity>
-
-        {/* API Key */}
-        <TouchableOpacity
-          style={styles.apiKeyToggle}
-          onPress={() => setShowApiKey(!showApiKey)}
-        >
-          <Text style={styles.apiKeyToggleText}>
-            {showApiKey ? "▼ API Key 설정" : "▶ API Key 설정"}
-          </Text>
-        </TouchableOpacity>
-
-        {showApiKey && (
-          <TextInput
-            style={styles.input}
-            placeholder=""
-            value={apiKey}
-            onChangeText={setApiKey}
-            secureTextEntry
-            autoCapitalize="none"
-          />
-        )}
 
         {/* Upload Cards */}
         <FileUploadCard
@@ -441,22 +421,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.primary,
     fontWeight: "600",
-  },
-  apiKeyToggle: {
-    marginBottom: 8,
-  },
-  apiKeyToggleText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-  },
-  input: {
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    fontSize: 14,
   },
   runButton: {
     backgroundColor: COLORS.primary,
