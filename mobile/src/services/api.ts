@@ -54,22 +54,6 @@ export async function crossCheck(
   erpFileName: string,
   apiKey: string
 ): Promise<CrossCheckResponse> {
-  const result = await FileSystem.uploadAsync(
-    `${API_BASE_URL}/api/cross-check`,
-    planFileUri,
-    {
-      httpMethod: "POST",
-      uploadType: FileSystem.FileSystemUploadType.MULTIPART,
-      fieldName: "plan_file",
-      parameters: apiKey ? { api_key: apiKey } : {},
-    }
-  );
-
-  // For cross-check we need both files. Use a two-step approach:
-  // First upload plan as base64, then send both via JSON
-  // Actually, FileSystem.uploadAsync only supports 1 file.
-  // Use fetch with proper blob handling instead.
-
   const planBase64 = await FileSystem.readAsStringAsync(planFileUri, {
     encoding: FileSystem.EncodingType.Base64,
   });

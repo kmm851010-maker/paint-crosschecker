@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Stack, router } from "expo-router";
+import { Stack, router, useFocusEffect } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
@@ -29,6 +29,13 @@ interface PickedFile {
   isImage: boolean;
 }
 
+interface Slot {
+  id: string;
+  name: string;
+  leftLabel: string;
+  rightLabel: string;
+}
+
 export default function HomeScreen() {
   const [userName, setUserName] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -37,6 +44,8 @@ export default function HomeScreen() {
   const [erpFile, setErpFile] = useState<PickedFile | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<CrossCheckResponse | null>(null);
+  const [slots, setSlots] = useState<Slot[]>([]);
+  const [activeSlot, setActiveSlot] = useState<Slot | null>(null);
 
   useEffect(() => {
     AsyncStorage.getItem("user_token").then((token) => {
@@ -46,9 +55,30 @@ export default function HomeScreen() {
         AsyncStorage.getItem("user_name").then((name) => {
           if (name) setUserName(name);
         });
+        loadSlots();
       }
     });
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadSlots();
+    }, [])
+  );
+
+  const loadSlots = async () => {
+    const data = await AsyncStorage.getItem("kg_counter_slots");
+    if (data) {
+      const parsed = JSON.parse(data) as Slot[];
+      setSlots(parsed);
+      if (parsed.length > 0) {
+        setActiveSlot((prev) => {
+          if (prev && parsed.find((s) => s.id === prev.id)) return prev;
+          return parsed[0];
+        });
+      }
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert("로그아웃", "로그아웃 하시겠습니까?", [
@@ -216,8 +246,45 @@ export default function HomeScreen() {
         {/* KG스틸 로고 */}
         <View style={styles.logoHeader}>
           <Image source={require("../assets/kg.jpg")} style={styles.logo} resizeMode="contain" />
-          <Text style={styles.logoSubText}>페인트 입고 검증 시스템</Text>
         </View>
+
+        {/* 슬롯 선택 */}
+        {slots.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.slotBar}>
+            {slots.map((slot) => (
+              <TouchableOpacity
+                key={slot.id}
+                style={[
+                  styles.slotChip,
+                  activeSlot?.id === slot.id && styles.slotChipActive,
+                ]}
+                onPress={() => {
+                  setActiveSlot(slot);
+                  setPlanFile(null);
+                  setErpFile(null);
+                  setResult(null);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.slotChipText,
+                    activeSlot?.id === slot.id && styles.slotChipTextActive,
+                  ]}
+                >
+                  {slot.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+
+        {/* 설정 버튼 */}
+        <TouchableOpacity
+          style={styles.settingsButton}
+          onPress={() => router.push("/settings")}
+        >
+          <Text style={styles.settingsButtonText}>슬롯 관리</Text>
+        </TouchableOpacity>
 
         {/* API Key */}
         <TouchableOpacity
@@ -232,7 +299,7 @@ export default function HomeScreen() {
         {showApiKey && (
           <TextInput
             style={styles.input}
-            placeholder="Anthropic API Key (서버 .env에 설정 시 생략 가능)"
+            placeholder=""
             value={apiKey}
             onChangeText={setApiKey}
             secureTextEntry
@@ -242,17 +309,18 @@ export default function HomeScreen() {
 
         {/* Upload Cards */}
         <FileUploadCard
-          title="생산계획서 (인쇄물 사진)"
+          title={activeSlot?.leftLabel || "좌측 문서"}
           icon="camera"
           fileName={planFile?.name}
           fileUri={planFile?.uri}
           isImage={planFile?.isImage}
           onPickImage={() => handleImagePick("plan")}
+          onPickFile={pickDocument}
           onClear={() => setPlanFile(null)}
         />
 
         <FileUploadCard
-          title="ERP 입고명세서"
+          title={activeSlot?.rightLabel || "우측 문서"}
           icon="document-text"
           fileName={erpFile?.name}
           fileUri={erpFile?.uri}
@@ -333,10 +401,41 @@ const styles = StyleSheet.create({
     width: 160,
     height: 60,
   },
-  logoSubText: {
+  slotBar: {
+    marginBottom: 8,
+    maxHeight: 44,
+  },
+  slotChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginRight: 8,
+  },
+  slotChipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  slotChipText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.textPrimary,
+  },
+  slotChipTextActive: {
+    color: "#fff",
+  },
+  settingsButton: {
+    alignSelf: "flex-end",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  settingsButtonText: {
     fontSize: 13,
-    color: COLORS.textSecondary,
-    marginTop: 4,
+    color: COLORS.primary,
+    fontWeight: "600",
   },
   apiKeyToggle: {
     marginBottom: 8,
