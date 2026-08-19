@@ -12,39 +12,41 @@ from typing import Optional
 import anthropic
 
 
-UNIVERSAL_DOC_PROMPT = """당신은 제조업 자재 문서 데이터 추출 전문가입니다.
+UNIVERSAL_DOC_PROMPT = """당신은 제조업 자재 문서의 표 데이터를 정밀하게 추출하는 OCR 전문가입니다.
 
-이 이미지/문서에서 품목(자재) 관련 데이터를 추출하세요.
-문서 유형(생산계획서, 입고명세서, 발주서, 재고표 등)을 자동으로 판별합니다.
+이 이미지에서 표(테이블) 데이터를 한 글자도 틀리지 않게 정확히 추출하세요.
 
-규칙:
-1. 문서에 보이는 모든 품목코드/색상코드/자재코드를 추출합니다.
-2. 각 품목의 수량을 추출합니다 (신규, 입고, 재고, 발주 등 어떤 수량이든).
-3. 동일 품목이 여러 행이면 각 행을 개별로 추출합니다 (나중에 집계).
-4. 숫자는 정수형으로. 빈 칸은 0으로.
-5. 품목코드는 원본 텍스트 그대로 정확히 추출합니다.
+## 품목코드/색상코드 추출 규칙 (가장 중요!)
+- 품목코드는 영문 대문자와 숫자의 조합입니다 (예: P7G342E, U7Y841U, E9X594Y).
+- 한 글자라도 틀리면 매칭이 안 되므로 **글자 하나하나 정확히** 읽으세요.
+- 비슷한 글자 주의: 0(영)과 O(오), 1(일)과 I(아이), 5와 S, 8과 B
 
-반드시 아래 JSON 형식으로만 응답하세요. 다른 텍스트는 포함하지 마세요:
+## 한글 제조사명 추출 규칙
+- 제조업체 이름은 한글 2~3글자입니다.
+- 실제 존재하는 페인트 제조사: 대한, 고려, 삼화, 동주, 건설, 위생산
+- "대한"을 "대환"으로, "동주"를 "동중"으로, "고려"를 "코리아"로 읽지 마세요.
+
+## 수량 추출 규칙
+- "재고"와 "신규" 컬럼이 모두 있으면 → quantity에는 "신규" 값만 넣으세요.
+- "재고"는 기존 보유량이므로 무시합니다. "신규"만이 새로 입고될 수량입니다.
+- "신규" 칸이 비어있으면 quantity=0 입니다.
+- LOT/DRUM별 개별 행이면 각각 quantity=1로 추출하세요.
+
+반드시 아래 JSON 형식으로만 응답하세요. 다른 텍스트 없이 JSON만:
 
 {
-  "doc_type": "문서 유형 (plan/receipt/inventory/unknown)",
+  "doc_type": "plan 또는 receipt 또는 unknown",
   "items": [
     {
-      "color_code": "품목코드/색상코드",
+      "color_code": "품목코드 (영문+숫자 정확히)",
       "quantity": 0,
-      "quantity_label": "해당 수량의 의미 (신규/입고/재고/발주 등)",
+      "quantity_label": "신규/입고/재고 중 해당",
       "weight_kg": 0,
-      "manufacturer": "",
+      "manufacturer": "제조사 한글명 정확히",
       "extra_info": ""
     }
   ]
 }
-
-중요 규칙:
-- "재고"와 "신규"가 모두 있으면, quantity에는 반드시 "신규" 값만 넣으세요. 재고는 기존 수량이므로 무시합니다.
-- "신규"가 비어있거나 0이면 quantity=0으로 추출하세요 (입고 계획 없음).
-- LOT/DRUM별 개별 행이면 각각 quantity=1로 추출하세요.
-- 표에 여러 종류의 수량이 있으면 우선순위: 신규 > 입고 > 발주 > 수량 > 재고
 """
 
 
@@ -83,10 +85,16 @@ def parse_json_response(text: str) -> dict:
     # Try finding JSON object
     match = re.search(r"\{[\s\S]*\}", text)
     if match:
+        raw = match.group(0)
         try:
-            return json.loads(match.group(0))
+            return json.loads(raw)
         except json.JSONDecodeError:
-            pass
+            # Fix trailing commas
+            fixed = re.sub(r",\s*([}\]])", r"\1", raw)
+            try:
+                return json.loads(fixed)
+            except json.JSONDecodeError:
+                pass
 
     raise ValueError(f"JSON 파싱 실패. 원본 응답:\n{text[:500]}")
 
@@ -180,7 +188,7 @@ def extract_document_data(
     file_bytes: bytes,
     file_name: str,
     api_key: str,
-    model: str = "claude-haiku-4-5-20251001",
+    model: str = "claude-sonnet-5",
 ) -> dict:
     """어떤 문서든(이미지/엑셀/CSV) 품목코드+수량을 추출합니다."""
     # 엑셀/CSV인 경우 직접 파싱
@@ -216,7 +224,16 @@ def extract_document_data(
         ],
     )
 
-    return parse_json_response(response.content[0].text)
+    # thinking 블록이 있을 수 있으므로 text 블록을 찾음
+    text = ""
+    for block in response.content:
+        if getattr(block, "type", "") == "text":
+            text = block.text
+            break
+    if not text:
+        text = response.content[0].text if response.content else ""
+
+    return parse_json_response(text)
 
 
 def _parse_document_to_universal(file_bytes: bytes, file_name: str) -> dict:
@@ -323,10 +340,10 @@ def _dataframe_to_universal(df) -> dict:
 
 
 # 하위 호환용 래퍼
-def extract_production_plan(file_bytes, file_name, api_key, model="claude-haiku-4-5-20251001"):
+def extract_production_plan(file_bytes, file_name, api_key, model="claude-sonnet-5"):
     return extract_document_data(file_bytes, file_name, api_key, model)
 
-def extract_erp_from_image(file_bytes, file_name, api_key, model="claude-haiku-4-5-20251001"):
+def extract_erp_from_image(file_bytes, file_name, api_key, model="claude-sonnet-5"):
     return extract_document_data(file_bytes, file_name, api_key, model)
 
 
