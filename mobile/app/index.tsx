@@ -39,8 +39,14 @@ export default function HomeScreen() {
   const [result, setResult] = useState<CrossCheckResponse | null>(null);
 
   useEffect(() => {
-    AsyncStorage.getItem("user_name").then((name) => {
-      if (name) setUserName(name);
+    AsyncStorage.getItem("user_token").then((token) => {
+      if (!token) {
+        router.replace("/login");
+      } else {
+        AsyncStorage.getItem("user_name").then((name) => {
+          if (name) setUserName(name);
+        });
+      }
     });
   }, []);
 
