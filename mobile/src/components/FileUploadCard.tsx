@@ -11,6 +11,7 @@ import { COLORS } from "../constants/config";
 
 interface FileUploadCardProps {
   title: string;
+  hint?: string;
   icon: keyof typeof Ionicons.glyphMap;
   fileName?: string;
   fileUri?: string;
@@ -22,6 +23,7 @@ interface FileUploadCardProps {
 
 export default function FileUploadCard({
   title,
+  hint,
   icon,
   fileName,
   fileUri,
@@ -35,6 +37,7 @@ export default function FileUploadCard({
   return (
     <View style={styles.card}>
       <Text style={styles.title}>{title}</Text>
+      {hint && !hasFile && <Text style={styles.hint}>{hint}</Text>}
 
       {hasFile ? (
         <View style={styles.previewContainer}>
@@ -87,7 +90,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: COLORS.textPrimary,
-    marginBottom: 12,
+    marginBottom: 4,
+  },
+  hint: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginBottom: 10,
   },
   buttonRow: {
     flexDirection: "row",
