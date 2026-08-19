@@ -45,6 +45,7 @@ export interface CrossCheckResponse {
   erp_items: ErpItem[];
   results: ResultItem[];
   summary: Summary;
+  overlay_image?: string | null;
 }
 
 export async function crossCheck(

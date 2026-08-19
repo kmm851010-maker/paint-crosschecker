@@ -367,6 +367,38 @@ export default function HomeScreen() {
 
             <SummaryCards summary={result.summary} />
 
+            {/* 오버레이 시각화 이미지 */}
+            {result.overlay_image && (
+              <View style={styles.overlaySection}>
+                <Text style={styles.overlayTitle}>시각화 검증 결과</Text>
+                <Image
+                  source={{ uri: `data:image/png;base64,${result.overlay_image}` }}
+                  style={styles.overlayImage}
+                  resizeMode="contain"
+                />
+                <TouchableOpacity
+                  style={styles.overlayDownloadBtn}
+                  onPress={async () => {
+                    try {
+                      const path = `${FileSystem.cacheDirectory}overlay_${Date.now()}.png`;
+                      await FileSystem.writeAsStringAsync(path, result.overlay_image!, {
+                        encoding: FileSystem.EncodingType.Base64,
+                      });
+                      if (await Sharing.isAvailableAsync()) {
+                        await Sharing.shareAsync(path, { mimeType: "image/png", dialogTitle: "시각화 이미지 공유" });
+                      } else {
+                        Alert.alert("완료", "이미지가 저장되었습니다.");
+                      }
+                    } catch (e: any) {
+                      Alert.alert("저장 실패", e.message);
+                    }
+                  }}
+                >
+                  <Text style={styles.overlayDownloadText}>시각화 이미지 저장/공유</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             <View style={styles.totalRow}>
               <Text style={styles.totalText}>
                 계획: {result.summary.total_plan} | 입고:{" "}
@@ -553,6 +585,41 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: COLORS.textPrimary,
+  },
+  overlaySection: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
+  overlayTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    marginBottom: 8,
+  },
+  overlayImage: {
+    width: "100%",
+    height: 400,
+    borderRadius: 8,
+    backgroundColor: COLORS.background,
+  },
+  overlayDownloadBtn: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: "center",
+    marginTop: 10,
+  },
+  overlayDownloadText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
   },
   downloadButton: {
     backgroundColor: COLORS.success,
