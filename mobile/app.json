@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "KG Counter",
-    "slug": "KGCounter",
+    "slug": "kg-steel-paint-checker",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

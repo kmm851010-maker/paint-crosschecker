@@ -48,26 +48,29 @@ export interface CrossCheckResponse {
 }
 
 export async function crossCheck(
-  planFileUri: string,
-  planFileName: string,
+  planFileUris: string[],
+  planFileNames: string[],
   erpFileUri: string,
   erpFileName: string,
   apiKey: string
 ): Promise<CrossCheckResponse> {
-  const planBase64 = await FileSystem.readAsStringAsync(planFileUri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
+  const planFiles = await Promise.all(
+    planFileUris.map(async (uri, i) => ({
+      data: await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 }),
+      name: planFileNames[i],
+    }))
+  );
 
   const erpBase64 = await FileSystem.readAsStringAsync(erpFileUri, {
     encoding: FileSystem.EncodingType.Base64,
   });
 
-  const response = await fetch(`${API_BASE_URL}/api/cross-check-base64`, {
+  const response = await fetch(`${API_BASE_URL}/api/cross-check-multi`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      plan_file: planBase64,
-      plan_filename: planFileName,
+      plan_files: planFiles.map((f) => f.data),
+      plan_filenames: planFiles.map((f) => f.name),
       erp_file: erpBase64,
       erp_filename: erpFileName,
       api_key: apiKey || "",
@@ -83,26 +86,29 @@ export async function crossCheck(
 }
 
 export async function downloadExcelBase64(
-  planFileUri: string,
-  planFileName: string,
+  planFileUris: string[],
+  planFileNames: string[],
   erpFileUri: string,
   erpFileName: string,
   apiKey: string
 ): Promise<string> {
-  const planBase64 = await FileSystem.readAsStringAsync(planFileUri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
+  const planFiles = await Promise.all(
+    planFileUris.map(async (uri, i) => ({
+      data: await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 }),
+      name: planFileNames[i],
+    }))
+  );
 
   const erpBase64 = await FileSystem.readAsStringAsync(erpFileUri, {
     encoding: FileSystem.EncodingType.Base64,
   });
 
-  const response = await fetch(`${API_BASE_URL}/api/export-excel-base64`, {
+  const response = await fetch(`${API_BASE_URL}/api/export-excel-multi`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      plan_file: planBase64,
-      plan_filename: planFileName,
+      plan_files: planFiles.map((f) => f.data),
+      plan_filenames: planFiles.map((f) => f.name),
       erp_file: erpBase64,
       erp_filename: erpFileName,
       api_key: apiKey || "",

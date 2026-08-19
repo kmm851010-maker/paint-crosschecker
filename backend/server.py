@@ -290,6 +290,89 @@ async def export_excel_base64(req: Base64FileRequest):
     }
 
 
+# --- 다중 파일 엔드포인트 ---
+
+class MultiFileRequest(BaseModel):
+    plan_files: list[str]  # base64 encoded list
+    plan_filenames: list[str]
+    erp_file: str
+    erp_filename: str
+    api_key: str = ""
+
+
+@app.post("/api/cross-check-multi")
+async def run_cross_check_multi(req: MultiFileRequest):
+    """다중 좌측 파일 + 우측 파일로 교차검증을 수행합니다."""
+    import base64
+
+    key = get_api_key(req.api_key)
+
+    # 좌측 파일 모두 분석 후 합치기
+    all_plan_rows = []
+    for i, (file_b64, filename) in enumerate(zip(req.plan_files, req.plan_filenames)):
+        plan_bytes = base64.b64decode(file_b64)
+        try:
+            plan_data = extract_production_plan(plan_bytes, filename, key)
+            rows = flatten_production_plan(plan_data)
+            all_plan_rows.extend(rows)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"좌측 문서 {i+1} 분석 실패: {str(e)}")
+
+    plan_df = pd.DataFrame(all_plan_rows)
+
+    # 우측 파일 분석
+    erp_bytes = base64.b64decode(req.erp_file)
+    try:
+        erp_df = process_erp_file(erp_bytes, req.erp_filename, key)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"우측 문서 분석 실패: {str(e)}")
+
+    result_df = cross_check(plan_df, erp_df)
+    summary = format_summary(result_df)
+
+    return {
+        "success": True,
+        "plan_items": all_plan_rows,
+        "erp_items": erp_df.to_dict(orient="records"),
+        "results": result_df.to_dict(orient="records"),
+        "summary": summary,
+    }
+
+
+@app.post("/api/export-excel-multi")
+async def export_excel_multi(req: MultiFileRequest):
+    """다중 파일 교차검증 후 엑셀을 Base64로 반환합니다."""
+    import base64
+
+    key = get_api_key(req.api_key)
+
+    all_plan_rows = []
+    for i, (file_b64, filename) in enumerate(zip(req.plan_files, req.plan_filenames)):
+        plan_bytes = base64.b64decode(file_b64)
+        try:
+            plan_data = extract_production_plan(plan_bytes, filename, key)
+            rows = flatten_production_plan(plan_data)
+            all_plan_rows.extend(rows)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"좌측 문서 {i+1} 분석 실패: {str(e)}")
+
+    plan_df = pd.DataFrame(all_plan_rows)
+
+    erp_bytes = base64.b64decode(req.erp_file)
+    try:
+        erp_df = process_erp_file(erp_bytes, req.erp_filename, key)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"우측 문서 분석 실패: {str(e)}")
+
+    result_df = cross_check(plan_df, erp_df)
+    excel_bytes = generate_report(result_df)
+
+    return {
+        "success": True,
+        "excel_base64": base64.b64encode(excel_bytes).decode("utf-8"),
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

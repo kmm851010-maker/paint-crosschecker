@@ -37,7 +37,7 @@ interface Slot {
 
 export default function HomeScreen() {
   const [userName, setUserName] = useState("");
-  const [planFile, setPlanFile] = useState<PickedFile | null>(null);
+  const [planFiles, setPlanFiles] = useState<PickedFile[]>([]);
   const [erpFile, setErpFile] = useState<PickedFile | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<CrossCheckResponse | null>(null);
@@ -111,8 +111,12 @@ export default function HomeScreen() {
     const fileName = asset.fileName || `photo_${Date.now()}.jpg`;
     const file: PickedFile = { uri: asset.uri, name: fileName, isImage: true };
 
-    if (target === "plan") setPlanFile(file);
-    else setErpFile(file);
+    if (target === "plan") {
+      setPlanFiles((prev) => {
+        if (prev.length >= 5) { Alert.alert("최대 5장", "이미지는 최대 5장까지 첨부 가능합니다."); return prev; }
+        return [...prev, file];
+      });
+    } else setErpFile(file);
   };
 
   const takePhoto = async (target: "plan" | "erp") => {
@@ -134,8 +138,12 @@ export default function HomeScreen() {
     const fileName = asset.fileName || `photo_${Date.now()}.jpg`;
     const file: PickedFile = { uri: asset.uri, name: fileName, isImage: true };
 
-    if (target === "plan") setPlanFile(file);
-    else setErpFile(file);
+    if (target === "plan") {
+      setPlanFiles((prev) => {
+        if (prev.length >= 5) { Alert.alert("최대 5장", "이미지는 최대 5장까지 첨부 가능합니다."); return prev; }
+        return [...prev, file];
+      });
+    } else setErpFile(file);
   };
 
   const pickDocument = async (target: "plan" | "erp") => {
@@ -157,8 +165,12 @@ export default function HomeScreen() {
       const isImage = ["jpg", "jpeg", "png", "webp"].includes(ext);
       const file = { uri: asset.uri, name: asset.name, isImage };
 
-      if (target === "plan") setPlanFile(file);
-      else setErpFile(file);
+      if (target === "plan") {
+        setPlanFiles((prev) => {
+          if (prev.length >= 5) { Alert.alert("최대 5장", "파일은 최대 5개까지 첨부 가능합니다."); return prev; }
+          return [...prev, file];
+        });
+      } else setErpFile(file);
     } catch (e) {
       Alert.alert("오류", "파일을 선택할 수 없습니다.");
     }
@@ -173,8 +185,8 @@ export default function HomeScreen() {
   };
 
   const runVerification = async () => {
-    if (!planFile || !erpFile) {
-      Alert.alert("파일 필요", "생산계획서와 ERP 명세서를 모두 업로드하세요.");
+    if (planFiles.length === 0 || !erpFile) {
+      Alert.alert("파일 필요", "좌측 문서와 우측 문서를 모두 업로드하세요.");
       return;
     }
 
@@ -183,8 +195,8 @@ export default function HomeScreen() {
 
     try {
       const response = await crossCheck(
-        planFile.uri,
-        planFile.name,
+        planFiles.map((f) => f.uri),
+        planFiles.map((f) => f.name),
         erpFile.uri,
         erpFile.name,
         ""
@@ -198,14 +210,14 @@ export default function HomeScreen() {
   };
 
   const handleExcelDownload = async () => {
-    if (!planFile || !erpFile) return;
+    if (planFiles.length === 0 || !erpFile) return;
 
     try {
       setLoading(true);
 
       const excelBase64 = await downloadExcelBase64(
-        planFile.uri,
-        planFile.name,
+        planFiles.map((f) => f.uri),
+        planFiles.map((f) => f.name),
         erpFile.uri,
         erpFile.name,
         ""
@@ -264,7 +276,7 @@ export default function HomeScreen() {
                 ]}
                 onPress={() => {
                   setActiveSlot(slot);
-                  setPlanFile(null);
+                  setPlanFiles([]);
                   setErpFile(null);
                   setResult(null);
                 }}
@@ -290,18 +302,35 @@ export default function HomeScreen() {
           <Text style={styles.settingsButtonText}>슬롯 관리</Text>
         </TouchableOpacity>
 
-        {/* Upload Cards */}
-        <FileUploadCard
-          title={activeSlot?.leftLabel || "좌측 문서"}
-          hint="생산계획 또는 입고계획 문서/이미지를 첨부해주세요. 이미지도 인식 가능하나 문서 첨부 시 확실한 검증이 가능합니다."
-          icon="camera"
-          fileName={planFile?.name}
-          fileUri={planFile?.uri}
-          isImage={planFile?.isImage}
-          onPickImage={() => handleImagePick("plan")}
-          onPickFile={() => pickDocument("plan")}
-          onClear={() => setPlanFile(null)}
-        />
+        {/* Upload Cards - 좌측 (다중 파일) */}
+        <View style={styles.multiCard}>
+          <Text style={styles.multiTitle}>
+            {activeSlot?.leftLabel || "좌측 문서"} ({planFiles.length}/5)
+          </Text>
+          {planFiles.length === 0 && (
+            <Text style={styles.multiHint}>
+              생산계획 또는 입고계획 문서/이미지를 첨부해주세요. 이미지도 인식 가능하나 문서 첨부 시 확실한 검증이 가능합니다.
+            </Text>
+          )}
+          {planFiles.map((f, idx) => (
+            <View key={idx} style={styles.multiFileRow}>
+              <Text style={styles.multiFileName} numberOfLines={1}>{f.name}</Text>
+              <TouchableOpacity onPress={() => setPlanFiles((prev) => prev.filter((_, i) => i !== idx))}>
+                <Text style={styles.multiRemove}>삭제</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+          {planFiles.length < 5 && (
+            <View style={styles.multiButtons}>
+              <TouchableOpacity style={styles.multiBtn} onPress={() => handleImagePick("plan")}>
+                <Text style={styles.multiBtnText}>촬영/갤러리</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.multiBtn} onPress={() => pickDocument("plan")}>
+                <Text style={styles.multiBtnText}>파일 선택</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
 
         <FileUploadCard
           title={activeSlot?.rightLabel || "우측 문서"}
@@ -319,10 +348,10 @@ export default function HomeScreen() {
         <TouchableOpacity
           style={[
             styles.runButton,
-            (!planFile || !erpFile || loading) && styles.runButtonDisabled,
+            (planFiles.length === 0 || !erpFile || loading) && styles.runButtonDisabled,
           ]}
           onPress={runVerification}
-          disabled={!planFile || !erpFile || loading}
+          disabled={planFiles.length === 0 || !erpFile || loading}
         >
           {loading ? (
             <ActivityIndicator color="#fff" />
@@ -385,6 +414,66 @@ const styles = StyleSheet.create({
   logo: {
     width: 160,
     height: 60,
+  },
+  multiCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
+  multiTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    marginBottom: 4,
+  },
+  multiHint: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginBottom: 10,
+  },
+  multiFileRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  multiFileName: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.textPrimary,
+  },
+  multiRemove: {
+    fontSize: 13,
+    color: COLORS.error,
+    fontWeight: "600",
+    marginLeft: 12,
+  },
+  multiButtons: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 10,
+  },
+  multiBtn: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 14,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    borderStyle: "dashed",
+    borderRadius: 10,
+  },
+  multiBtnText: {
+    fontSize: 13,
+    color: COLORS.primary,
+    fontWeight: "600",
   },
   slotBar: {
     marginBottom: 8,
