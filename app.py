@@ -77,48 +77,15 @@ def page_cross_check():
 
             plan_bytes = plan_file.getvalue()
             plan_fname = plan_file.name
-            plan_ext = plan_fname.lower().rsplit(".", 1)[-1]
-            is_image = plan_ext in ("jpg", "jpeg", "png", "webp")
 
-            if is_image:
-                # 하이브리드 파이프라인 (전체 OCR 1회 → 경고 항목만 재확인)
-                with st.spinner("분석 중..."):
-                    try:
-                        from modules.precision_ocr import extract_plan_precision
-                        result = extract_plan_precision(plan_bytes, plan_fname, api_key)
-                        items = result["items"]
-
-                        # 항상 검증 완료된 items에서 plan_rows 생성 (자동 교정 반영)
-                        plan_rows = []
-                        for item in items:
-                            plan_rows.append({
-                                "라인": item.get("layer", ""),
-                                "위치": "",
-                                "색상코드": item.get("item_code", ""),
-                                "제조사": item.get("maker", ""),
-                                "재고": 0,
-                                "신규": item.get("quantity", 0),
-                                "생산량": 0,
-                            })
-                        plan_df = pd.DataFrame(plan_rows)
-
-                        st.session_state["cc_precision_items"] = items
-                        st.session_state["cc_parse_method"] = result.get("method", "hybrid")
-                    except Exception as e:
-                        st.error(f"생산계획서 분석 실패: {e}")
-                        st.stop()
-            else:
-                # 엑셀/CSV → 전용 파서
-                with st.spinner("엑셀 파일 분석 중..."):
-                    try:
-                        from modules.plan_excel_parser import parse_plan_excel
-                        plan_rows = parse_plan_excel(plan_bytes, plan_fname)
-                        plan_df = pd.DataFrame(plan_rows)
-                        st.session_state["cc_precision_items"] = None
-                        st.session_state["cc_parse_method"] = "excel"
-                    except Exception as e:
-                        st.error(f"생산계획서 분석 실패: {e}")
-                        st.stop()
+            with st.spinner("생산계획서 분석 중... (Tool Use 정밀 추출)"):
+                try:
+                    from modules.vision_ocr import extract_production_plan
+                    plan_rows = extract_production_plan(plan_bytes, plan_fname, api_key)
+                    plan_df = pd.DataFrame(plan_rows)
+                except Exception as e:
+                    st.error(f"생산계획서 분석 실패: {e}")
+                    st.stop()
 
             st.session_state["cc_plan_df"] = plan_df
             st.session_state["cc_plan_bytes"] = plan_bytes
