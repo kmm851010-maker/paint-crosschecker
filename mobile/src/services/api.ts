@@ -2,27 +2,20 @@ import * as FileSystem from "expo-file-system/legacy";
 import { API_BASE_URL } from "../constants/config";
 
 export interface PlanItem {
-  라인: string;
-  위치: string;
   색상코드: string;
   제조사: string;
-  재고: number;
   신규: number;
-  생산량: number;
-}
-
-export interface ErpItem {
-  색상코드: string;
-  입고_DRUM수: number;
-  총중량_kg: number;
+  비고?: string;
+  라인?: string;
+  위치?: string;
+  재고?: number;
+  생산량?: number;
 }
 
 export interface ResultItem {
-  라인: string;
-  위치: string;
   색상코드: string;
   제조사: string;
-  계획수량: number;
+  계획수량: number | string;
   입고수량: number;
   차이: number;
   상태: string;
@@ -35,18 +28,57 @@ export interface Summary {
   excess_count: number;
   short_count: number;
   missing_count: number;
+  reverse_count: number;
   total_plan: number;
   total_actual: number;
+}
+
+export interface ParsePlanResponse {
+  success: boolean;
+  items: PlanItem[];
+  count: number;
 }
 
 export interface CrossCheckResponse {
   success: boolean;
   plan_items: PlanItem[];
-  erp_items: ErpItem[];
+  erp_items: any[];
   results: ResultItem[];
   summary: Summary;
 }
 
+// Step 1: 생산계획서 분석 → 입고 예정 리스트
+export async function parsePlan(
+  planFileUris: string[],
+  planFileNames: string[],
+  apiKey: string
+): Promise<ParsePlanResponse> {
+  const planFiles = await Promise.all(
+    planFileUris.map(async (uri, i) => ({
+      data: await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 }),
+      name: planFileNames[i],
+    }))
+  );
+
+  const response = await fetch(`${API_BASE_URL}/api/parse-plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      plan_files: planFiles.map((f) => f.data),
+      plan_filenames: planFiles.map((f) => f.name),
+      api_key: apiKey || "",
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "분석 실패" }));
+    throw new Error(error.detail || `서버 오류 (${response.status})`);
+  }
+
+  return response.json();
+}
+
+// Step 2: 교차검증
 export async function crossCheck(
   planFileUris: string[],
   planFileNames: string[],
@@ -85,50 +117,18 @@ export async function crossCheck(
   return response.json();
 }
 
-export async function generateVerifiedExcel(
-  imageUri: string,
-  imageFileName: string,
-  results: ResultItem[],
-  apiKey: string
-): Promise<string> {
-  const imageBase64 = await FileSystem.readAsStringAsync(imageUri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-
-  const response = await fetch(`${API_BASE_URL}/api/generate-verified-excel`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      image_file: imageBase64,
-      image_filename: imageFileName,
-      results: results,
-      api_key: apiKey || "",
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "검증 엑셀 생성 실패" }));
-    throw new Error(error.detail || `서버 오류 (${response.status})`);
-  }
-
-  const data = await response.json();
-  return data.excel_base64;
-}
-
+// 입고 예정 엑셀
 export async function generateIncomingExcel(
   planItems: PlanItem[],
-  apiKey: string
 ): Promise<string> {
   const response = await fetch(`${API_BASE_URL}/api/generate-incoming-excel`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      plan_items: planItems,
-    }),
+    body: JSON.stringify({ plan_items: planItems }),
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "입고 예정 엑셀 실패" }));
+    const error = await response.json().catch(() => ({ detail: "엑셀 생성 실패" }));
     throw new Error(error.detail || `서버 오류 (${response.status})`);
   }
 
@@ -136,6 +136,7 @@ export async function generateIncomingExcel(
   return data.excel_base64;
 }
 
+// 교차검증 결과 엑셀
 export async function downloadExcelBase64(
   planFileUris: string[],
   planFileNames: string[],
@@ -170,13 +171,4 @@ export async function downloadExcelBase64(
 
   const data = await response.json();
   return data.excel_base64;
-}
-
-export async function healthCheck(): Promise<boolean> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/health`, { method: "GET" });
-    return response.ok;
-  } catch {
-    return false;
-  }
 }
