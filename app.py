@@ -271,6 +271,13 @@ def page_cross_check():
                 c5.metric("⚠️확인필요", f"{summary['reverse_count']}건",
                           delta=f"!{summary['reverse_count']}" if summary['reverse_count'] > 0 else None)
 
+                if summary['reverse_count'] > 0:
+                    st.warning(
+                        f"⚠️ **확인필요 {summary['reverse_count']}건**: "
+                        "생산계획서에 없지만 ERP에 입고 기록이 있는 품목입니다. "
+                        "최초 이미지 인식 시 누락되었거나, 긴급 입고분일 수 있으니 확인 바랍니다."
+                    )
+
                 # 검증 결과 엑셀
                 st.markdown("---")
                 is_plan_image = plan_name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
