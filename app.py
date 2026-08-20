@@ -588,12 +588,20 @@ def page_work_log():
         ws['G6'].font, ws['G6'].fill, ws['G6'].alignment, ws['G6'].border = font_tbl_hdr, fill_gray, align_c, thin_border
         ws['H6'].border = thin_border
 
-        rows_1 = [
-            ("1근", shift_data["1근_조"], "06:30 ~ 14:30", shift_data["1근_근무자"], "", shift_data.get("1근_연장",""), shift_data.get("1근_비고","")),
-            ("2근", shift_data["2근_조"], "14:30 ~ 22:30", shift_data["2근_근무자"], "", shift_data.get("2근_연장",""), shift_data.get("2근_비고","")),
-            ("3근", shift_data["3근_조"], "22:30 ~ 06:30", shift_data["3근_근무자"], "", shift_data.get("3근_연장",""), shift_data.get("3근_비고","")),
-            ("휴무", shift_data["휴무_조"], "", "", shift_data["휴무_근무자"], "", shift_data["휴무_구분"])
-        ]
+        if shift_data.get("is_2person"):
+            rows_1 = [
+                ("주간", shift_data["1근_조"], "06:30 ~ 18:30", shift_data["1근_근무자"], "", shift_data.get("1근_연장",""), shift_data.get("1근_비고","")),
+                ("야간", shift_data["2근_조"], "18:30 ~ 06:30", shift_data["2근_근무자"], "", shift_data.get("2근_연장",""), shift_data.get("2근_비고","")),
+                ("휴무", "", "", "", shift_data["3근_근무자"], "", shift_data.get("3근_비고","")),
+                ("휴무", shift_data["휴무_조"], "", "", shift_data["휴무_근무자"], "", shift_data["휴무_구분"])
+            ]
+        else:
+            rows_1 = [
+                ("1근", shift_data["1근_조"], "06:30 ~ 14:30", shift_data["1근_근무자"], "", shift_data.get("1근_연장",""), shift_data.get("1근_비고","")),
+                ("2근", shift_data["2근_조"], "14:30 ~ 22:30", shift_data["2근_근무자"], "", shift_data.get("2근_연장",""), shift_data.get("2근_비고","")),
+                ("3근", shift_data["3근_조"], "22:30 ~ 06:30", shift_data["3근_근무자"], "", shift_data.get("3근_연장",""), shift_data.get("3근_비고","")),
+                ("휴무", shift_data["휴무_조"], "", "", shift_data["휴무_근무자"], "", shift_data["휴무_구분"])
+            ]
         for idx, r_data in enumerate(rows_1, start=7):
             ws.row_dimensions[idx].height = 20
             ws[f"A{idx}"], ws[f"B{idx}"], ws[f"C{idx}"], ws[f"D{idx}"], ws[f"E{idx}"], ws[f"F{idx}"] = r_data[:6]
