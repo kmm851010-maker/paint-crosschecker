@@ -29,8 +29,11 @@ def normalize_color_code(code: str) -> str:
     return re.sub(r"\s+", "", str(code).strip().upper())
 
 
+DAY_MAP = {"월": "월요일", "화": "화요일", "수": "수요일", "목": "목요일", "금": "금요일", "토": "토요일", "일": "일요일"}
+
+
 def parse_quantity_text(text) -> dict:
-    """수량 텍스트 파싱. '16(수)' → {"quantity": 16, "schedule_day": "수"}"""
+    """수량 텍스트 파싱. '16(수)' → {"quantity": 16, "schedule_day": "수요일"}"""
     if text is None or (isinstance(text, float) and str(text) == "nan"):
         return {"quantity": 0, "schedule_day": ""}
 
@@ -40,7 +43,9 @@ def parse_quantity_text(text) -> dict:
 
     match = QTY_DAY_PATTERN.match(text)
     if match:
-        return {"quantity": int(match.group(1)), "schedule_day": match.group(2)}
+        day_raw = match.group(2)
+        day_full = DAY_MAP.get(day_raw, day_raw)
+        return {"quantity": int(match.group(1)), "schedule_day": day_full}
 
     try:
         num = int(float(text))

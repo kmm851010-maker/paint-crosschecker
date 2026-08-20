@@ -99,8 +99,14 @@ def page_cross_check():
         st.markdown("---")
         st.subheader("📦 입고 예정 품목 리스트")
 
-        incoming_df = plan_df[plan_df["신규"] > 0][["색상코드", "제조사", "신규"]].copy()
-        incoming_df.columns = ["품목코드", "제조사", "입고예정수량"]
+        cols = ["색상코드", "제조사", "신규"]
+        if "비고" in plan_df.columns:
+            cols.append("비고")
+        incoming_df = plan_df[plan_df["신규"] > 0][cols].copy()
+        col_names = ["품목코드", "제조사", "입고예정수량"]
+        if "비고" in plan_df.columns:
+            col_names.append("비고")
+        incoming_df.columns = col_names
         incoming_df = incoming_df.reset_index(drop=True)
         incoming_df.index += 1
         incoming_df.index.name = "No."

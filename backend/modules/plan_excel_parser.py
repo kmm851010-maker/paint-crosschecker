@@ -21,9 +21,11 @@ def _parse_quantity(val) -> tuple:
         return 0, ""
 
     # '16(수)', '3(화)' 등
+    DAY_MAP = {"월": "월요일", "화": "화요일", "수": "수요일", "목": "목요일", "금": "금요일", "토": "토요일", "일": "일요일"}
     match = re.match(r"(\d+)\s*[(\(](.+?)[)\)]", val_str)
     if match:
-        return int(match.group(1)), match.group(2)
+        day_raw = match.group(2)
+        return int(match.group(1)), DAY_MAP.get(day_raw, day_raw)
 
     # 순수 숫자 (float도 처리)
     try:

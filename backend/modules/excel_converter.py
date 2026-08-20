@@ -147,8 +147,15 @@ def generate_incoming_plan_excel(plan_df) -> bytes:
     """입고 예정 품목만 추려서 깔끔한 엑셀을 생성합니다."""
     import pandas as pd
 
-    incoming = plan_df[plan_df["신규"] > 0][["색상코드", "제조사", "신규"]].copy()
-    incoming.columns = ["품목코드", "제조사", "입고예정수량"]
+    cols = ["색상코드", "제조사", "신규"]
+    has_note = "비고" in plan_df.columns
+    if has_note:
+        cols.append("비고")
+    incoming = plan_df[plan_df["신규"] > 0][cols].copy()
+    col_names = ["품목코드", "제조사", "입고예정수량"]
+    if has_note:
+        col_names.append("비고")
+    incoming.columns = col_names
     incoming = incoming.reset_index(drop=True)
 
     if incoming.empty:
@@ -159,6 +166,8 @@ def generate_incoming_plan_excel(plan_df) -> bytes:
     ws.title = "입고 예정"
 
     headers = ["No.", "품목코드", "제조사", "입고예정수량"]
+    if has_note:
+        headers.append("비고")
     for col_idx, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col_idx, value=header)
         cell.fill = HEADER_FILL
@@ -167,12 +176,15 @@ def generate_incoming_plan_excel(plan_df) -> bytes:
         cell.border = THIN_BORDER
 
     for row_idx, (_, row) in enumerate(incoming.iterrows(), 2):
-        for col_idx, (val, align) in enumerate([
+        row_data = [
             (row_idx - 1, CENTER),
             (row["품목코드"], CENTER),
             (row["제조사"], CENTER),
             (int(row["입고예정수량"]), CENTER),
-        ], 1):
+        ]
+        if has_note:
+            row_data.append((str(row.get("비고", "")), CENTER))
+        for col_idx, (val, align) in enumerate(row_data, 1):
             c = ws.cell(row=row_idx, column=col_idx, value=val)
             c.font = DATA_FONT if col_idx < 4 else Font(name="맑은 고딕", size=10, bold=True)
             c.border = THIN_BORDER
@@ -180,9 +192,10 @@ def generate_incoming_plan_excel(plan_df) -> bytes:
             if col_idx == 4:
                 c.number_format = "#,##0"
 
+    # 합계 행
     sum_row = len(incoming) + 2
     sum_fill = PatternFill(start_color="DFE4EA", end_color="DFE4EA", fill_type="solid")
-    for col in range(1, 5):
+    for col in range(1, len(headers) + 1):
         c = ws.cell(row=sum_row, column=col)
         c.fill = sum_fill
         c.border = THIN_BORDER
@@ -197,6 +210,8 @@ def generate_incoming_plan_excel(plan_df) -> bytes:
     ws.column_dimensions["B"].width = 16
     ws.column_dimensions["C"].width = 12
     ws.column_dimensions["D"].width = 16
+    if has_note:
+        ws.column_dimensions["E"].width = 12
     ws.freeze_panes = "A2"
 
     buf = BytesIO()
