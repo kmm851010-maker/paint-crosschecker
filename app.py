@@ -105,7 +105,7 @@ def page_cross_check():
         st.success(f"총 {len(incoming_df)}개 품목 | 합계: {int(incoming_df['입고예정수량'].sum())}개")
 
         # 입고 예정 엑셀 다운로드
-        from modules.image_annotator import generate_incoming_plan_excel
+        from modules.excel_converter import generate_incoming_plan_excel
         incoming_excel = generate_incoming_plan_excel(plan_df)
         col_dl, col_print = st.columns(2)
         with col_dl:
@@ -321,7 +321,24 @@ def page_image_to_excel():
             st.image(capture_bytes, use_container_width=True)
         with col_table:
             st.caption(f"추출된 데이터 ({len(rows)}행 × {len(headers)}열)")
-            result_df = pd.DataFrame(rows, columns=headers)
+            # 중복 컬럼명 처리
+            unique_headers = []
+            seen = {}
+            for h in headers:
+                if h in seen:
+                    seen[h] += 1
+                    unique_headers.append(f"{h}_{seen[h]}")
+                else:
+                    seen[h] = 0
+                    unique_headers.append(h)
+            # 행 길이를 헤더에 맞춤
+            padded_rows = []
+            for r in rows:
+                if len(r) < len(unique_headers):
+                    padded_rows.append(list(r) + [""] * (len(unique_headers) - len(r)))
+                else:
+                    padded_rows.append(list(r[:len(unique_headers)]))
+            result_df = pd.DataFrame(padded_rows, columns=unique_headers)
             st.dataframe(result_df, use_container_width=True, hide_index=True)
 
         st.info(f"총 {len(rows)}개 행, {len(headers)}개 컬럼 추출 완료")
