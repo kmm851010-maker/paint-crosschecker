@@ -60,13 +60,12 @@ def cross_check(
                     status = f"🚨 부족 ({diff})"
 
             note = row.get("비고", "")
-            입고표시 = f"{actual_qty}({note})" if note else actual_qty
 
             results.append({
                 "색상코드": row["색상코드"],
                 "제조사": row.get("제조사", ""),
                 "계획수량": f"{plan_qty}({note})" if note else plan_qty,
-                "입고수량": 입고표시,
+                "입고수량": actual_qty,
                 "차이": actual_qty - plan_qty,
                 "상태": status,
                 "총중량_kg": weight,
