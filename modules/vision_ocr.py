@@ -229,8 +229,9 @@ def extract_production_plan(
         items = parse_plan_excel(file_bytes, file_name)
         return {"items": items, "table_data": None}
 
-    # 이미지 → Tool Use로 표 전체 읽기 (1회)
-    table_data = extract_table_from_image_tool_use(file_bytes, file_name, api_key, model)
+    # 이미지 → table_extractor로 표 전체 읽기 (1회, 엑셀 변환기와 동일 방식)
+    from modules.table_extractor import extract_table_from_image
+    table_data = extract_table_from_image(file_bytes, file_name, api_key, model)
 
     # 코드로 신규 품목 필터링
     items = extract_new_items_from_table(table_data)
