@@ -23,7 +23,7 @@ api_key = os.getenv("ANTHROPIC_API_KEY", "")
 # ──────────────────────────────────────
 # 사이드바 (메뉴만 깔끔하게)
 # ──────────────────────────────────────
-st.sidebar.title("🏭 KG스틸")
+st.sidebar.image("assets/kg.jpg", width=160)
 st.sidebar.caption("스마트 공정·자재 관리 시스템")
 
 st.sidebar.markdown("---")
