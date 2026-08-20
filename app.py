@@ -38,6 +38,10 @@ menu = st.sidebar.radio(
     label_visibility="collapsed",
 )
 
+st.sidebar.markdown("---")
+st.sidebar.markdown("📱 **모바일 앱 (Android)**")
+st.sidebar.markdown("[KG Counter 다운로드](https://expo.dev/accounts/sergekang/projects/kg-steel-paint-checker/builds/4799079c-0b24-4b19-bbea-71c5df27c44b)")
+
 
 
 # ══════════════════════════════════════
