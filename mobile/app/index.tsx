@@ -20,7 +20,7 @@ import FileUploadCard from "../src/components/FileUploadCard";
 import SummaryCards from "../src/components/SummaryCards";
 import ResultTable from "../src/components/ResultTable";
 import { COLORS } from "../src/constants/config";
-import { crossCheck, downloadExcelBase64, generateOverlay, type CrossCheckResponse } from "../src/services/api";
+import { crossCheck, downloadExcelBase64, generateVerifiedExcel, generateIncomingExcel, type CrossCheckResponse } from "../src/services/api";
 
 interface PickedFile {
   uri: string;
@@ -41,8 +41,8 @@ export default function HomeScreen() {
   const [erpFile, setErpFile] = useState<PickedFile | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<CrossCheckResponse | null>(null);
-  const [overlayImage, setOverlayImage] = useState<string | null>(null);
-  const [overlayLoading, setOverlayLoading] = useState(false);
+  const [verifiedLoading, setVerifiedLoading] = useState(false);
+  const [incomingLoading, setIncomingLoading] = useState(false);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [activeSlot, setActiveSlot] = useState<Slot | null>(null);
 
@@ -194,7 +194,6 @@ export default function HomeScreen() {
 
     setLoading(true);
     setResult(null);
-    setOverlayImage(null);
 
     try {
       const response = await crossCheck(
@@ -370,67 +369,69 @@ export default function HomeScreen() {
 
             <SummaryCards summary={result.summary} />
 
-            {/* 오버레이 시각화 버튼 */}
-            {planFiles.length > 0 && planFiles[0].isImage && !overlayImage && (
+            {/* 검증 결과 엑셀 (원본 이미지 → 엑셀 + 입고/미입고 표시) */}
+            {planFiles.length > 0 && planFiles[0].isImage && (
               <TouchableOpacity
-                style={[styles.overlayBtn, overlayLoading && styles.runButtonDisabled]}
+                style={[styles.overlayBtn, verifiedLoading && styles.runButtonDisabled]}
                 onPress={async () => {
-                  setOverlayLoading(true);
+                  setVerifiedLoading(true);
                   try {
-                    const overlayBase64 = await generateOverlay(
-                      planFiles[0].uri,
-                      planFiles[0].name,
-                      result.results,
-                      ""
+                    const excelB64 = await generateVerifiedExcel(
+                      planFiles[0].uri, planFiles[0].name, result.results, ""
                     );
-                    setOverlayImage(overlayBase64);
+                    const path = `${FileSystem.cacheDirectory}verified_${Date.now()}.xlsx`;
+                    await FileSystem.writeAsStringAsync(path, excelB64, { encoding: FileSystem.EncodingType.Base64 });
+                    if (await Sharing.isAvailableAsync()) {
+                      await Sharing.shareAsync(path, {
+                        mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        dialogTitle: "검증 결과 엑셀",
+                      });
+                    }
                   } catch (e: any) {
-                    Alert.alert("오버레이 생성 실패", e.message);
+                    Alert.alert("검증 엑셀 생성 실패", e.message);
                   } finally {
-                    setOverlayLoading(false);
+                    setVerifiedLoading(false);
                   }
                 }}
-                disabled={overlayLoading}
+                disabled={verifiedLoading}
               >
-                {overlayLoading ? (
+                {verifiedLoading ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.overlayBtnText}>🖼 시각화 이미지 보기</Text>
+                  <Text style={styles.overlayBtnText}>📊 검증 결과 엑셀 다운로드</Text>
                 )}
               </TouchableOpacity>
             )}
 
-            {/* 오버레이 결과 표시 */}
-            {overlayImage && (
-              <View style={styles.overlaySection}>
-                <Text style={styles.overlayTitle}>시각화 검증 결과</Text>
-                <Image
-                  source={{ uri: `data:image/png;base64,${overlayImage}` }}
-                  style={styles.overlayImage}
-                  resizeMode="contain"
-                />
-                <TouchableOpacity
-                  style={styles.overlayDownloadBtn}
-                  onPress={async () => {
-                    try {
-                      const path = `${FileSystem.cacheDirectory}overlay_${Date.now()}.png`;
-                      await FileSystem.writeAsStringAsync(path, overlayImage, {
-                        encoding: FileSystem.EncodingType.Base64,
-                      });
-                      if (await Sharing.isAvailableAsync()) {
-                        await Sharing.shareAsync(path, { mimeType: "image/png", dialogTitle: "시각화 이미지 공유" });
-                      } else {
-                        Alert.alert("완료", "이미지가 저장되었습니다.");
-                      }
-                    } catch (e: any) {
-                      Alert.alert("저장 실패", e.message);
-                    }
-                  }}
-                >
-                  <Text style={styles.overlayDownloadText}>시각화 이미지 저장/공유</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+            {/* 입고 예정 품목 엑셀 */}
+            <TouchableOpacity
+              style={[styles.incomingBtn, incomingLoading && styles.runButtonDisabled]}
+              onPress={async () => {
+                setIncomingLoading(true);
+                try {
+                  const excelB64 = await generateIncomingExcel(result.plan_items, "");
+                  const path = `${FileSystem.cacheDirectory}incoming_${Date.now()}.xlsx`;
+                  await FileSystem.writeAsStringAsync(path, excelB64, { encoding: FileSystem.EncodingType.Base64 });
+                  if (await Sharing.isAvailableAsync()) {
+                    await Sharing.shareAsync(path, {
+                      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                      dialogTitle: "입고 예정 품목",
+                    });
+                  }
+                } catch (e: any) {
+                  Alert.alert("입고 예정 엑셀 실패", e.message);
+                } finally {
+                  setIncomingLoading(false);
+                }
+              }}
+              disabled={incomingLoading}
+            >
+              {incomingLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.overlayBtnText}>📦 입고 예정 품목 엑셀</Text>
+              )}
+            </TouchableOpacity>
 
             <View style={styles.totalRow}>
               <Text style={styles.totalText}>
@@ -631,40 +632,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
   },
-  overlaySection: {
-    backgroundColor: COLORS.surface,
+  incomingBtn: {
+    backgroundColor: COLORS.warning,
+    paddingVertical: 14,
     borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-  },
-  overlayTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
-    marginBottom: 8,
-  },
-  overlayImage: {
-    width: "100%",
-    height: 400,
-    borderRadius: 8,
-    backgroundColor: COLORS.background,
-  },
-  overlayDownloadBtn: {
-    backgroundColor: COLORS.primary,
-    paddingVertical: 10,
-    borderRadius: 8,
     alignItems: "center",
-    marginTop: 10,
-  },
-  overlayDownloadText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
+    marginBottom: 12,
   },
   downloadButton: {
     backgroundColor: COLORS.success,

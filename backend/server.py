@@ -23,7 +23,7 @@ from modules.vision_ocr import extract_production_plan, flatten_production_plan
 from modules.erp_parser import process_erp_file
 from modules.matcher import cross_check
 from modules.excel_generator import generate_report
-from modules.image_annotator import generate_overlay
+from modules.image_annotator import generate_verified_excel, generate_incoming_plan_excel
 from utils.formatter import format_summary
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
@@ -434,18 +434,18 @@ async def export_excel_multi(req: MultiFileRequest):
     }
 
 
-# --- 오버레이 이미지 생성 (별도 엔드포인트) ---
+# --- 검증 결과 엑셀 생성 (별도 엔드포인트) ---
 
-class OverlayRequest(BaseModel):
+class VerifiedExcelRequest(BaseModel):
     image_file: str  # base64 encoded plan image
     image_filename: str
-    results: list[dict]  # 교차검증 결과 [{색상코드, 상태, 계획수량, 입고수량, ...}]
+    results: list[dict]
     api_key: str = ""
 
 
-@app.post("/api/generate-overlay")
-async def generate_overlay_endpoint(req: OverlayRequest):
-    """검증 결과 + 원본 이미지로 오버레이 시각화 이미지를 생성합니다."""
+@app.post("/api/generate-verified-excel")
+async def generate_verified_excel_endpoint(req: VerifiedExcelRequest):
+    """원본 이미지를 엑셀로 변환 + 검증 결과 색상 표시."""
     import base64
 
     key = get_api_key(req.api_key)
@@ -456,13 +456,33 @@ async def generate_overlay_endpoint(req: OverlayRequest):
         raise HTTPException(status_code=400, detail="검증 결과가 비어있습니다.")
 
     try:
-        overlay_bytes = generate_overlay(image_bytes, req.image_filename, result_df, key)
+        excel_bytes = generate_verified_excel(image_bytes, req.image_filename, result_df, key)
         return {
             "success": True,
-            "overlay_image": base64.b64encode(overlay_bytes).decode("utf-8"),
+            "excel_base64": base64.b64encode(excel_bytes).decode("utf-8"),
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"오버레이 생성 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"검증 엑셀 생성 실패: {str(e)}")
+
+
+class IncomingPlanRequest(BaseModel):
+    plan_items: list[dict]
+
+
+@app.post("/api/generate-incoming-excel")
+async def generate_incoming_excel_endpoint(req: IncomingPlanRequest):
+    """입고 예정 품목 엑셀 생성."""
+    import base64
+
+    plan_df = pd.DataFrame(req.plan_items)
+    try:
+        excel_bytes = generate_incoming_plan_excel(plan_df)
+        return {
+            "success": True,
+            "excel_base64": base64.b64encode(excel_bytes).decode("utf-8"),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"입고 예정 엑셀 생성 실패: {str(e)}")
 
 
 if __name__ == "__main__":

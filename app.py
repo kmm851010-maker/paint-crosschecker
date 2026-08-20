@@ -43,7 +43,7 @@ def page_cross_check():
     from modules.erp_parser import process_erp_file
     from modules.matcher import cross_check
     from modules.excel_generator import generate_report
-    from modules.image_annotator import generate_overlay
+    from modules.image_annotator import generate_verified_excel, generate_incoming_plan_excel
     from utils.formatter import style_result_table, format_summary
 
     st.title("🔍 생산계획 vs 입고 교차검증")
@@ -154,40 +154,30 @@ def page_cross_check():
                       delta=f"-{summary['missing_count']}" if summary['missing_count'] > 0 else None,
                       delta_color="inverse")
 
+            # ── 검증 결과 엑셀 생성 (원본 이미지 → 엑셀 + 상태 색상) ──
             st.markdown("---")
-
-            # 오버레이 시각화 (버튼 방식, session_state로 유지)
             is_plan_image = plan_name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
             if is_plan_image:
-                if st.button("🖼 시각화 이미지 보기", use_container_width=True):
-                    with st.spinner("오버레이 이미지 생성 중... (Vision API로 위치 분석)"):
+                if st.button("📊 검증 결과 엑셀 생성", use_container_width=True):
+                    with st.spinner("원본 이미지를 엑셀로 변환 + 검증 결과 표시 중..."):
                         try:
-                            annotated_bytes = generate_overlay(plan_bytes, plan_name, result_df, api_key)
-                            st.session_state["cc_overlay"] = annotated_bytes
+                            verified_excel = generate_verified_excel(plan_bytes, plan_name, result_df, api_key)
+                            st.session_state["cc_verified_excel"] = verified_excel
                         except Exception as e:
-                            st.error(f"오버레이 생성 실패: {e}")
+                            st.error(f"검증 엑셀 생성 실패: {e}")
 
-                if st.session_state.get("cc_overlay"):
-                    annotated_bytes = st.session_state["cc_overlay"]
-                    st.subheader("🖼 시각화 검증 결과")
-                    view_col1, view_col2 = st.columns(2)
-                    with view_col1:
-                        st.caption("원본 이미지")
-                        st.image(plan_bytes, use_container_width=True)
-                    with view_col2:
-                        st.caption("검증 결과 오버레이")
-                        st.image(annotated_bytes, use_container_width=True)
-
+                if st.session_state.get("cc_verified_excel"):
                     st.download_button(
-                        label="🖼 마킹된 시각화 이미지 다운로드 (PNG)",
-                        data=annotated_bytes,
-                        file_name="verification_overlay.png",
-                        mime="image/png",
+                        label="📥 검증 결과 엑셀 다운로드 (원본 + 입고/미입고 표시)",
+                        data=st.session_state["cc_verified_excel"],
+                        file_name="verified_result.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True,
                     )
 
+            # ── 교차검증 상세 결과 표 ──
             st.markdown("---")
-            st.subheader("📊 상세 검증 결과 표")
+            st.subheader("📊 교차검증 상세 결과")
             styled = style_result_table(result_df)
             st.dataframe(styled, use_container_width=True, hide_index=True)
 
@@ -197,10 +187,52 @@ def page_cross_check():
                 f"**차이: {summary['total_actual'] - summary['total_plan']}**"
             )
 
+            # 인쇄 버튼
+            result_html = result_df.to_html(index=False, border=1)
+            st.components.v1.html(
+                f"""<div id="print-result">{result_html}</div>
+                <button onclick="var w=window.open('','','width=800,height=600');w.document.write('<html><head><title>교차검증 결과</title></head><body>'+document.getElementById('print-result').innerHTML+'</body></html>');w.document.close();w.print();"
+                style="margin-top:8px;padding:10px 24px;background:#4B2D8E;color:white;border:none;border-radius:8px;cursor:pointer;font-size:14px;">🖨 교차검증 결과 인쇄</button>""",
+                height=len(result_df) * 35 + 80,
+            )
+
+            # ── 입고 예정 품목 정리표 ──
+            st.markdown("---")
+            st.subheader("📦 입고 예정 품목")
+            incoming_df = plan_df[plan_df["신규"] > 0][["색상코드", "제조사", "신규"]].copy()
+            incoming_df.columns = ["품목코드", "제조사", "입고예정수량"]
+            incoming_df = incoming_df.reset_index(drop=True)
+            incoming_df.index += 1
+            incoming_df.index.name = "No."
+
+            st.dataframe(incoming_df, use_container_width=True)
+            st.info(f"총 {len(incoming_df)}개 품목 | 합계: {int(incoming_df['입고예정수량'].sum())}개")
+
+            # 입고 예정 엑셀 다운로드
+            incoming_excel = generate_incoming_plan_excel(plan_df)
+            st.download_button(
+                label="📥 입고 예정 품목 엑셀 다운로드",
+                data=incoming_excel,
+                file_name="incoming_plan.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="dl_incoming",
+            )
+
+            # 입고 예정 인쇄 버튼
+            incoming_html = incoming_df.to_html(border=1)
+            st.components.v1.html(
+                f"""<div id="print-incoming">{incoming_html}</div>
+                <button onclick="var w=window.open('','','width=800,height=600');w.document.write('<html><head><title>입고 예정 품목</title></head><body><h2>입고 예정 품목</h2>'+document.getElementById('print-incoming').innerHTML+'</body></html>');w.document.close();w.print();"
+                style="margin-top:8px;padding:10px 24px;background:#4B2D8E;color:white;border:none;border-radius:8px;cursor:pointer;font-size:14px;">🖨 입고 예정 품목 인쇄</button>""",
+                height=len(incoming_df) * 35 + 80,
+            )
+
+            # ── 기존 결과 엑셀 다운로드 ──
             st.markdown("---")
             excel_bytes = generate_report(result_df)
             st.download_button(
-                label="📥 결과 엑셀 다운로드",
+                label="📥 교차검증 결과 엑셀 다운로드",
                 data=excel_bytes,
                 file_name="paint_verification_report.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

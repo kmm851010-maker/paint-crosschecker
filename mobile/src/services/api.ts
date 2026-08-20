@@ -85,7 +85,7 @@ export async function crossCheck(
   return response.json();
 }
 
-export async function generateOverlay(
+export async function generateVerifiedExcel(
   imageUri: string,
   imageFileName: string,
   results: ResultItem[],
@@ -95,7 +95,7 @@ export async function generateOverlay(
     encoding: FileSystem.EncodingType.Base64,
   });
 
-  const response = await fetch(`${API_BASE_URL}/api/generate-overlay`, {
+  const response = await fetch(`${API_BASE_URL}/api/generate-verified-excel`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -107,12 +107,33 @@ export async function generateOverlay(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "오버레이 생성 실패" }));
+    const error = await response.json().catch(() => ({ detail: "검증 엑셀 생성 실패" }));
     throw new Error(error.detail || `서버 오류 (${response.status})`);
   }
 
   const data = await response.json();
-  return data.overlay_image;
+  return data.excel_base64;
+}
+
+export async function generateIncomingExcel(
+  planItems: PlanItem[],
+  apiKey: string
+): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/api/generate-incoming-excel`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      plan_items: planItems,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "입고 예정 엑셀 실패" }));
+    throw new Error(error.detail || `서버 오류 (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.excel_base64;
 }
 
 export async function downloadExcelBase64(
