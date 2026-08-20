@@ -74,28 +74,32 @@ def page_cross_check():
             is_image = plan_ext in ("jpg", "jpeg", "png", "webp")
 
             if is_image:
-                # 정밀 파이프라인 (OpenCV 그리드 → 타겟 OCR)
-                with st.spinner("정밀 분석 중... (그리드 감지 → 셀 단위 OCR → 검증)"):
+                # 하이브리드 파이프라인 (전체 OCR 1회 → 경고 항목만 재확인)
+                with st.spinner("분석 중..."):
                     try:
                         from modules.precision_ocr import extract_plan_precision
                         result = extract_plan_precision(plan_bytes, plan_fname, api_key)
                         items = result["items"]
 
-                        plan_rows = []
-                        for item in items:
-                            plan_rows.append({
-                                "라인": item.get("layer", ""),
-                                "위치": "",
-                                "색상코드": item.get("item_code", ""),
-                                "제조사": item.get("maker", ""),
-                                "재고": 0,
-                                "신규": item.get("quantity", 0),
-                                "생산량": 0,
-                            })
+                        # 하이브리드: plan_rows가 이미 있으면 사용, 없으면 items에서 생성
+                        if result.get("plan_rows"):
+                            plan_rows = result["plan_rows"]
+                        else:
+                            plan_rows = []
+                            for item in items:
+                                plan_rows.append({
+                                    "라인": item.get("layer", ""),
+                                    "위치": "",
+                                    "색상코드": item.get("item_code", ""),
+                                    "제조사": item.get("maker", ""),
+                                    "재고": 0,
+                                    "신규": item.get("quantity", 0),
+                                    "생산량": 0,
+                                })
                         plan_df = pd.DataFrame(plan_rows)
 
                         st.session_state["cc_precision_items"] = items
-                        st.session_state["cc_parse_method"] = result.get("method", "fallback")
+                        st.session_state["cc_parse_method"] = result.get("method", "hybrid")
                     except Exception as e:
                         st.error(f"생산계획서 분석 실패: {e}")
                         st.stop()
