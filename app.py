@@ -125,7 +125,7 @@ def page_cross_check():
             incoming_html_full = incoming_df.to_html(border=1)
             encoded = b64.b64encode(incoming_html_full.encode()).decode()
             st.components.v1.html(
-                f"""<button onclick="var h=atob('{encoded}');var w=window.open('','','width=800,height=600');w.document.write('<html><head><title>입고 예정 품목</title><style>table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #333;padding:8px;text-align:center}}</style></head><body><h2>입고 예정 품목</h2>'+h+'</body></html>');w.document.close();w.print();"
+                f"""<button onclick="var h=atob('{encoded}');var w=window.open('','','width=800,height=600');w.document.write('<html><head><meta charset="utf-8"><title>입고 예정 품목</title><style>table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #333;padding:8px;text-align:center}}</style></head><body><h2>입고 예정 품목</h2>'+h+'</body></html>');w.document.close();w.print();"
                 style="width:100%;padding:10px;background:#4B2D8E;color:white;border:none;border-radius:8px;cursor:pointer;font-size:14px;">🖨 입고 예정 인쇄</button>""",
                 height=50,
             )
@@ -241,7 +241,7 @@ def page_cross_check():
                 result_html = result_df.to_html(index=False, border=1)
                 encoded_r = b64.b64encode(result_html.encode()).decode()
                 st.components.v1.html(
-                    f"""<button onclick="var h=atob('{encoded_r}');var w=window.open('','','width=800,height=600');w.document.write('<html><head><title>교차검증 결과</title><style>table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #333;padding:8px;text-align:center}}</style></head><body><h2>교차검증 결과</h2>'+h+'</body></html>');w.document.close();w.print();"
+                    f"""<button onclick="var h=atob('{encoded_r}');var w=window.open('','','width=800,height=600');w.document.write('<html><head><meta charset="utf-8"><title>교차검증 결과</title><style>table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #333;padding:8px;text-align:center}}</style></head><body><h2>교차검증 결과</h2>'+h+'</body></html>');w.document.close();w.print();"
                     style="width:100%;padding:10px;background:#4B2D8E;color:white;border:none;border-radius:8px;cursor:pointer;font-size:14px;">🖨 교차검증 결과 인쇄</button>""",
                     height=50,
                 )
