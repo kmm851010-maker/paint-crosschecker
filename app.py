@@ -906,13 +906,17 @@ def page_work_log():
     safety_items_data = []
     for i, q in enumerate(safety_questions):
         st.write(f"{i+1}. {q}")
-        sc1, sc2, sc3, sc4, sc5 = st.columns(5)
-        chk_s1 = sc1.checkbox("1근", value=True, key=f"safe_s1_{i}")
-        chk_s2 = sc2.checkbox("2근", value=True, key=f"safe_s2_{i}")
-        chk_s3 = sc3.checkbox("3근", value=True, key=f"safe_s3_{i}")
-        chk_day = sc4.checkbox("주간", value=False, key=f"safe_day_{i}")
-        chk_night = sc5.checkbox("야간", value=False, key=f"safe_night_{i}")
-        safety_items_data.append({"text": q, "s1": chk_s1, "s2": chk_s2, "s3": chk_s3, "day": chk_day, "night": chk_night})
+        if is_2person:
+            sc1, sc2 = st.columns(2)
+            chk_day = sc1.checkbox("주간", value=True, key=f"safe_day_{i}")
+            chk_night = sc2.checkbox("야간", value=True, key=f"safe_night_{i}")
+            safety_items_data.append({"text": q, "s1": False, "s2": False, "s3": False, "day": chk_day, "night": chk_night})
+        else:
+            sc1, sc2, sc3 = st.columns(3)
+            chk_s1 = sc1.checkbox("1근", value=True, key=f"safe_s1_{i}")
+            chk_s2 = sc2.checkbox("2근", value=True, key=f"safe_s2_{i}")
+            chk_s3 = sc3.checkbox("3근", value=True, key=f"safe_s3_{i}")
+            safety_items_data.append({"text": q, "s1": chk_s1, "s2": chk_s2, "s3": chk_s3, "day": False, "night": False})
 
     st.markdown("---")
     st.subheader("4. 특이 사항")
