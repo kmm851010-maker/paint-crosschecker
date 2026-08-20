@@ -17,11 +17,14 @@ st.set_page_config(
     layout="wide",
 )
 
+# API Key (환경변수에서 자동 로드, 사용자에게 노출 안 함)
+api_key = os.getenv("ANTHROPIC_API_KEY", "")
+
 # ──────────────────────────────────────
-# 사이드바
+# 사이드바 (메뉴만 깔끔하게)
 # ──────────────────────────────────────
-st.sidebar.title("🏭 스마트 공정·자재 관리")
-st.sidebar.caption("KG스틸 페인트 자재 관리 시스템")
+st.sidebar.title("🏭 KG스틸")
+st.sidebar.caption("스마트 공정·자재 관리 시스템")
 
 st.sidebar.markdown("---")
 
@@ -30,18 +33,6 @@ menu = st.sidebar.radio(
     ["🔍 생산계획 vs 입고 교차검증", "📊 캡처 이미지 → 엑셀 변환기"],
     label_visibility="collapsed",
 )
-
-st.sidebar.markdown("---")
-
-api_key = st.sidebar.text_input(
-    "Anthropic API Key",
-    value=os.getenv("ANTHROPIC_API_KEY", ""),
-    type="password",
-    help=".env 파일에 ANTHROPIC_API_KEY를 설정하거나 여기에 입력하세요.",
-)
-
-api_status = "✅ API Key 설정됨" if api_key else "⚠️ API Key 미설정"
-st.sidebar.caption(api_status)
 
 
 # ══════════════════════════════════════
@@ -95,9 +86,10 @@ def page_cross_check():
         disabled=not (plan_file and erp_file),
     )
 
+    # 검증 실행 → 결과를 session_state에 저장
     if run_button:
         if not api_key:
-            st.error("Anthropic API Key를 입력해주세요.")
+            st.error("API Key가 설정되지 않았습니다. 관리자에게 문의하세요.")
             st.stop()
 
         with st.spinner("생산계획서 OCR 분석 중..."):
@@ -110,14 +102,6 @@ def page_cross_check():
                 st.error(f"생산계획서 분석 실패: {e}")
                 st.stop()
 
-        st.subheader("📋 생산계획서 추출 결과")
-        if not plan_df.empty:
-            st.dataframe(plan_df, use_container_width=True, hide_index=True)
-            st.info(f"총 {len(plan_df)}개 항목 추출 | 신규 요청: {plan_df[plan_df['신규'] > 0].shape[0]}건")
-        else:
-            st.warning("추출된 데이터가 없습니다.")
-            st.stop()
-
         with st.spinner("ERP 입고명세서 분석 중..."):
             try:
                 erp_bytes = erp_file.getvalue()
@@ -126,18 +110,36 @@ def page_cross_check():
                 st.error(f"ERP 명세서 분석 실패: {e}")
                 st.stop()
 
+        result_df = cross_check(plan_df, erp_df)
+
+        # session_state에 저장
+        st.session_state["cc_plan_df"] = plan_df
+        st.session_state["cc_erp_df"] = erp_df
+        st.session_state["cc_result_df"] = result_df
+        st.session_state["cc_plan_bytes"] = plan_bytes
+        st.session_state["cc_plan_name"] = plan_file.name
+        st.session_state["cc_overlay"] = None
+
+    # 저장된 결과가 있으면 표시
+    if "cc_result_df" in st.session_state and st.session_state["cc_result_df"] is not None:
+        plan_df = st.session_state["cc_plan_df"]
+        erp_df = st.session_state["cc_erp_df"]
+        result_df = st.session_state["cc_result_df"]
+        plan_bytes = st.session_state["cc_plan_bytes"]
+        plan_name = st.session_state["cc_plan_name"]
+
+        st.subheader("📋 생산계획서 추출 결과")
+        if not plan_df.empty:
+            st.dataframe(plan_df, use_container_width=True, hide_index=True)
+            st.info(f"총 {len(plan_df)}개 항목 추출 | 신규 요청: {plan_df[plan_df['신규'] > 0].shape[0]}건")
+
         st.subheader("📦 ERP 입고 집계 결과")
         if not erp_df.empty:
             st.dataframe(erp_df, use_container_width=True, hide_index=True)
             st.info(f"총 {len(erp_df)}개 품목 | 총 DRUM: {int(erp_df['입고_DRUM수'].sum())}개")
-        else:
-            st.warning("ERP 입고 데이터가 없습니다.")
 
-        # 교차검증
         st.markdown("---")
         st.subheader("✅ 교차검증 결과")
-
-        result_df = cross_check(plan_df, erp_df)
 
         if not result_df.empty:
             summary = format_summary(result_df)
@@ -154,31 +156,35 @@ def page_cross_check():
 
             st.markdown("---")
 
-            # 오버레이 시각화 (버튼 방식)
-            is_plan_image = plan_file.name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
+            # 오버레이 시각화 (버튼 방식, session_state로 유지)
+            is_plan_image = plan_name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
             if is_plan_image:
                 if st.button("🖼 시각화 이미지 보기", use_container_width=True):
                     with st.spinner("오버레이 이미지 생성 중... (Vision API로 위치 분석)"):
                         try:
-                            annotated_bytes = generate_overlay(plan_bytes, plan_file.name, result_df, api_key)
-                            st.subheader("🖼 시각화 검증 결과")
-                            view_col1, view_col2 = st.columns(2)
-                            with view_col1:
-                                st.caption("원본 이미지")
-                                st.image(plan_bytes, use_container_width=True)
-                            with view_col2:
-                                st.caption("검증 결과 오버레이")
-                                st.image(annotated_bytes, use_container_width=True)
-
-                            st.download_button(
-                                label="🖼 마킹된 시각화 이미지 다운로드 (PNG)",
-                                data=annotated_bytes,
-                                file_name="verification_overlay.png",
-                                mime="image/png",
-                                use_container_width=True,
-                            )
+                            annotated_bytes = generate_overlay(plan_bytes, plan_name, result_df, api_key)
+                            st.session_state["cc_overlay"] = annotated_bytes
                         except Exception as e:
                             st.error(f"오버레이 생성 실패: {e}")
+
+                if st.session_state.get("cc_overlay"):
+                    annotated_bytes = st.session_state["cc_overlay"]
+                    st.subheader("🖼 시각화 검증 결과")
+                    view_col1, view_col2 = st.columns(2)
+                    with view_col1:
+                        st.caption("원본 이미지")
+                        st.image(plan_bytes, use_container_width=True)
+                    with view_col2:
+                        st.caption("검증 결과 오버레이")
+                        st.image(annotated_bytes, use_container_width=True)
+
+                    st.download_button(
+                        label="🖼 마킹된 시각화 이미지 다운로드 (PNG)",
+                        data=annotated_bytes,
+                        file_name="verification_overlay.png",
+                        mime="image/png",
+                        use_container_width=True,
+                    )
 
             st.markdown("---")
             st.subheader("📊 상세 검증 결과 표")
@@ -191,7 +197,6 @@ def page_cross_check():
                 f"**차이: {summary['total_actual'] - summary['total_plan']}**"
             )
 
-            # 다운로드 버튼
             st.markdown("---")
             excel_bytes = generate_report(result_df)
             st.download_button(
@@ -237,7 +242,7 @@ def page_image_to_excel():
 
     if convert_button:
         if not api_key:
-            st.error("Anthropic API Key를 입력해주세요.")
+            st.error("API Key가 설정되지 않았습니다. 관리자에게 문의하세요.")
             st.stop()
 
         capture_bytes = capture_file.getvalue()
@@ -256,7 +261,6 @@ def page_image_to_excel():
             st.warning("추출된 데이터가 없습니다.")
             st.stop()
 
-        # 결과 비교 표시
         st.markdown("---")
         st.subheader("✅ 변환 결과")
 
@@ -273,7 +277,6 @@ def page_image_to_excel():
 
         st.info(f"총 {len(rows)}개 행, {len(headers)}개 컬럼 추출 완료")
 
-        # 엑셀 변환 & 다운로드
         st.markdown("---")
         with st.spinner("엑셀 파일 생성 중..."):
             excel_bytes = convert_to_excel(headers, rows)
