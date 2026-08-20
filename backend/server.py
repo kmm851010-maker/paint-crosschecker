@@ -23,7 +23,7 @@ from modules.vision_ocr import extract_production_plan, flatten_production_plan
 from modules.erp_parser import process_erp_file
 from modules.matcher import cross_check
 from modules.excel_generator import generate_report
-from modules.image_annotator import annotate_image
+from modules.image_annotator import generate_overlay
 from utils.formatter import format_summary
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
@@ -252,28 +252,12 @@ async def run_cross_check_base64(req: Base64FileRequest):
     result_df = cross_check(plan_df, erp_df)
     summary = format_summary(result_df)
 
-    # 오버레이 이미지 생성 (이미지 파일 + bbox가 있는 경우)
-    overlay_base64 = None
-    overlay_error = None
-    has_bbox = "bbox" in plan_df.columns and plan_df["bbox"].notna().any()
-    is_image = req.plan_filename.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
-    if has_bbox and is_image:
-        try:
-            overlay_bytes = annotate_image(plan_bytes, plan_df, result_df)
-            overlay_base64 = base64.b64encode(overlay_bytes).decode("utf-8")
-        except Exception as e:
-            overlay_error = str(e)
-    elif not has_bbox:
-        overlay_error = "bbox 좌표 없음"
-
     return {
         "success": True,
         "plan_items": plan_rows,
         "erp_items": erp_df.to_dict(orient="records"),
         "results": result_df.to_dict(orient="records"),
         "summary": summary,
-        "overlay_image": overlay_base64,
-        "overlay_error": overlay_error,
     }
 
 
@@ -406,24 +390,6 @@ async def run_cross_check_multi(req: MultiFileRequest):
     result_df = cross_check(plan_df, erp_df)
     summary = format_summary(result_df)
 
-    # 오버레이 이미지 생성
-    overlay_base64 = None
-    overlay_error = None
-    has_bbox = "bbox" in plan_df.columns and plan_df["bbox"].notna().any()
-    first_plan_filename = req.plan_filenames[0] if req.plan_filenames else ""
-    is_image = first_plan_filename.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
-    if has_bbox and is_image and not swapped:
-        try:
-            first_plan_bytes = base64.b64decode(req.plan_files[0])
-            overlay_bytes = annotate_image(first_plan_bytes, plan_df, result_df)
-            overlay_base64 = base64.b64encode(overlay_bytes).decode("utf-8")
-        except Exception as e:
-            overlay_error = str(e)
-    elif not has_bbox:
-        overlay_error = "bbox 좌표 없음"
-    elif not is_image:
-        overlay_error = f"이미지 파일 아님: {first_plan_filename}"
-
     return {
         "success": True,
         "swapped": swapped,
@@ -431,8 +397,6 @@ async def run_cross_check_multi(req: MultiFileRequest):
         "erp_items": erp_df.to_dict(orient="records"),
         "results": result_df.to_dict(orient="records"),
         "summary": summary,
-        "overlay_image": overlay_base64,
-        "overlay_error": overlay_error,
     }
 
 
@@ -468,6 +432,37 @@ async def export_excel_multi(req: MultiFileRequest):
         "success": True,
         "excel_base64": base64.b64encode(excel_bytes).decode("utf-8"),
     }
+
+
+# --- 오버레이 이미지 생성 (별도 엔드포인트) ---
+
+class OverlayRequest(BaseModel):
+    image_file: str  # base64 encoded plan image
+    image_filename: str
+    results: list[dict]  # 교차검증 결과 [{색상코드, 상태, 계획수량, 입고수량, ...}]
+    api_key: str = ""
+
+
+@app.post("/api/generate-overlay")
+async def generate_overlay_endpoint(req: OverlayRequest):
+    """검증 결과 + 원본 이미지로 오버레이 시각화 이미지를 생성합니다."""
+    import base64
+
+    key = get_api_key(req.api_key)
+    image_bytes = base64.b64decode(req.image_file)
+    result_df = pd.DataFrame(req.results)
+
+    if result_df.empty:
+        raise HTTPException(status_code=400, detail="검증 결과가 비어있습니다.")
+
+    try:
+        overlay_bytes = generate_overlay(image_bytes, req.image_filename, result_df, key)
+        return {
+            "success": True,
+            "overlay_image": base64.b64encode(overlay_bytes).decode("utf-8"),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"오버레이 생성 실패: {str(e)}")
 
 
 if __name__ == "__main__":

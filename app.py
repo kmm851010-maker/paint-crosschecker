@@ -52,7 +52,7 @@ def page_cross_check():
     from modules.erp_parser import process_erp_file
     from modules.matcher import cross_check
     from modules.excel_generator import generate_report
-    from modules.image_annotator import annotate_image
+    from modules.image_annotator import generate_overlay
     from utils.formatter import style_result_table, format_summary
 
     st.title("🔍 생산계획 vs 입고 교차검증")
@@ -112,8 +112,7 @@ def page_cross_check():
 
         st.subheader("📋 생산계획서 추출 결과")
         if not plan_df.empty:
-            display_cols = [c for c in plan_df.columns if c != "bbox"]
-            st.dataframe(plan_df[display_cols], use_container_width=True, hide_index=True)
+            st.dataframe(plan_df, use_container_width=True, hide_index=True)
             st.info(f"총 {len(plan_df)}개 항목 추출 | 신규 요청: {plan_df[plan_df['신규'] > 0].shape[0]}건")
         else:
             st.warning("추출된 데이터가 없습니다.")
@@ -153,29 +152,33 @@ def page_cross_check():
                       delta=f"-{summary['missing_count']}" if summary['missing_count'] > 0 else None,
                       delta_color="inverse")
 
-            # 오버레이 시각화
-            has_bbox = "bbox" in plan_df.columns and plan_df["bbox"].notna().any()
-            if has_bbox:
-                st.markdown("---")
-                st.subheader("🖼 시각화 검증 결과 (원본 이미지 오버레이)")
-                with st.spinner("이미지 오버레이 생성 중..."):
-                    annotated_bytes = annotate_image(plan_bytes, plan_df, result_df)
+            st.markdown("---")
 
-                view_col1, view_col2 = st.columns(2)
-                with view_col1:
-                    st.caption("원본 이미지")
-                    st.image(plan_bytes, use_container_width=True)
-                with view_col2:
-                    st.caption("검증 결과 오버레이")
-                    st.image(annotated_bytes, use_container_width=True)
+            # 오버레이 시각화 (버튼 방식)
+            is_plan_image = plan_file.name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
+            if is_plan_image:
+                if st.button("🖼 시각화 이미지 보기", use_container_width=True):
+                    with st.spinner("오버레이 이미지 생성 중... (Vision API로 위치 분석)"):
+                        try:
+                            annotated_bytes = generate_overlay(plan_bytes, plan_file.name, result_df, api_key)
+                            st.subheader("🖼 시각화 검증 결과")
+                            view_col1, view_col2 = st.columns(2)
+                            with view_col1:
+                                st.caption("원본 이미지")
+                                st.image(plan_bytes, use_container_width=True)
+                            with view_col2:
+                                st.caption("검증 결과 오버레이")
+                                st.image(annotated_bytes, use_container_width=True)
 
-                st.download_button(
-                    label="🖼 마킹된 시각화 이미지 다운로드 (PNG)",
-                    data=annotated_bytes,
-                    file_name="verification_overlay.png",
-                    mime="image/png",
-                    use_container_width=True,
-                )
+                            st.download_button(
+                                label="🖼 마킹된 시각화 이미지 다운로드 (PNG)",
+                                data=annotated_bytes,
+                                file_name="verification_overlay.png",
+                                mime="image/png",
+                                use_container_width=True,
+                            )
+                        except Exception as e:
+                            st.error(f"오버레이 생성 실패: {e}")
 
             st.markdown("---")
             st.subheader("📊 상세 검증 결과 표")
@@ -190,27 +193,15 @@ def page_cross_check():
 
             # 다운로드 버튼
             st.markdown("---")
-            dl_col1, dl_col2 = st.columns(2)
-            with dl_col1:
-                excel_bytes = generate_report(result_df)
-                st.download_button(
-                    label="📥 결과 엑셀 다운로드",
-                    data=excel_bytes,
-                    file_name="paint_verification_report.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    type="primary",
-                    use_container_width=True,
-                )
-            with dl_col2:
-                if has_bbox:
-                    st.download_button(
-                        label="🖼 시각화 이미지 다운로드",
-                        data=annotated_bytes,
-                        file_name="verification_overlay.png",
-                        mime="image/png",
-                        use_container_width=True,
-                        key="dl_overlay_bottom",
-                    )
+            excel_bytes = generate_report(result_df)
+            st.download_button(
+                label="📥 결과 엑셀 다운로드",
+                data=excel_bytes,
+                file_name="paint_verification_report.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                use_container_width=True,
+            )
         else:
             st.info("신규 요청 수량이 있는 항목이 없습니다.")
 

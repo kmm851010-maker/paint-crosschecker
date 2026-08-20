@@ -45,8 +45,6 @@ export interface CrossCheckResponse {
   erp_items: ErpItem[];
   results: ResultItem[];
   summary: Summary;
-  overlay_image?: string | null;
-  overlay_error?: string | null;
 }
 
 export async function crossCheck(
@@ -85,6 +83,36 @@ export async function crossCheck(
   }
 
   return response.json();
+}
+
+export async function generateOverlay(
+  imageUri: string,
+  imageFileName: string,
+  results: ResultItem[],
+  apiKey: string
+): Promise<string> {
+  const imageBase64 = await FileSystem.readAsStringAsync(imageUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+
+  const response = await fetch(`${API_BASE_URL}/api/generate-overlay`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      image_file: imageBase64,
+      image_filename: imageFileName,
+      results: results,
+      api_key: apiKey || "",
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "오버레이 생성 실패" }));
+    throw new Error(error.detail || `서버 오류 (${response.status})`);
+  }
+
+  const data = await response.json();
+  return data.overlay_image;
 }
 
 export async function downloadExcelBase64(

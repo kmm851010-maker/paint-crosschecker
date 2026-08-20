@@ -20,7 +20,7 @@ import FileUploadCard from "../src/components/FileUploadCard";
 import SummaryCards from "../src/components/SummaryCards";
 import ResultTable from "../src/components/ResultTable";
 import { COLORS } from "../src/constants/config";
-import { crossCheck, downloadExcelBase64, type CrossCheckResponse } from "../src/services/api";
+import { crossCheck, downloadExcelBase64, generateOverlay, type CrossCheckResponse } from "../src/services/api";
 
 interface PickedFile {
   uri: string;
@@ -41,6 +41,8 @@ export default function HomeScreen() {
   const [erpFile, setErpFile] = useState<PickedFile | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<CrossCheckResponse | null>(null);
+  const [overlayImage, setOverlayImage] = useState<string | null>(null);
+  const [overlayLoading, setOverlayLoading] = useState(false);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [activeSlot, setActiveSlot] = useState<Slot | null>(null);
 
@@ -192,6 +194,7 @@ export default function HomeScreen() {
 
     setLoading(true);
     setResult(null);
+    setOverlayImage(null);
 
     try {
       const response = await crossCheck(
@@ -367,20 +370,42 @@ export default function HomeScreen() {
 
             <SummaryCards summary={result.summary} />
 
-            {/* 오버레이 디버그 (에러 시) */}
-            {!result.overlay_image && result.overlay_error && (
-              <View style={styles.overlaySection}>
-                <Text style={styles.overlayTitle}>시각화 오류</Text>
-                <Text style={{ color: COLORS.error, fontSize: 12 }}>{result.overlay_error}</Text>
-              </View>
+            {/* 오버레이 시각화 버튼 */}
+            {planFiles.length > 0 && planFiles[0].isImage && !overlayImage && (
+              <TouchableOpacity
+                style={[styles.overlayBtn, overlayLoading && styles.runButtonDisabled]}
+                onPress={async () => {
+                  setOverlayLoading(true);
+                  try {
+                    const overlayBase64 = await generateOverlay(
+                      planFiles[0].uri,
+                      planFiles[0].name,
+                      result.results,
+                      ""
+                    );
+                    setOverlayImage(overlayBase64);
+                  } catch (e: any) {
+                    Alert.alert("오버레이 생성 실패", e.message);
+                  } finally {
+                    setOverlayLoading(false);
+                  }
+                }}
+                disabled={overlayLoading}
+              >
+                {overlayLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.overlayBtnText}>🖼 시각화 이미지 보기</Text>
+                )}
+              </TouchableOpacity>
             )}
 
-            {/* 오버레이 시각화 이미지 */}
-            {result.overlay_image && (
+            {/* 오버레이 결과 표시 */}
+            {overlayImage && (
               <View style={styles.overlaySection}>
                 <Text style={styles.overlayTitle}>시각화 검증 결과</Text>
                 <Image
-                  source={{ uri: `data:image/png;base64,${result.overlay_image}` }}
+                  source={{ uri: `data:image/png;base64,${overlayImage}` }}
                   style={styles.overlayImage}
                   resizeMode="contain"
                 />
@@ -389,7 +414,7 @@ export default function HomeScreen() {
                   onPress={async () => {
                     try {
                       const path = `${FileSystem.cacheDirectory}overlay_${Date.now()}.png`;
-                      await FileSystem.writeAsStringAsync(path, result.overlay_image!, {
+                      await FileSystem.writeAsStringAsync(path, overlayImage, {
                         encoding: FileSystem.EncodingType.Base64,
                       });
                       if (await Sharing.isAvailableAsync()) {
@@ -593,6 +618,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: COLORS.textPrimary,
+  },
+  overlayBtn: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  overlayBtnText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
   },
   overlaySection: {
     backgroundColor: COLORS.surface,
