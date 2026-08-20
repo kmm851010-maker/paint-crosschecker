@@ -11,6 +11,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# 모듈 캐시 초기화
+import importlib
+for mod_name in list(__import__('sys').modules.keys()):
+    if mod_name.startswith("modules."):
+        del __import__('sys').modules[mod_name]
+
 st.set_page_config(
     page_title="스마트 공정·자재 관리",
     page_icon="🏭",
