@@ -668,20 +668,28 @@ def page_work_log():
     # ── UI ──
     st.title("📋 칼라지게차 일일 업무 보고 작성")
 
-    col_date, col_info = st.columns([1, 2])
-    with col_date:
-        selected_date = st.date_input("작업 일자 선택", datetime.date.today(),
-                                       min_value=datetime.date(2026, 1, 1),
-                                       max_value=datetime.date(2100, 12, 31))
+    # 달력 크게 표시
+    st.markdown("""
+    <style>
+        [data-testid="stDateInput"] > div { transform: scale(1.15); transform-origin: left top; }
+        [data-testid="stDateInput"] input { font-size: 20px !important; font-weight: 700 !important; padding: 12px !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.subheader("🗓 작업 일자 선택")
+    selected_date = st.date_input("날짜를 클릭하세요", datetime.date.today(),
+                                   min_value=datetime.date(2026, 1, 1),
+                                   max_value=datetime.date(2100, 12, 31),
+                                   label_visibility="collapsed")
+
     shift_auto = get_shift_info(selected_date)
-    with col_info:
-        st.success(
-            f"🗓 {selected_date.strftime('%Y년 %m월 %d일')} 근무 매칭 완료 "
-            f"(1근: {shift_auto['1근_조']}조 {shift_auto['1근_근무자']} | "
-            f"2근: {shift_auto['2근_조']}조 {shift_auto['2근_근무자']} | "
-            f"3근: {shift_auto['3근_조']}조 {shift_auto['3근_근무자']} | "
-            f"휴무: {shift_auto['휴무_조']}조 {shift_auto['휴무_근무자']})"
-        )
+    st.success(
+        f"📅 **{selected_date.strftime('%Y년 %m월 %d일')}** 근무 매칭 완료\n\n"
+        f"1근: **{shift_auto['1근_조']}조 {shift_auto['1근_근무자']}** | "
+        f"2근: **{shift_auto['2근_조']}조 {shift_auto['2근_근무자']}** | "
+        f"3근: **{shift_auto['3근_조']}조 {shift_auto['3근_근무자']}** | "
+        f"휴무: **{shift_auto['휴무_조']}조 {shift_auto['휴무_근무자']}**"
+    )
 
     st.markdown("---")
     st.subheader("1. 인원 현황 (필요 시 수정/대근 입력)")
