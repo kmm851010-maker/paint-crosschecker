@@ -45,6 +45,7 @@ def page_cross_check():
     from modules.excel_generator import generate_report
     from modules.image_annotator import generate_verified_excel, generate_incoming_plan_excel
     from utils.formatter import style_result_table, format_summary
+    from utils.image_compress import compress_image
 
     st.title("🔍 생산계획 vs 입고 교차검증")
     st.caption("생산계획서 OCR 추출 → ERP 입고명세서 집계 → 자동 대조 검증")
@@ -94,7 +95,12 @@ def page_cross_check():
 
         with st.spinner("생산계획서 OCR 분석 중..."):
             try:
-                plan_bytes = plan_file.getvalue()
+                plan_bytes_raw = plan_file.getvalue()
+                plan_ext = plan_file.name.lower().rsplit(".", 1)[-1]
+                if plan_ext in ("jpg", "jpeg", "png", "webp"):
+                    plan_bytes = compress_image(plan_bytes_raw)
+                else:
+                    plan_bytes = plan_bytes_raw
                 plan_data = extract_production_plan(plan_bytes, plan_file.name, api_key)
                 plan_rows = flatten_production_plan(plan_data)
                 plan_df = pd.DataFrame(plan_rows)
@@ -104,7 +110,12 @@ def page_cross_check():
 
         with st.spinner("ERP 입고명세서 분석 중..."):
             try:
-                erp_bytes = erp_file.getvalue()
+                erp_bytes_raw = erp_file.getvalue()
+                erp_ext = erp_file.name.lower().rsplit(".", 1)[-1]
+                if erp_ext in ("jpg", "jpeg", "png", "webp"):
+                    erp_bytes = compress_image(erp_bytes_raw)
+                else:
+                    erp_bytes = erp_bytes_raw
                 erp_df = process_erp_file(erp_bytes, erp_file.name, api_key)
             except Exception as e:
                 st.error(f"ERP 명세서 분석 실패: {e}")
