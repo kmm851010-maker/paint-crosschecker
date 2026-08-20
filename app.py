@@ -665,6 +665,28 @@ def page_work_log():
         wb.save(output)
         return output.getvalue()
 
+    # 휴가/대근 사전등록 저장소
+    if "leave_list" not in st.session_state:
+        st.session_state["leave_list"] = []
+
+    ALL_MEMBERS = list(MEMBERS.values())
+
+    def apply_leaves(shift_data, target_date):
+        """등록된 휴가/대근을 근무 데이터에 반영합니다."""
+        result = shift_data.copy()
+        for leave in st.session_state["leave_list"]:
+            start = datetime.date.fromisoformat(leave["start"])
+            end = datetime.date.fromisoformat(leave["end"])
+            if start <= target_date <= end:
+                # 해당 날짜에 이 사람이 어느 근무인지 찾아서 대근자로 교체
+                for key in ["1근_근무자", "2근_근무자", "3근_근무자"]:
+                    if result[key] == leave["name"]:
+                        result[key] = leave.get("sub", "")
+                        # 비고에 표시
+                        shift_key = key.replace("_근무자", "_비고")
+                        result[shift_key] = f"{leave['type']}({leave['name']}→{leave.get('sub','')})"
+        return result
+
     # ── UI ──
     st.title("📋 칼라지게차 일일 업무 보고 작성")
 
@@ -676,6 +698,46 @@ def page_work_log():
     </style>
     """, unsafe_allow_html=True)
 
+    # 휴가/대근 사전등록
+    with st.expander("📝 휴가·대근·휴직 사전등록", expanded=False):
+        rc1, rc2, rc3, rc4, rc5 = st.columns(5)
+        with rc1:
+            leave_name = st.selectbox("대상자", ALL_MEMBERS, key="leave_name")
+        with rc2:
+            leave_type = st.selectbox("구분", ["정기휴가", "공가", "휴직", "대근", "교육"], key="leave_type")
+        with rc3:
+            leave_start = st.date_input("시작일", datetime.date.today(), key="leave_start")
+        with rc4:
+            leave_end = st.date_input("종료일", datetime.date.today(), key="leave_end")
+        with rc5:
+            leave_sub = st.selectbox("대근자", [""] + ALL_MEMBERS, key="leave_sub")
+
+        if st.button("✅ 등록", use_container_width=True, key="add_leave"):
+            if leave_start > leave_end:
+                st.error("시작일이 종료일보다 늦습니다.")
+            else:
+                st.session_state["leave_list"].append({
+                    "name": leave_name,
+                    "type": leave_type,
+                    "start": leave_start.isoformat(),
+                    "end": leave_end.isoformat(),
+                    "sub": leave_sub,
+                })
+                st.rerun()
+
+        # 등록된 목록 표시
+        if st.session_state["leave_list"]:
+            st.markdown("**등록된 일정:**")
+            for i, lv in enumerate(st.session_state["leave_list"]):
+                col_t, col_d = st.columns([4, 1])
+                with col_t:
+                    st.write(f"{lv['name']} | {lv['type']} | {lv['start']} ~ {lv['end']} | 대근: {lv.get('sub','없음')}")
+                with col_d:
+                    if st.button("삭제", key=f"del_leave_{i}"):
+                        st.session_state["leave_list"].pop(i)
+                        st.rerun()
+
+    st.markdown("---")
     st.subheader("🗓 작업 일자 선택")
     selected_date = st.date_input("날짜를 클릭하세요", datetime.date.today(),
                                    min_value=datetime.date(2026, 1, 1),
@@ -683,6 +745,16 @@ def page_work_log():
                                    label_visibility="collapsed")
 
     shift_auto = get_shift_info(selected_date)
+    shift_auto = apply_leaves(shift_auto, selected_date)
+
+    # 휴가 적용 여부 표시
+    has_leave = any(
+        datetime.date.fromisoformat(lv["start"]) <= selected_date <= datetime.date.fromisoformat(lv["end"])
+        for lv in st.session_state["leave_list"]
+    )
+    if has_leave:
+        st.warning("⚠️ 이 날짜에 사전등록된 휴가/대근이 반영되었습니다.")
+
     st.success(
         f"📅 **{selected_date.strftime('%Y년 %m월 %d일')}** 근무 매칭 완료\n\n"
         f"1근: **{shift_auto['1근_조']}조 {shift_auto['1근_근무자']}** | "
