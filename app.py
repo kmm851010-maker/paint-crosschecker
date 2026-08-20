@@ -25,6 +25,64 @@ st.set_page_config(
 
 api_key = os.getenv("ANTHROPIC_API_KEY", "")
 
+# KG스틸 브랜드 CSS
+st.markdown("""
+<style>
+    /* 사이드바 */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #4B2D8E 0%, #3A2270 100%);
+    }
+    [data-testid="stSidebar"] * {
+        color: #FFFFFF !important;
+    }
+    [data-testid="stSidebar"] .stCaption p {
+        color: #D4C5F0 !important;
+    }
+    /* 메트릭 카드 */
+    [data-testid="stMetric"] {
+        background: #FFFFFF;
+        border: 1px solid #E8E0F0;
+        border-radius: 12px;
+        padding: 12px;
+        box-shadow: 0 2px 8px rgba(75,45,142,0.08);
+    }
+    /* 버튼 */
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #4B2D8E 0%, #6B3FA0 100%);
+        border: none;
+        border-radius: 10px;
+        font-weight: 700;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #3A2270 0%, #5A3090 100%);
+    }
+    /* 다운로드 버튼 */
+    .stDownloadButton > button {
+        border: 2px solid #4B2D8E;
+        border-radius: 10px;
+        color: #4B2D8E;
+        font-weight: 600;
+    }
+    .stDownloadButton > button:hover {
+        background: #4B2D8E;
+        color: white;
+    }
+    /* 서브헤더 */
+    h2, h3 {
+        color: #4B2D8E !important;
+        border-bottom: 2px solid #F5A623;
+        padding-bottom: 6px;
+    }
+    /* 성공/경고 박스 */
+    .stSuccess {
+        border-left: 4px solid #2E7D32;
+    }
+    .stWarning {
+        border-left: 4px solid #F5A623;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # ──────────────────────────────────────
 # 사이드바
 # ──────────────────────────────────────
