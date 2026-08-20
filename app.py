@@ -258,7 +258,7 @@ def page_cross_check():
 
             if not result_df.empty:
                 summary = format_summary(result_df)
-                c1, c2, c3, c4 = st.columns(4)
+                c1, c2, c3, c4, c5 = st.columns(5)
                 c1.metric("일치", f"{summary['match_count']}건")
                 c2.metric("초과", f"{summary['excess_count']}건",
                           delta=f"+{summary['excess_count']}" if summary['excess_count'] > 0 else None)
@@ -268,6 +268,8 @@ def page_cross_check():
                 c4.metric("미입고", f"{summary['missing_count']}건",
                           delta=f"-{summary['missing_count']}" if summary['missing_count'] > 0 else None,
                           delta_color="inverse")
+                c5.metric("⚠️역방향", f"{summary['reverse_count']}건",
+                          delta=f"!{summary['reverse_count']}" if summary['reverse_count'] > 0 else None)
 
                 # 검증 결과 엑셀
                 st.markdown("---")
