@@ -122,12 +122,11 @@ def page_cross_check():
         incoming_html_full = incoming_df.to_html(border=1)
         encoded = b64.b64encode(incoming_html_full.encode()).decode()
         st.components.v1.html(
-            f"""<style>@media print{{.no-print{{display:none}}}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #333;padding:8px;text-align:center}}</style>
+            f"""<style>@media print{{.no-print{{display:none}}}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #333;padding:8px;text-align:center}} .print-only{{display:none}} @media print{{.print-only{{display:block}}}}</style>
             <button class="no-print" onclick="window.print()"
-            style="padding:8px 20px;background:#4B2D8E;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;margin-bottom:10px;">🖨 인쇄</button>
-            <h3>입고 예정 품목</h3>{incoming_html_full}""",
-            height=45,
-            scrolling=True,
+            style="padding:8px 20px;background:#4B2D8E;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🖨 인쇄</button>
+            <div class="print-only"><h3>입고 예정 품목</h3>{incoming_html_full}</div>""",
+            height=42,
         )
 
         # 초기화 버튼
@@ -239,12 +238,11 @@ def page_cross_check():
                 # 인쇄 버튼
                 result_html = result_df.to_html(index=False, border=1)
                 st.components.v1.html(
-                    f"""<style>@media print{{.no-print{{display:none}}}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #333;padding:8px;text-align:center}}</style>
+                    f"""<style>@media print{{.no-print{{display:none}}}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #333;padding:8px;text-align:center}} .print-only{{display:none}} @media print{{.print-only{{display:block}}}}</style>
                     <button class="no-print" onclick="window.print()"
-                    style="padding:8px 20px;background:#4B2D8E;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;margin-bottom:10px;">🖨 인쇄</button>
-                    <h3>교차검증 결과</h3>{result_html}""",
-                    height=45,
-                    scrolling=True,
+                    style="padding:8px 20px;background:#4B2D8E;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🖨 인쇄</button>
+                    <div class="print-only"><h3>교차검증 결과</h3>{result_html}</div>""",
+                    height=42,
                 )
 
                 # 엑셀 다운로드
