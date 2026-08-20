@@ -11,9 +11,6 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from modules.table_extractor import extract_table_from_image
-from modules.erp_parser import normalize_color_code
-
 
 # 스타일 상수
 HEADER_FILL = PatternFill(start_color="2F3542", end_color="2F3542", fill_type="solid")
@@ -54,6 +51,9 @@ def generate_verified_excel(
     Returns:
         엑셀 파일 바이트
     """
+    from modules.table_extractor import extract_table_from_image
+    from modules.erp_parser import normalize_color_code
+
     # 1. 이미지에서 테이블 추출
     table_data = extract_table_from_image(image_bytes, file_name, api_key)
     headers = table_data["headers"]
