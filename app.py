@@ -104,7 +104,7 @@ def page_cross_check():
         st.dataframe(incoming_df, use_container_width=True)
         st.success(f"총 {len(incoming_df)}개 품목 | 합계: {int(incoming_df['입고예정수량'].sum())}개")
 
-        # 입고 예정 엑셀 다운로드
+        # 입고 예정 엑셀 다운로드 + 인쇄
         from modules.excel_converter import generate_incoming_plan_excel
         incoming_excel = generate_incoming_plan_excel(plan_df)
         col_dl, col_print = st.columns(2)
@@ -117,12 +117,13 @@ def page_cross_check():
                 use_container_width=True,
             )
         with col_print:
-            incoming_html = incoming_df.to_html(border=1)
+            import base64 as b64
+            incoming_html_full = incoming_df.to_html(border=1)
+            encoded = b64.b64encode(incoming_html_full.encode()).decode()
             st.components.v1.html(
-                f"""<div id="pi">{incoming_html}</div>
-                <button onclick="var w=window.open('','','width=800,height=600');w.document.write('<html><head><title>입고 예정 품목</title><style>table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #333;padding:8px;text-align:center}}</style></head><body><h2>📦 입고 예정 품목</h2>'+document.getElementById('pi').innerHTML+'</body></html>');w.document.close();w.print();"
+                f"""<button onclick="var h=atob('{encoded}');var w=window.open('','','width=800,height=600');w.document.write('<html><head><title>입고 예정 품목</title><style>table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #333;padding:8px;text-align:center}}</style></head><body><h2>입고 예정 품목</h2>'+h+'</body></html>');w.document.close();w.print();"
                 style="width:100%;padding:10px;background:#4B2D8E;color:white;border:none;border-radius:8px;cursor:pointer;font-size:14px;">🖨 입고 예정 인쇄</button>""",
-                height=60,
+                height=50,
             )
 
         # 초기화 버튼
@@ -239,12 +240,13 @@ def page_cross_check():
                 )
 
                 # 인쇄 버튼
+                import base64 as b64
                 result_html = result_df.to_html(index=False, border=1)
+                encoded_r = b64.b64encode(result_html.encode()).decode()
                 st.components.v1.html(
-                    f"""<div id="pr">{result_html}</div>
-                    <button onclick="var w=window.open('','','width=800,height=600');w.document.write('<html><head><title>교차검증 결과</title><style>table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #333;padding:8px;text-align:center}}</style></head><body><h2>✅ 교차검증 결과</h2>'+document.getElementById('pr').innerHTML+'</body></html>');w.document.close();w.print();"
+                    f"""<button onclick="var h=atob('{encoded_r}');var w=window.open('','','width=800,height=600');w.document.write('<html><head><title>교차검증 결과</title><style>table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #333;padding:8px;text-align:center}}</style></head><body><h2>교차검증 결과</h2>'+h+'</body></html>');w.document.close();w.print();"
                     style="width:100%;padding:10px;background:#4B2D8E;color:white;border:none;border-radius:8px;cursor:pointer;font-size:14px;">🖨 교차검증 결과 인쇄</button>""",
-                    height=60,
+                    height=50,
                 )
 
                 # 엑셀 다운로드
