@@ -132,14 +132,6 @@ def page_cross_check():
         plan_df = st.session_state["cc_plan_df"]
 
         st.markdown("---")
-        parse_method = st.session_state.get("cc_parse_method", "")
-        if parse_method == "grid":
-            st.success("✅ 정밀 파이프라인 (OpenCV 그리드 + 셀 단위 OCR)")
-        elif parse_method == "fallback":
-            st.info("ℹ️ 전체 이미지 OCR 모드 (그리드 감지 실패)")
-        elif parse_method == "excel":
-            st.info("ℹ️ 엑셀 파일 직접 파싱")
-
         st.subheader("📦 입고 예정 품목 리스트")
 
         incoming_df = plan_df[plan_df["신규"] > 0][["색상코드", "제조사", "신규"]].copy()
@@ -148,44 +140,7 @@ def page_cross_check():
         incoming_df.index += 1
         incoming_df.index.name = "No."
 
-        # 정밀 모드: 셀 크롭 이미지 + 경고 표시
-        precision_items = st.session_state.get("cc_precision_items")
-        if precision_items:
-            has_warnings = any(item.get("warnings") for item in precision_items)
-            if has_warnings:
-                st.warning("⚠️ 일부 항목에 경고가 있습니다. 아래에서 원본 셀 이미지를 확인하세요.")
-
-            for i, item in enumerate(precision_items):
-                with st.expander(
-                    f"{'⚠️' if item.get('warnings') else '✅'} "
-                    f"{item.get('item_code', '?')} | {item.get('maker', '')} | "
-                    f"수량: {item.get('quantity', 0)} "
-                    f"(신뢰도: {item.get('confidence', 0):.0%})",
-                    expanded=bool(item.get("warnings")),
-                ):
-                    col_info, col_code_img, col_qty_img = st.columns([2, 1, 1])
-                    with col_info:
-                        st.write(f"**품목코드:** {item.get('item_code', '')}")
-                        st.write(f"**제조사:** {item.get('maker', '')}")
-                        st.write(f"**수량:** {item.get('quantity', 0)}")
-                        if item.get("note"):
-                            st.write(f"**비고:** {item['note']}")
-                        if item.get("layer"):
-                            st.write(f"**레이어:** {item['layer']}")
-                        for w in item.get("warnings", []):
-                            st.error(f"⚠️ {w}")
-                    with col_code_img:
-                        cell_imgs = item.get("cell_images", {})
-                        if cell_imgs.get("code"):
-                            st.caption("원본 코드 셀")
-                            st.image(f"data:image/png;base64,{cell_imgs['code']}", width=150)
-                    with col_qty_img:
-                        if cell_imgs.get("new"):
-                            st.caption("원본 수량 셀")
-                            st.image(f"data:image/png;base64,{cell_imgs['new']}", width=100)
-        else:
-            st.dataframe(incoming_df, use_container_width=True)
-
+        st.dataframe(incoming_df, use_container_width=True)
         st.success(f"총 {len(incoming_df)}개 품목 | 합계: {int(incoming_df['입고예정수량'].sum())}개")
 
         # 입고 예정 엑셀 다운로드 + 인쇄
