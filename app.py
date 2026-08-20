@@ -739,7 +739,8 @@ def page_work_log():
 
     st.markdown("---")
     st.subheader("🗓 작업 일자 선택")
-    selected_date = st.date_input("날짜를 클릭하세요", datetime.date.today(),
+    today_kst = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
+    selected_date = st.date_input("날짜를 클릭하세요", today_kst,
                                    min_value=datetime.date(2026, 1, 1),
                                    max_value=datetime.date(2100, 12, 31),
                                    label_visibility="collapsed")
