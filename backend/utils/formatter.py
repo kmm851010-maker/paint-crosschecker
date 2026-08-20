@@ -48,6 +48,6 @@ def format_summary(df: pd.DataFrame) -> dict:
         "short_count": int(statuses.str.contains("부족").sum()),
         "missing_count": int(statuses.str.contains("미입고").sum()),
         "reverse_count": int(statuses.str.contains("확인필요").sum()),
-        "total_plan": int(df["계획수량"].sum()),
-        "total_actual": int(df["입고수량"].sum()),
+        "total_plan": int(pd.to_numeric(df["계획수량"].astype(str).str.extract(r"(\d+)", expand=False), errors="coerce").fillna(0).sum()),
+        "total_actual": int(pd.to_numeric(df["입고수량"], errors="coerce").fillna(0).sum()),
     }
