@@ -92,7 +92,7 @@ st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(
     "메뉴 선택",
-    ["🔍 생산계획 vs 입고 교차검증", "📊 캡처 이미지 → 엑셀 변환기"],
+    ["🔍 생산계획 vs 입고 교차검증", "📊 캡처 이미지 → 엑셀 변환기", "📋 일일 작업일지 작성"],
     label_visibility="collapsed",
 )
 
@@ -508,6 +508,279 @@ def page_image_to_excel():
         )
 
 
+# ══════════════════════════════════════
+# 메뉴 3: 일일 작업일지 작성
+# ══════════════════════════════════════
+def page_work_log():
+    import datetime
+    import io
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    # 4조 3교대 로테이션 (KG스틸 20일 주기)
+    MEMBERS = {'A': '최준일', 'B': '문주영', 'C': '이상석', 'D': '강명모'}
+    CYCLE_20 = [
+        ('B', 'C', 'D', 'A'), ('B', 'C', 'A', 'D'), ('B', 'C', 'A', 'D'),
+        ('B', 'D', 'A', 'C'), ('B', 'D', 'A', 'C'), ('C', 'D', 'A', 'B'),
+        ('C', 'D', 'B', 'A'), ('C', 'D', 'B', 'A'), ('C', 'A', 'B', 'D'),
+        ('C', 'A', 'B', 'D'), ('D', 'A', 'B', 'C'), ('D', 'A', 'C', 'B'),
+        ('D', 'A', 'C', 'B'), ('D', 'B', 'C', 'A'), ('D', 'B', 'C', 'A'),
+        ('A', 'B', 'C', 'D'), ('A', 'B', 'D', 'C'), ('A', 'B', 'D', 'C'),
+        ('A', 'C', 'D', 'B'), ('A', 'C', 'D', 'B'),
+    ]
+    BASE_DATE = datetime.date(2026, 3, 1)
+
+    def get_shift_info(target_date):
+        idx = (target_date - BASE_DATE).days % 20
+        s1, s2, s3, off = CYCLE_20[idx]
+        prev_idx = (target_date - datetime.timedelta(days=1) - BASE_DATE).days % 20
+        prev_off = CYCLE_20[prev_idx][3]
+        off_type = "주휴휴무" if prev_off == off else "교대휴무"
+        return {
+            "1근_조": s1, "1근_근무자": MEMBERS[s1],
+            "2근_조": s2, "2근_근무자": MEMBERS[s2],
+            "3근_조": s3, "3근_근무자": MEMBERS[s3],
+            "휴무_조": off, "휴무_근무자": MEMBERS[off],
+            "휴무_구분": off_type
+        }
+
+    def generate_work_log_excel(selected_date, shift_data, work_items, safety_items, note_text):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "일일업무보고"
+
+        font_title = Font(name="맑은 고딕", size=18, bold=True, underline="single")
+        font_date = Font(name="맑은 고딕", size=11, bold=True)
+        font_sec_hdr = Font(name="맑은 고딕", size=11, bold=True)
+        font_tbl_hdr = Font(name="맑은 고딕", size=9, bold=True)
+        font_tbl_body = Font(name="맑은 고딕", size=9)
+        font_tbl_bold = Font(name="맑은 고딕", size=9, bold=True)
+        fill_gray = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+        thin_border = Border(
+            left=Side(style='thin', color='000000'), right=Side(style='thin', color='000000'),
+            top=Side(style='thin', color='000000'), bottom=Side(style='thin', color='000000')
+        )
+        align_c = Alignment(horizontal="center", vertical="center")
+
+        for col, width in {'A': 28, 'B': 7, 'C': 15, 'D': 11, 'E': 10, 'F': 10, 'G': 10, 'H': 10}.items():
+            ws.column_dimensions[col].width = width
+
+        ws.row_dimensions[2].height = 32
+        ws.merge_cells('A2:H2')
+        ws['A2'] = "칼라지게차 일일 업무 보고"
+        ws['A2'].font = font_title
+        ws['A2'].alignment = align_c
+
+        ws.merge_cells('F4:H4')
+        ws['F4'] = selected_date.strftime("%Y년 %m월 %d일")
+        ws['F4'].font = font_date
+        ws['F4'].alignment = Alignment(horizontal="right", vertical="center")
+
+        # 1. 인원 현황
+        ws['A5'] = "1. 인원 현황"
+        ws['A5'].font = font_sec_hdr
+        for pos, txt in [("A6","구분"),("B6","조"),("C6","근무시간"),("D6","근무자"),("E6","휴무자"),("F6","연장근무")]:
+            ws[pos] = txt
+            ws[pos].font, ws[pos].fill, ws[pos].alignment, ws[pos].border = font_tbl_hdr, fill_gray, align_c, thin_border
+        ws.merge_cells('G6:H6')
+        ws['G6'] = "비고"
+        ws['G6'].font, ws['G6'].fill, ws['G6'].alignment, ws['G6'].border = font_tbl_hdr, fill_gray, align_c, thin_border
+        ws['H6'].border = thin_border
+
+        rows_1 = [
+            ("1근", shift_data["1근_조"], "06:30 ~ 14:30", shift_data["1근_근무자"], "", shift_data.get("1근_연장",""), shift_data.get("1근_비고","")),
+            ("2근", shift_data["2근_조"], "14:30 ~ 22:30", shift_data["2근_근무자"], "", shift_data.get("2근_연장",""), shift_data.get("2근_비고","")),
+            ("3근", shift_data["3근_조"], "22:30 ~ 06:30", shift_data["3근_근무자"], "", shift_data.get("3근_연장",""), shift_data.get("3근_비고","")),
+            ("휴무", shift_data["휴무_조"], "", "", shift_data["휴무_근무자"], "", shift_data["휴무_구분"])
+        ]
+        for idx, r_data in enumerate(rows_1, start=7):
+            ws.row_dimensions[idx].height = 20
+            ws[f"A{idx}"], ws[f"B{idx}"], ws[f"C{idx}"], ws[f"D{idx}"], ws[f"E{idx}"], ws[f"F{idx}"] = r_data[:6]
+            ws.merge_cells(f"G{idx}:H{idx}")
+            ws[f"G{idx}"] = r_data[6]
+            for c in "ABCDEFGH":
+                cell = ws[f"{c}{idx}"]
+                cell.font, cell.alignment, cell.border = font_tbl_body, align_c, thin_border
+
+        # 2. 업무 현황
+        ws['A12'] = "2. 업무 현황"
+        ws['A12'].font = font_sec_hdr
+        for i, h in enumerate(["작업 내용","1근","2근","3근","주간","야간","합계","월합계"], start=1):
+            cell = ws[f"{get_column_letter(i)}13"]
+            cell.value, cell.font, cell.fill, cell.alignment, cell.border = h, font_tbl_hdr, fill_gray, align_c, thin_border
+
+        for idx, item in enumerate(work_items, start=14):
+            ws.row_dimensions[idx].height = 20
+            ws[f"A{idx}"] = item["name"]
+            ws[f"A{idx}"].font, ws[f"A{idx}"].alignment, ws[f"A{idx}"].border = font_tbl_bold, align_c, thin_border
+            ws[f"B{idx}"], ws[f"C{idx}"], ws[f"D{idx}"] = item["s1"] or "", item["s2"] or "", item["s3"] or ""
+            ws[f"E{idx}"], ws[f"F{idx}"] = item["day"] or "", item["night"] or ""
+            for cl in "BCDEF":
+                ws[f"{cl}{idx}"].font, ws[f"{cl}{idx}"].alignment, ws[f"{cl}{idx}"].border = font_tbl_body, align_c, thin_border
+            ws[f"G{idx}"] = f"=SUM(B{idx}:F{idx})"
+            ws[f"G{idx}"].font, ws[f"G{idx}"].alignment, ws[f"G{idx}"].border = font_tbl_bold, align_c, thin_border
+            ws[f"H{idx}"] = item.get("month_total", 0)
+            ws[f"H{idx}"].font, ws[f"H{idx}"].alignment, ws[f"H{idx}"].border = font_tbl_body, align_c, thin_border
+
+        # 3. 안전 관리 사항
+        ws['A27'] = "3. 안전 관리 사항"
+        ws['A27'].font = font_sec_hdr
+        ws.merge_cells('A28:C28')
+        for c in "ABC":
+            ws[f"{c}28"].fill, ws[f"{c}28"].border = fill_gray, thin_border
+        for pos, txt in [("D28","1근"),("E28","2근"),("F28","3근"),("G28","주간"),("H28","야간")]:
+            ws[pos] = txt
+            ws[pos].font, ws[pos].fill, ws[pos].alignment, ws[pos].border = font_tbl_hdr, fill_gray, align_c, thin_border
+
+        for idx, s_row in enumerate(safety_items, start=29):
+            ws.row_dimensions[idx].height = 22
+            ws.merge_cells(f"A{idx}:C{idx}")
+            ws[f"A{idx}"] = s_row["text"]
+            ws[f"A{idx}"].font, ws[f"A{idx}"].alignment, ws[f"A{idx}"].border = font_tbl_bold, align_c, thin_border
+            ws[f"B{idx}"].border, ws[f"C{idx}"].border = thin_border, thin_border
+            for pc, val in [("D",s_row["s1"]),("E",s_row["s2"]),("F",s_row["s3"]),("G",s_row["day"]),("H",s_row["night"])]:
+                cell = ws[f"{pc}{idx}"]
+                cell.value = "☑" if val else "□"
+                cell.font, cell.alignment, cell.border = Font(name="맑은 고딕", size=10), align_c, thin_border
+
+        # 4. 특이 사항
+        ws['A36'] = "4. 특이 사항"
+        ws['A36'].font = font_sec_hdr
+        ws.merge_cells('A37:H41')
+        ws['A37'] = note_text
+        ws['A37'].font = font_tbl_body
+        ws['A37'].alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
+        for r in range(37, 42):
+            for c in range(1, 9):
+                cl = get_column_letter(c)
+                ws[f"{cl}{r}"].border = Border(
+                    top=Side(style='thin', color='000000') if r == 37 else Side(),
+                    bottom=Side(style='thin', color='000000') if r == 41 else Side(),
+                    left=Side(style='thin', color='000000') if c == 1 else Side(),
+                    right=Side(style='thin', color='000000') if c == 8 else Side()
+                )
+
+        output = io.BytesIO()
+        wb.save(output)
+        return output.getvalue()
+
+    # ── UI ──
+    st.title("📋 칼라지게차 일일 업무 보고 작성")
+
+    col_date, col_info = st.columns([1, 2])
+    with col_date:
+        selected_date = st.date_input("작업 일자 선택", datetime.date.today(),
+                                       min_value=datetime.date(2026, 1, 1),
+                                       max_value=datetime.date(2100, 12, 31))
+    shift_auto = get_shift_info(selected_date)
+    with col_info:
+        st.success(
+            f"🗓 {selected_date.strftime('%Y년 %m월 %d일')} 근무 매칭 완료 "
+            f"(1근: {shift_auto['1근_조']}조 {shift_auto['1근_근무자']} | "
+            f"2근: {shift_auto['2근_조']}조 {shift_auto['2근_근무자']} | "
+            f"3근: {shift_auto['3근_조']}조 {shift_auto['3근_근무자']} | "
+            f"휴무: {shift_auto['휴무_조']}조 {shift_auto['휴무_근무자']})"
+        )
+
+    st.markdown("---")
+    st.subheader("1. 인원 현황 (필요 시 수정/대근 입력)")
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.markdown("**1근** (06:30~14:30)")
+        s1_name = st.text_input("1근 근무자", value=shift_auto["1근_근무자"])
+        s1_ot = st.text_input("1근 연장근무", "")
+        s1_note = st.text_input("1근 비고", "")
+    with c2:
+        st.markdown("**2근** (14:30~22:30)")
+        s2_name = st.text_input("2근 근무자", value=shift_auto["2근_근무자"])
+        s2_ot = st.text_input("2근 연장근무", "")
+        s2_note = st.text_input("2근 비고", "")
+    with c3:
+        st.markdown("**3근** (22:30~06:30)")
+        s3_name = st.text_input("3근 근무자", value=shift_auto["3근_근무자"])
+        s3_ot = st.text_input("3근 연장근무", "")
+        s3_note = st.text_input("3근 비고", "")
+    with c4:
+        st.markdown("**휴무**")
+        off_name = st.text_input("휴무자", value=shift_auto["휴무_근무자"])
+        off_type = st.selectbox("휴무 구분", ["교대휴무","주휴휴무","정기휴가","공가"],
+                                index=0 if shift_auto["휴무_구분"]=="교대휴무" else 1)
+
+    shift_data_final = {
+        "1근_조": shift_auto["1근_조"], "1근_근무자": s1_name, "1근_연장": s1_ot, "1근_비고": s1_note,
+        "2근_조": shift_auto["2근_조"], "2근_근무자": s2_name, "2근_연장": s2_ot, "2근_비고": s2_note,
+        "3근_조": shift_auto["3근_조"], "3근_근무자": s3_name, "3근_연장": s3_ot, "3근_비고": s3_note,
+        "휴무_조": shift_auto["휴무_조"], "휴무_근무자": off_name, "휴무_구분": off_type
+    }
+
+    st.markdown("---")
+    st.subheader("2. 업무 현황 입력")
+    item_names = [
+        "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
+        "신나 하차 수량", "신나 공급 수량", "논크롬 공급 수량",
+        "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
+        "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수"
+    ]
+    month_totals_default = [2960, 4116, 1108, 486, 495, 49, 3196, 167, 478, 132, 42, 39]
+
+    work_items_data = []
+    col_left, col_right = st.columns(2)
+    for i, name in enumerate(item_names):
+        target_col = col_left if i < 6 else col_right
+        with target_col:
+            with st.expander(f"📦 {name}", expanded=(i in [0, 1, 2, 6])):
+                ic1, ic2, ic3 = st.columns(3)
+                v_s1 = ic1.number_input(f"1근", min_value=0, step=1, key=f"wl_s1_{i}")
+                v_s2 = ic2.number_input(f"2근", min_value=0, step=1, key=f"wl_s2_{i}")
+                v_s3 = ic3.number_input(f"3근", min_value=0, step=1, key=f"wl_s3_{i}")
+                ic4, ic5, ic6 = st.columns(3)
+                v_day = ic4.number_input(f"주간대근", min_value=0, step=1, key=f"wl_day_{i}")
+                v_night = ic5.number_input(f"야간대근", min_value=0, step=1, key=f"wl_night_{i}")
+                v_month = ic6.number_input(f"월누계", value=month_totals_default[i], step=1, key=f"wl_month_{i}")
+        work_items_data.append({
+            "name": name, "s1": v_s1 or None, "s2": v_s2 or None, "s3": v_s3 or None,
+            "day": v_day or None, "night": v_night or None, "month_total": v_month
+        })
+
+    st.markdown("---")
+    st.subheader("3. 안전 관리 사항")
+    safety_questions = [
+        "작업 계획에 따라 작업 절차를 준수 하였는가?",
+        "안전장치(후방 경보장치 , 안전밸트 등) 기능의 이상 유무를 점검 하였는가?",
+        "주행시 급출발 , 급정거 , 급선회를 하지 않았는가?",
+        "화물 적재시 허용 하중을 초과하지 않았는가?",
+        "작업장소에 적합한 제한 속도를 준수 하였는가?",
+        "지게차 작업 안전 수칙에 위배 되는 작업을 하지 않았는가?"
+    ]
+    safety_items_data = []
+    for i, q in enumerate(safety_questions):
+        st.write(f"{i+1}. {q}")
+        sc1, sc2, sc3, sc4, sc5 = st.columns(5)
+        chk_s1 = sc1.checkbox("1근", value=True, key=f"safe_s1_{i}")
+        chk_s2 = sc2.checkbox("2근", value=True, key=f"safe_s2_{i}")
+        chk_s3 = sc3.checkbox("3근", value=True, key=f"safe_s3_{i}")
+        chk_day = sc4.checkbox("주간", value=False, key=f"safe_day_{i}")
+        chk_night = sc5.checkbox("야간", value=False, key=f"safe_night_{i}")
+        safety_items_data.append({"text": q, "s1": chk_s1, "s2": chk_s2, "s3": chk_s3, "day": chk_day, "night": chk_night})
+
+    st.markdown("---")
+    st.subheader("4. 특이 사항")
+    note_text = st.text_area("특이사항 내용 입력", "- AGV 정상 가동\n- 특이 안전사항 없음", height=100)
+
+    st.markdown("---")
+    excel_bytes = generate_work_log_excel(selected_date, shift_data_final, work_items_data, safety_items_data, note_text)
+    file_name = f"칼라지게차_일일업무보고_{selected_date.strftime('%Y%m%d')}.xlsx"
+    st.download_button(
+        label="📥 작업일지 엑셀 파일 다운로드 (.xlsx)",
+        data=excel_bytes,
+        file_name=file_name,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        type="primary",
+        use_container_width=True
+    )
+
+
 # ──────────────────────────────────────
 # 메뉴 라우팅
 # ──────────────────────────────────────
@@ -515,3 +788,5 @@ if menu == "🔍 생산계획 vs 입고 교차검증":
     page_cross_check()
 elif menu == "📊 캡처 이미지 → 엑셀 변환기":
     page_image_to_excel()
+elif menu == "📋 일일 작업일지 작성":
+    page_work_log()
