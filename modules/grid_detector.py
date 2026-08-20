@@ -31,8 +31,11 @@ def deskew(img: np.ndarray) -> np.ndarray:
 
     angles = []
     for line in lines:
-        x1, y1, x2, y2 = line[0]
-        if abs(x2 - x1) > abs(y2 - y1):  # 수평에 가까운 선만
+        pts = line[0] if len(line.shape) > 1 else line
+        if len(pts) < 4:
+            continue
+        x1, y1, x2, y2 = int(pts[0]), int(pts[1]), int(pts[2]), int(pts[3])
+        if abs(x2 - x1) > abs(y2 - y1):
             angle = math.degrees(math.atan2(y2 - y1, x2 - x1))
             if abs(angle) < 10:
                 angles.append(angle)
