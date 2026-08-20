@@ -39,7 +39,9 @@ UNIVERSAL_DOC_PROMPT = """이 이미지는 생산계획표입니다.
 - "16(수)" → quantity=16
 - 순수 숫자 → quantity=그 숫자
 
-## 품목코드 주의
+## 품목코드 (매우 중요!)
+- 품목코드는 **반드시 영문 대문자 + 숫자로만** 구성된 7자리입니다 (예: P7G342E)
+- 한글이 포함되면 품목코드가 아닙니다! (예: "위생산"은 제조사이지 품목코드가 아님)
 - 0↔O, 1↔I, 5↔S, 8↔B 혼동 주의
 
 JSON만 응답:
@@ -139,6 +141,7 @@ def extract_document_data(
     response = client.messages.create(
         model=model,
         max_tokens=16000,
+        temperature=0,
         messages=[
             {
                 "role": "user",
