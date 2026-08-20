@@ -16,12 +16,13 @@ def extract_plan_precision(
     image_bytes: bytes,
     file_name: str,
     api_key: str,
+    model: str = "claude-opus-4-8",
 ) -> dict:
     """
     1회 OCR + 후처리 필터링 + 4중 검증 자동교정 파이프라인.
     """
     # 1회 전체 이미지 OCR
-    plan_data = extract_document_data(image_bytes, file_name, api_key)
+    plan_data = extract_document_data(image_bytes, file_name, api_key, model=model)
     plan_rows = flatten_production_plan(plan_data)
 
     # 신규 > 0 항목만 추출 + 후처리 필터링

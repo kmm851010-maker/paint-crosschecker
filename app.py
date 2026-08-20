@@ -38,6 +38,14 @@ menu = st.sidebar.radio(
     label_visibility="collapsed",
 )
 
+st.sidebar.markdown("---")
+ocr_model = st.sidebar.selectbox(
+    "OCR 모델",
+    ["claude-opus-4-8", "claude-sonnet-4-6"],
+    index=0,
+    help="이미지 인식에 사용할 모델",
+)
+
 
 # ══════════════════════════════════════
 # 메뉴 1: 생산계획 vs 입고 교차검증
@@ -84,7 +92,7 @@ def page_cross_check():
                 with st.spinner("분석 중..."):
                     try:
                         from modules.precision_ocr import extract_plan_precision
-                        result = extract_plan_precision(plan_bytes, plan_fname, api_key)
+                        result = extract_plan_precision(plan_bytes, plan_fname, api_key, model=ocr_model)
                         items = result["items"]
 
                         # 항상 검증 완료된 items에서 plan_rows 생성 (자동 교정 반영)
