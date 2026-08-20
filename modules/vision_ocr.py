@@ -141,7 +141,6 @@ def extract_document_data(
     response = client.messages.create(
         model=model,
         max_tokens=16000,
-        temperature=0,
         messages=[
             {
                 "role": "user",
