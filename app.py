@@ -176,7 +176,9 @@ def page_cross_check():
         with p_col2:
             sort_asc = st.radio("순서", ["오름차순", "내림차순"], horizontal=True, key="sort_dir_incoming", label_visibility="collapsed")
 
-        sorted_df = incoming_df.sort_values(sort_by, ascending=(sort_asc == "오름차순"))
+        sorted_df = incoming_df.sort_values(sort_by, ascending=(sort_asc == "오름차순")).reset_index(drop=True)
+        sorted_df.index += 1
+        sorted_df.index.name = "No."
         sorted_html = sorted_df.to_html(border=1)
         st.components.v1.html(
             f"""<style>@media print{{.no-print{{display:none}}}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #333;padding:8px;text-align:center}} .print-only{{display:none}} @media print{{.print-only{{display:block}}}}</style>
@@ -299,8 +301,10 @@ def page_cross_check():
                 with r_col2:
                     r_asc = st.radio("순서", ["오름차순", "내림차순"], horizontal=True, key="sort_dir_result", label_visibility="collapsed")
 
-                sorted_result = result_df.sort_values(r_sort, ascending=(r_asc == "오름차순"))
-                sorted_result_html = sorted_result.to_html(index=False, border=1)
+                sorted_result = result_df.sort_values(r_sort, ascending=(r_asc == "오름차순")).reset_index(drop=True)
+                sorted_result.index += 1
+                sorted_result.index.name = "No."
+                sorted_result_html = sorted_result.to_html(border=1)
                 st.components.v1.html(
                     f"""<style>@media print{{.no-print{{display:none}}}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #333;padding:8px;text-align:center}} .print-only{{display:none}} @media print{{.print-only{{display:block}}}}</style>
                     <button class="no-print" onclick="window.print()"
