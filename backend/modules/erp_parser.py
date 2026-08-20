@@ -90,6 +90,11 @@ def aggregate_erp_data(df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
     df["_color_norm"] = df[color_col].apply(lambda x: normalize_color_code(str(x)))
     df = df[df["_color_norm"] != ""]
 
+    # 개당 중량 500kg 이상인 행 제외 (드럼이 아닌 벌크)
+    if weight_col and weight_col in df.columns:
+        df["_unit_weight"] = pd.to_numeric(df[weight_col], errors="coerce").fillna(0)
+        df = df[df["_unit_weight"] < 500]
+
     # Aggregate
     grouped = df.groupby("_color_norm")
     result = pd.DataFrame(
