@@ -98,7 +98,12 @@ menu = st.sidebar.radio(
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("📱 **모바일 앱**")
-st.sidebar.link_button("⬇️ KG Counter 설치", "https://expo.dev/artifacts/eas/TyrxfbBvSIjSH2N2EyXKrtvumFIfHDmKGGBP5Nxwqj0.apk", use_container_width=True)
+st.sidebar.markdown(
+    '<a href="https://expo.dev/artifacts/eas/TyrxfbBvSIjSH2N2EyXKrtvumFIfHDmKGGBP5Nxwqj0.apk" '
+    'style="display:block;text-align:center;padding:10px;background:#F5A623;color:#1A1A2E;'
+    'border-radius:8px;font-weight:700;text-decoration:none;">⬇️ KG Counter 설치</a>',
+    unsafe_allow_html=True,
+)
 
 
 
