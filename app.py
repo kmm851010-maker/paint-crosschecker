@@ -43,7 +43,6 @@ def page_cross_check():
     from modules.erp_parser import process_erp_file
     from modules.matcher import cross_check
     from modules.excel_generator import generate_report
-    from modules.image_annotator import generate_verified_excel, generate_incoming_plan_excel
     from utils.formatter import style_result_table, format_summary
     from utils.image_compress import compress_image
 
@@ -172,6 +171,7 @@ def page_cross_check():
                 if st.button("📊 검증 결과 엑셀 생성", use_container_width=True):
                     with st.spinner("원본 이미지를 엑셀로 변환 + 검증 결과 표시 중..."):
                         try:
+                            from modules.image_annotator import generate_verified_excel
                             verified_excel = generate_verified_excel(plan_bytes, plan_name, result_df, api_key)
                             st.session_state["cc_verified_excel"] = verified_excel
                         except Exception as e:
@@ -220,6 +220,7 @@ def page_cross_check():
             st.info(f"총 {len(incoming_df)}개 품목 | 합계: {int(incoming_df['입고예정수량'].sum())}개")
 
             # 입고 예정 엑셀 다운로드
+            from modules.image_annotator import generate_incoming_plan_excel
             incoming_excel = generate_incoming_plan_excel(plan_df)
             st.download_button(
                 label="📥 입고 예정 품목 엑셀 다운로드",
