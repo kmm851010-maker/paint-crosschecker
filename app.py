@@ -87,21 +87,18 @@ def page_cross_check():
                         result = extract_plan_precision(plan_bytes, plan_fname, api_key)
                         items = result["items"]
 
-                        # 하이브리드: plan_rows가 이미 있으면 사용, 없으면 items에서 생성
-                        if result.get("plan_rows"):
-                            plan_rows = result["plan_rows"]
-                        else:
-                            plan_rows = []
-                            for item in items:
-                                plan_rows.append({
-                                    "라인": item.get("layer", ""),
-                                    "위치": "",
-                                    "색상코드": item.get("item_code", ""),
-                                    "제조사": item.get("maker", ""),
-                                    "재고": 0,
-                                    "신규": item.get("quantity", 0),
-                                    "생산량": 0,
-                                })
+                        # 항상 검증 완료된 items에서 plan_rows 생성 (자동 교정 반영)
+                        plan_rows = []
+                        for item in items:
+                            plan_rows.append({
+                                "라인": item.get("layer", ""),
+                                "위치": "",
+                                "색상코드": item.get("item_code", ""),
+                                "제조사": item.get("maker", ""),
+                                "재고": 0,
+                                "신규": item.get("quantity", 0),
+                                "생산량": 0,
+                            })
                         plan_df = pd.DataFrame(plan_rows)
 
                         st.session_state["cc_precision_items"] = items
