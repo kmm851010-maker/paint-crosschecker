@@ -196,6 +196,10 @@ def extract_new_items_from_table(table_data: dict) -> list:
             if not code:
                 continue
 
+            # "위생산" 배제
+            if "위생산" in code or "위생산" in maker:
+                continue
+
             items.append({
                 "색상코드": code,
                 "제조사": maker,
@@ -207,7 +211,18 @@ def extract_new_items_from_table(table_data: dict) -> list:
                 "생산량": 0,
             })
 
-    return items
+    # 같은 품목코드 합산
+    merged = {}
+    for item in items:
+        code = item["색상코드"]
+        if code in merged:
+            merged[code]["신규"] += item["신규"]
+            if item["비고"] and not merged[code]["비고"]:
+                merged[code]["비고"] = item["비고"]
+        else:
+            merged[code] = item.copy()
+
+    return list(merged.values())
 
 
 def extract_production_plan(

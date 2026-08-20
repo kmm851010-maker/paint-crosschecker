@@ -167,6 +167,10 @@ def parse_plan_excel(file_bytes: bytes, file_name: str) -> list:
                 except (ValueError, TypeError):
                     pass
 
+            # "위생산" 배제
+            if "위생산" in code or "위생산" in maker:
+                continue
+
             all_items.append({
                 "라인": block["name"],
                 "위치": "",
@@ -178,4 +182,15 @@ def parse_plan_excel(file_bytes: bytes, file_name: str) -> list:
                 "비고": note,
             })
 
-    return all_items
+    # 같은 품목코드 합산
+    merged = {}
+    for item in all_items:
+        code = item["색상코드"]
+        if code in merged:
+            merged[code]["신규"] += item["신규"]
+            if item["비고"] and not merged[code]["비고"]:
+                merged[code]["비고"] = item["비고"]
+        else:
+            merged[code] = item.copy()
+
+    return list(merged.values())
