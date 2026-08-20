@@ -118,14 +118,19 @@ def page_cross_check():
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
-        import base64 as b64
-        incoming_html_full = incoming_df.to_html(border=1)
-        encoded = b64.b64encode(incoming_html_full.encode()).decode()
+        p_col1, p_col2 = st.columns([1, 3])
+        with p_col1:
+            sort_by = st.selectbox("인쇄 정렬", ["품목코드", "제조사", "입고예정수량"], key="sort_incoming", label_visibility="collapsed")
+        with p_col2:
+            sort_asc = st.radio("순서", ["오름차순", "내림차순"], horizontal=True, key="sort_dir_incoming", label_visibility="collapsed")
+
+        sorted_df = incoming_df.sort_values(sort_by, ascending=(sort_asc == "오름차순"))
+        sorted_html = sorted_df.to_html(border=1)
         st.components.v1.html(
             f"""<style>@media print{{.no-print{{display:none}}}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #333;padding:8px;text-align:center}} .print-only{{display:none}} @media print{{.print-only{{display:block}}}}</style>
             <button class="no-print" onclick="window.print()"
             style="padding:8px 20px;background:#4B2D8E;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🖨 인쇄</button>
-            <div class="print-only"><h3>입고 예정 품목</h3>{incoming_html_full}</div>""",
+            <div class="print-only"><h3>입고 예정 품목 ({sort_by} {sort_asc})</h3>{sorted_html}</div>""",
             height=42,
         )
 
@@ -236,12 +241,19 @@ def page_cross_check():
                 )
 
                 # 인쇄 버튼
-                result_html = result_df.to_html(index=False, border=1)
+                r_col1, r_col2 = st.columns([1, 3])
+                with r_col1:
+                    r_sort = st.selectbox("인쇄 정렬", list(result_df.columns), key="sort_result", label_visibility="collapsed")
+                with r_col2:
+                    r_asc = st.radio("순서", ["오름차순", "내림차순"], horizontal=True, key="sort_dir_result", label_visibility="collapsed")
+
+                sorted_result = result_df.sort_values(r_sort, ascending=(r_asc == "오름차순"))
+                sorted_result_html = sorted_result.to_html(index=False, border=1)
                 st.components.v1.html(
                     f"""<style>@media print{{.no-print{{display:none}}}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #333;padding:8px;text-align:center}} .print-only{{display:none}} @media print{{.print-only{{display:block}}}}</style>
                     <button class="no-print" onclick="window.print()"
                     style="padding:8px 20px;background:#4B2D8E;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🖨 인쇄</button>
-                    <div class="print-only"><h3>교차검증 결과</h3>{result_html}</div>""",
+                    <div class="print-only"><h3>교차검증 결과 ({r_sort} {r_asc})</h3>{sorted_result_html}</div>""",
                     height=42,
                 )
 
