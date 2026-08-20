@@ -672,19 +672,49 @@ def page_work_log():
     ALL_MEMBERS = list(MEMBERS.values())
 
     def apply_leaves(shift_data, target_date):
-        """등록된 휴가/대근을 근무 데이터에 반영합니다."""
+        """등록된 휴가를 근무 데이터에 반영. 2인 근무 시 주간/야간 체계로 전환."""
         result = shift_data.copy()
+        result["is_2person"] = False
+        result["leave_person"] = ""
+        result["leave_type"] = ""
+
         for leave in st.session_state["leave_list"]:
             start = datetime.date.fromisoformat(leave["start"])
             end = datetime.date.fromisoformat(leave["end"])
             if start <= target_date <= end:
-                # 해당 날짜에 이 사람이 어느 근무인지 찾아서 대근자로 교체
-                for key in ["1근_근무자", "2근_근무자", "3근_근무자"]:
-                    if result[key] == leave["name"]:
-                        result[key] = leave.get("sub", "")
-                        # 비고에 표시
-                        shift_key = key.replace("_근무자", "_비고")
-                        result[shift_key] = f"{leave['type']}({leave['name']}→{leave.get('sub','')})"
+                absent = leave["name"]
+                ltype = leave["type"]
+
+                # 누가 빠지는지 확인
+                if result["1근_근무자"] == absent:
+                    # 1근 휴가 → 2근→주간, 3근→야간
+                    result["is_2person"] = True
+                    result["leave_person"] = absent
+                    result["leave_type"] = ltype
+                    result["주간_근무자"] = result["2근_근무자"]
+                    result["야간_근무자"] = result["3근_근무자"]
+                    result["주간_조"] = result["2근_조"]
+                    result["야간_조"] = result["3근_조"]
+                elif result["2근_근무자"] == absent:
+                    # 2근 휴가 → 1근→주간, 3근→야간
+                    result["is_2person"] = True
+                    result["leave_person"] = absent
+                    result["leave_type"] = ltype
+                    result["주간_근무자"] = result["1근_근무자"]
+                    result["야간_근무자"] = result["3근_근무자"]
+                    result["주간_조"] = result["1근_조"]
+                    result["야간_조"] = result["3근_조"]
+                elif result["3근_근무자"] == absent:
+                    # 3근 휴가 → 1근→주간, 2근→야간
+                    result["is_2person"] = True
+                    result["leave_person"] = absent
+                    result["leave_type"] = ltype
+                    result["주간_근무자"] = result["1근_근무자"]
+                    result["야간_근무자"] = result["2근_근무자"]
+                    result["주간_조"] = result["1근_조"]
+                    result["야간_조"] = result["2근_조"]
+                break  # 한 날짜에 한 명만 휴가 가정
+
         return result
 
     # ── UI ──
@@ -748,52 +778,81 @@ def page_work_log():
     shift_auto = get_shift_info(selected_date)
     shift_auto = apply_leaves(shift_auto, selected_date)
 
-    # 휴가 적용 여부 표시
-    has_leave = any(
-        datetime.date.fromisoformat(lv["start"]) <= selected_date <= datetime.date.fromisoformat(lv["end"])
-        for lv in st.session_state["leave_list"]
-    )
-    if has_leave:
-        st.warning("⚠️ 이 날짜에 사전등록된 휴가/대근이 반영되었습니다.")
+    is_2person = shift_auto.get("is_2person", False)
 
-    st.success(
-        f"📅 **{selected_date.strftime('%Y년 %m월 %d일')}** 근무 매칭 완료\n\n"
-        f"1근: **{shift_auto['1근_조']}조 {shift_auto['1근_근무자']}** | "
-        f"2근: **{shift_auto['2근_조']}조 {shift_auto['2근_근무자']}** | "
-        f"3근: **{shift_auto['3근_조']}조 {shift_auto['3근_근무자']}** | "
-        f"휴무: **{shift_auto['휴무_조']}조 {shift_auto['휴무_근무자']}**"
-    )
+    if is_2person:
+        st.warning(
+            f"⚠️ **{shift_auto['leave_person']}** {shift_auto['leave_type']} — "
+            f"2인 근무 체계 (주간/야간 12시간) 자동 전환"
+        )
+        st.success(
+            f"📅 **{selected_date.strftime('%Y년 %m월 %d일')}** 2인 근무\n\n"
+            f"주간(06:30~18:30): **{shift_auto['주간_조']}조 {shift_auto['주간_근무자']}** | "
+            f"야간(18:30~06:30): **{shift_auto['야간_조']}조 {shift_auto['야간_근무자']}** | "
+            f"휴가: **{shift_auto['leave_person']}** | "
+            f"휴무: **{shift_auto['휴무_조']}조 {shift_auto['휴무_근무자']}**"
+        )
+    else:
+        st.success(
+            f"📅 **{selected_date.strftime('%Y년 %m월 %d일')}** 근무 매칭 완료\n\n"
+            f"1근: **{shift_auto['1근_조']}조 {shift_auto['1근_근무자']}** | "
+            f"2근: **{shift_auto['2근_조']}조 {shift_auto['2근_근무자']}** | "
+            f"3근: **{shift_auto['3근_조']}조 {shift_auto['3근_근무자']}** | "
+            f"휴무: **{shift_auto['휴무_조']}조 {shift_auto['휴무_근무자']}**"
+        )
 
     st.markdown("---")
-    st.subheader("1. 인원 현황 (필요 시 수정/대근 입력)")
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.markdown("**1근** (06:30~14:30)")
-        s1_name = st.text_input("1근 근무자", value=shift_auto["1근_근무자"])
-        s1_ot = st.text_input("1근 연장근무", "")
-        s1_note = st.text_input("1근 비고", "")
-    with c2:
-        st.markdown("**2근** (14:30~22:30)")
-        s2_name = st.text_input("2근 근무자", value=shift_auto["2근_근무자"])
-        s2_ot = st.text_input("2근 연장근무", "")
-        s2_note = st.text_input("2근 비고", "")
-    with c3:
-        st.markdown("**3근** (22:30~06:30)")
-        s3_name = st.text_input("3근 근무자", value=shift_auto["3근_근무자"])
-        s3_ot = st.text_input("3근 연장근무", "")
-        s3_note = st.text_input("3근 비고", "")
-    with c4:
-        st.markdown("**휴무**")
-        off_name = st.text_input("휴무자", value=shift_auto["휴무_근무자"])
-        off_type = st.selectbox("휴무 구분", ["교대휴무","주휴휴무","정기휴가","공가"],
-                                index=0 if shift_auto["휴무_구분"]=="교대휴무" else 1)
+    st.subheader("1. 인원 현황")
 
-    shift_data_final = {
-        "1근_조": shift_auto["1근_조"], "1근_근무자": s1_name, "1근_연장": s1_ot, "1근_비고": s1_note,
-        "2근_조": shift_auto["2근_조"], "2근_근무자": s2_name, "2근_연장": s2_ot, "2근_비고": s2_note,
-        "3근_조": shift_auto["3근_조"], "3근_근무자": s3_name, "3근_연장": s3_ot, "3근_비고": s3_note,
-        "휴무_조": shift_auto["휴무_조"], "휴무_근무자": off_name, "휴무_구분": off_type
-    }
+    if is_2person:
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown("**주간** (06:30~18:30)")
+            day_name = st.text_input("주간 근무자", value=shift_auto["주간_근무자"])
+            day_note = st.text_input("주간 비고", "연장 4시간")
+        with c2:
+            st.markdown("**야간** (18:30~06:30)")
+            night_name = st.text_input("야간 근무자", value=shift_auto["야간_근무자"])
+            night_note = st.text_input("야간 비고", "연장 4시간")
+        with c3:
+            st.markdown("**휴무**")
+            off_name = st.text_input("휴무자", value=shift_auto["휴무_근무자"])
+            off_type = st.selectbox("휴무 구분", ["교대휴무","주휴휴무"], index=0 if shift_auto["휴무_구분"]=="교대휴무" else 1)
+
+        shift_data_final = {
+            "1근_조": shift_auto["주간_조"], "1근_근무자": day_name, "1근_연장": "4H", "1근_비고": day_note,
+            "2근_조": shift_auto["야간_조"], "2근_근무자": night_name, "2근_연장": "4H", "2근_비고": night_note,
+            "3근_조": "", "3근_근무자": shift_auto["leave_person"], "3근_연장": "", "3근_비고": shift_auto["leave_type"],
+            "휴무_조": shift_auto["휴무_조"], "휴무_근무자": off_name, "휴무_구분": off_type,
+            "is_2person": True,
+        }
+    else:
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.markdown("**1근** (06:30~14:30)")
+            s1_name = st.text_input("1근 근무자", value=shift_auto["1근_근무자"])
+            s1_note = st.text_input("1근 비고", "")
+        with c2:
+            st.markdown("**2근** (14:30~22:30)")
+            s2_name = st.text_input("2근 근무자", value=shift_auto["2근_근무자"])
+            s2_note = st.text_input("2근 비고", "")
+        with c3:
+            st.markdown("**3근** (22:30~06:30)")
+            s3_name = st.text_input("3근 근무자", value=shift_auto["3근_근무자"])
+            s3_note = st.text_input("3근 비고", "")
+        with c4:
+            st.markdown("**휴무**")
+            off_name = st.text_input("휴무자", value=shift_auto["휴무_근무자"])
+            off_type = st.selectbox("휴무 구분", ["교대휴무","주휴휴무","정기휴가","공가"],
+                                    index=0 if shift_auto["휴무_구분"]=="교대휴무" else 1)
+
+        shift_data_final = {
+            "1근_조": shift_auto["1근_조"], "1근_근무자": s1_name, "1근_연장": "", "1근_비고": s1_note,
+            "2근_조": shift_auto["2근_조"], "2근_근무자": s2_name, "2근_연장": "", "2근_비고": s2_note,
+            "3근_조": shift_auto["3근_조"], "3근_근무자": s3_name, "3근_연장": "", "3근_비고": s3_note,
+            "휴무_조": shift_auto["휴무_조"], "휴무_근무자": off_name, "휴무_구분": off_type,
+            "is_2person": False,
+        }
 
     st.markdown("---")
     st.subheader("2. 업무 현황 입력")
@@ -805,24 +864,34 @@ def page_work_log():
     ]
     month_totals_default = [2960, 4116, 1108, 486, 495, 49, 3196, 167, 478, 132, 42, 39]
 
+    if is_2person:
+        shift_labels = ["주간", "야간"]
+    else:
+        shift_labels = ["1근", "2근", "3근"]
+
     work_items_data = []
     col_left, col_right = st.columns(2)
     for i, name in enumerate(item_names):
         target_col = col_left if i < 6 else col_right
         with target_col:
-            with st.expander(f"📦 {name}", expanded=(i in [0, 1, 2, 6])):
-                ic1, ic2, ic3 = st.columns(3)
-                v_s1 = ic1.number_input(f"1근", min_value=0, step=1, key=f"wl_s1_{i}")
-                v_s2 = ic2.number_input(f"2근", min_value=0, step=1, key=f"wl_s2_{i}")
-                v_s3 = ic3.number_input(f"3근", min_value=0, step=1, key=f"wl_s3_{i}")
-                ic4, ic5, ic6 = st.columns(3)
-                v_day = ic4.number_input(f"주간대근", min_value=0, step=1, key=f"wl_day_{i}")
-                v_night = ic5.number_input(f"야간대근", min_value=0, step=1, key=f"wl_night_{i}")
-                v_month = ic6.number_input(f"월누계", value=month_totals_default[i], step=1, key=f"wl_month_{i}")
-        work_items_data.append({
-            "name": name, "s1": v_s1 or None, "s2": v_s2 or None, "s3": v_s3 or None,
-            "day": v_day or None, "night": v_night or None, "month_total": v_month
-        })
+            with st.expander(f"📦 {name}", expanded=True):
+                cols = st.columns(len(shift_labels) + 1)
+                vals = []
+                for j, label in enumerate(shift_labels):
+                    v = cols[j].number_input(label, min_value=0, step=1, key=f"wl_{label}_{i}")
+                    vals.append(v)
+                v_month = cols[-1].number_input("월누계", value=month_totals_default[i], step=1, key=f"wl_month_{i}")
+
+        if is_2person:
+            work_items_data.append({
+                "name": name, "s1": None, "s2": None, "s3": None,
+                "day": vals[0] or None, "night": vals[1] or None, "month_total": v_month
+            })
+        else:
+            work_items_data.append({
+                "name": name, "s1": vals[0] or None, "s2": vals[1] or None, "s3": vals[2] or None,
+                "day": None, "night": None, "month_total": v_month
+            })
 
     st.markdown("---")
     st.subheader("3. 안전 관리 사항")
