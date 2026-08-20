@@ -210,90 +210,28 @@ def extract_new_items_from_table(table_data: dict) -> list:
     return items
 
 
-def _compare_results(items1: list, items2: list) -> dict:
-    """2회 OCR 결과를 비교하여 불일치 항목을 찾습니다."""
-    # 품목코드 기준 lookup
-    map1 = {item["색상코드"]: item for item in items1}
-    map2 = {item["색상코드"]: item for item in items2}
-
-    all_codes = set(map1.keys()) | set(map2.keys())
-    diffs = []
-    matched_items = []
-
-    for code in sorted(all_codes):
-        in1 = map1.get(code)
-        in2 = map2.get(code)
-
-        if in1 and in2:
-            if in1["신규"] == in2["신규"]:
-                matched_items.append(in1)
-            else:
-                diffs.append({
-                    "구분": "수량 다름",
-                    "품목코드": code,
-                    "1차_수량": in1["신규"],
-                    "2차_수량": in2["신규"],
-                })
-                # 더 큰 값 채택 (누락보다 초과가 안전)
-                matched_items.append(in1 if in1["신규"] >= in2["신규"] else in2)
-        elif in1 and not in2:
-            diffs.append({
-                "구분": "1차에만 존재",
-                "품목코드": code,
-                "1차_수량": in1["신규"],
-                "2차_수량": "-",
-            })
-            matched_items.append(in1)
-        elif in2 and not in1:
-            diffs.append({
-                "구분": "2차에만 존재",
-                "품목코드": code,
-                "1차_수량": "-",
-                "2차_수량": in2["신규"],
-            })
-            matched_items.append(in2)
-
-    return {
-        "items": matched_items,
-        "diffs": diffs,
-        "match": len(diffs) == 0,
-        "count_1": len(items1),
-        "count_2": len(items2),
-    }
-
-
 def extract_production_plan(
     file_bytes: bytes,
     file_name: str,
     api_key: str,
     model: str = "claude-opus-4-8",
-) -> dict:
+) -> list:
     """
     생산계획서(이미지/엑셀)에서 신규 입고 대상 품목을 추출합니다.
-    이미지: 2회 OCR + 비교 검증
+    이미지: 엑셀 변환 1회 OCR → 코드로 신규 필터링
     엑셀: 전용 파서로 직접 파싱
 
-    Returns: {
-        "items": [...],
-        "diffs": [...] or [],
-        "match": True/False,
-        "count_1": int,
-        "count_2": int,
-    }
+    Returns: [{"색상코드", "제조사", "신규", ...}, ...]
     """
     if is_document_file(file_name, file_bytes):
         from modules.plan_excel_parser import parse_plan_excel
-        items = parse_plan_excel(file_bytes, file_name)
-        return {"items": items, "diffs": [], "match": True, "count_1": len(items), "count_2": len(items)}
+        return parse_plan_excel(file_bytes, file_name)
 
-    # 이미지 → 2회 OCR
-    table1 = extract_table_from_image_tool_use(file_bytes, file_name, api_key, model)
-    items1 = extract_new_items_from_table(table1)
+    # 이미지 → Tool Use로 표 전체 읽기 (1회)
+    table_data = extract_table_from_image_tool_use(file_bytes, file_name, api_key, model)
 
-    table2 = extract_table_from_image_tool_use(file_bytes, file_name, api_key, model)
-    items2 = extract_new_items_from_table(table2)
-
-    return _compare_results(items1, items2)
+    # 코드로 신규 품목 필터링
+    return extract_new_items_from_table(table_data)
 
 
 # 하위 호환용
