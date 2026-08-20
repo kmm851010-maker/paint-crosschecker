@@ -168,15 +168,8 @@ def page_cross_check():
 
             with st.spinner("ERP 입고명세서 분석 중..."):
                 try:
-                    erp_bytes_raw = erp_file.getvalue()
-                    erp_ext = erp_file.name.lower().rsplit(".", 1)[-1]
-                    erp_fname = erp_file.name
-                    if erp_ext in ("jpg", "jpeg", "png", "webp"):
-                        erp_bytes = compress_image(erp_bytes_raw)
-                        erp_fname = erp_fname.rsplit(".", 1)[0] + ".jpg"
-                    else:
-                        erp_bytes = erp_bytes_raw
-                    erp_df = process_erp_file(erp_bytes, erp_fname, api_key)
+                    erp_bytes = erp_file.getvalue()
+                    erp_df = process_erp_file(erp_bytes, erp_file.name, api_key)
                 except Exception as e:
                     st.error(f"ERP 명세서 분석 실패: {e}")
                     st.stop()

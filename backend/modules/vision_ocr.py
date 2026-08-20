@@ -377,6 +377,10 @@ def _parse_document_to_universal(file_bytes: bytes, file_name: str) -> dict:
     return {"doc_type": doc_type, "items": items}
 
 
+def extract_erp_from_image(file_bytes, file_name, api_key, model="claude-opus-4-8"):
+    return extract_document_data(file_bytes, file_name, api_key, model)
+
+
 def flatten_production_plan(plan_data: dict) -> list:
     """하위 호환: 범용 JSON → flat 리스트"""
     rows = []

@@ -8,7 +8,8 @@ import base64
 
 import anthropic
 
-from modules.vision_ocr import detect_media_type, parse_json_response
+from utils.helpers import detect_media_type
+from modules.vision_ocr import _parse_json_response as parse_json_response
 
 
 TABLE_EXTRACT_PROMPT = """당신은 이미지 속 표(테이블)를 완벽하게 디지털 데이터로 변환하는 전문가입니다.
