@@ -79,7 +79,7 @@ def cross_check(
             "계획수량": 0,
             "입고수량": erp_info["drum_count"],
             "차이": erp_info["drum_count"],
-            "상태": f"⚠️ 역방향 감지 ({erp_info['drum_count']}드럼)",
+            "상태": f"⚠️ 확인필요 ({erp_info['drum_count']}드럼)",
             "총중량_kg": erp_info["weight"],
         })
 

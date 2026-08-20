@@ -268,7 +268,7 @@ def page_cross_check():
                 c4.metric("미입고", f"{summary['missing_count']}건",
                           delta=f"-{summary['missing_count']}" if summary['missing_count'] > 0 else None,
                           delta_color="inverse")
-                c5.metric("⚠️역방향", f"{summary['reverse_count']}건",
+                c5.metric("⚠️확인필요", f"{summary['reverse_count']}건",
                           delta=f"!{summary['reverse_count']}" if summary['reverse_count'] > 0 else None)
 
                 # 검증 결과 엑셀

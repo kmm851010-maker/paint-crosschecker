@@ -17,7 +17,7 @@ def style_result_table(df: pd.DataFrame):
             style = "background-color: #FFC7CE"
         elif "미입고" in status:
             style = "background-color: #FF9999"
-        elif "역방향" in status:
+        elif "확인필요" in status:
             style = "background-color: #FFEB9C"
         else:
             style = ""
@@ -47,7 +47,7 @@ def format_summary(df: pd.DataFrame) -> dict:
         "excess_count": int(statuses.str.contains("초과").sum()),
         "short_count": int(statuses.str.contains("부족").sum()),
         "missing_count": int(statuses.str.contains("미입고").sum()),
-        "reverse_count": int(statuses.str.contains("역방향").sum()),
+        "reverse_count": int(statuses.str.contains("확인필요").sum()),
         "total_plan": int(df["계획수량"].sum()),
         "total_actual": int(df["입고수량"].sum()),
     }
