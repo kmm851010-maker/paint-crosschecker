@@ -79,17 +79,18 @@ def find_intersections(h_lines: np.ndarray, v_lines: np.ndarray) -> list:
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     combined = cv2.dilate(combined, kernel, iterations=2)
 
-    contours, _ = cv2.findContours(combined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    result = cv2.findContours(combined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = result[0] if len(result) == 2 else result[1]
 
     points = []
     for cnt in contours:
         M = cv2.moments(cnt)
         if M["m00"] > 0:
-            cx = int(M["m10"] / M["m00"])
-            cy = int(M["m01"] / M["m00"])
+            cx = int(float(M["m10"] / M["m00"]))
+            cy = int(float(M["m01"] / M["m00"]))
             points.append((cx, cy))
 
-    return sorted(points, key=lambda p: (p[1], p[0]))
+    return sorted(points, key=lambda p: (int(p[1]), int(p[0])))
 
 
 def cluster_coordinates(values: list, min_gap: int = 10) -> list:
@@ -103,7 +104,7 @@ def cluster_coordinates(values: list, min_gap: int = 10) -> list:
             clusters[-1].append(v)
         else:
             clusters.append([v])
-    return [int(np.mean(c)) for c in clusters]
+    return [int(float(np.mean(c))) for c in clusters]
 
 
 def extract_row_col_positions(points: list, img_shape: tuple):
