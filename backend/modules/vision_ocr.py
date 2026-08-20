@@ -215,23 +215,26 @@ def extract_production_plan(
     file_name: str,
     api_key: str,
     model: str = "claude-opus-4-8",
-) -> list:
+) -> dict:
     """
     생산계획서(이미지/엑셀)에서 신규 입고 대상 품목을 추출합니다.
-    이미지: 엑셀 변환 1회 OCR → 코드로 신규 필터링
-    엑셀: 전용 파서로 직접 파싱
 
-    Returns: [{"색상코드", "제조사", "신규", ...}, ...]
+    Returns: {
+        "items": [{"색상코드", "제조사", "신규", ...}, ...],
+        "table_data": {"headers": [...], "rows": [[...], ...]} or None,
+    }
     """
     if is_document_file(file_name, file_bytes):
         from modules.plan_excel_parser import parse_plan_excel
-        return parse_plan_excel(file_bytes, file_name)
+        items = parse_plan_excel(file_bytes, file_name)
+        return {"items": items, "table_data": None}
 
     # 이미지 → Tool Use로 표 전체 읽기 (1회)
     table_data = extract_table_from_image_tool_use(file_bytes, file_name, api_key, model)
 
     # 코드로 신규 품목 필터링
-    return extract_new_items_from_table(table_data)
+    items = extract_new_items_from_table(table_data)
+    return {"items": items, "table_data": table_data}
 
 
 # 하위 호환용

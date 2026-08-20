@@ -78,11 +78,12 @@ def page_cross_check():
             plan_bytes = plan_file.getvalue()
             plan_fname = plan_file.name
 
-            with st.spinner("생산계획서 분석 중... (Tool Use 정밀 추출)"):
+            with st.spinner("생산계획서 분석 중..."):
                 try:
                     from modules.vision_ocr import extract_production_plan
-                    plan_rows = extract_production_plan(plan_bytes, plan_fname, api_key)
-                    plan_df = pd.DataFrame(plan_rows)
+                    result = extract_production_plan(plan_bytes, plan_fname, api_key)
+                    plan_df = pd.DataFrame(result["items"])
+                    st.session_state["cc_table_data"] = result.get("table_data")
                 except Exception as e:
                     st.error(f"생산계획서 분석 실패: {e}")
                     st.stop()
@@ -97,6 +98,51 @@ def page_cross_check():
         plan_df = st.session_state["cc_plan_df"]
 
         st.markdown("---")
+
+        # 엑셀 변환 전체 표 (이미지 첨부 시에만)
+        table_data = st.session_state.get("cc_table_data")
+        if table_data and table_data.get("headers") and table_data.get("rows"):
+            st.subheader("📊 생산계획서 전체 변환 결과")
+            headers = table_data["headers"]
+            rows = table_data["rows"]
+            # 중복 헤더 처리
+            unique_h = []
+            seen = {}
+            for h in headers:
+                hs = str(h) if h else ""
+                if hs in seen:
+                    seen[hs] += 1
+                    unique_h.append(f"{hs}_{seen[hs]}")
+                else:
+                    seen[hs] = 0
+                    unique_h.append(hs)
+            padded = [list(r[:len(unique_h)]) + [""] * max(0, len(unique_h) - len(r)) for r in rows]
+            full_table_df = pd.DataFrame(padded, columns=unique_h)
+            st.dataframe(full_table_df, use_container_width=True, hide_index=True)
+
+            # 엑셀 다운로드
+            from modules.excel_converter import convert_to_excel
+            full_excel = convert_to_excel(headers, rows)
+            st.download_button(
+                label="📥 생산계획서 전체 엑셀 다운로드",
+                data=full_excel,
+                file_name="plan_full_table.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+
+            # 전체 표 인쇄
+            full_html = full_table_df.to_html(index=False, border=1)
+            st.components.v1.html(
+                f"""<style>@media print{{.no-print{{display:none}}}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #333;padding:6px;text-align:center;font-size:11px}} .print-only{{display:none}} @media print{{.print-only{{display:block}}}}</style>
+                <button class="no-print" onclick="window.print()"
+                style="padding:8px 20px;background:#4B2D8E;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🖨 전체 표 인쇄</button>
+                <div class="print-only"><h3>생산계획서 전체 변환 결과</h3>{full_html}</div>""",
+                height=42,
+            )
+
+            st.markdown("---")
+
         st.subheader("📦 입고 예정 품목 리스트")
 
         cols = ["색상코드", "제조사", "신규"]
