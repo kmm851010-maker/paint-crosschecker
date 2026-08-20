@@ -54,6 +54,12 @@ def page_cross_check():
 
     # ── STEP 1: 생산계획서 첨부 → 입고 예정 리스트 ──
     st.subheader("① 생산계획서 첨부")
+    if "cc_plan_df" in st.session_state:
+        if st.button("🔄 새 생산계획서로 다시 시작", use_container_width=True):
+            for key in list(st.session_state.keys()):
+                if key.startswith("cc_"):
+                    del st.session_state[key]
+            st.rerun()
     plan_file = st.file_uploader(
         "생산계획서를 업로드하세요 (이미지 또는 엑셀)",
         type=["jpg", "jpeg", "png", "webp", "xlsx", "xls", "csv"],
@@ -197,12 +203,6 @@ def page_cross_check():
             height=42,
         )
 
-        # 초기화 버튼
-        if st.button("🔄 새 생산계획서로 다시 시작", use_container_width=True):
-            for key in list(st.session_state.keys()):
-                if key.startswith("cc_"):
-                    del st.session_state[key]
-            st.rerun()
 
         # ── STEP 2: 입고 완료 후 ERP 첨부 → 검증 ──
         st.markdown("---")
