@@ -167,8 +167,10 @@ def parse_plan_excel(file_bytes: bytes, file_name: str) -> list:
                 except (ValueError, TypeError):
                     pass
 
-            # "위생산" 배제
-            if "위생산" in code or "위생산" in maker:
+            # "위생산" 오인식 제거
+            if "위생산" in maker:
+                maker = ""
+            if "위생산" in code:
                 continue
 
             all_items.append({

@@ -196,9 +196,11 @@ def extract_new_items_from_table(table_data: dict) -> list:
             if not code:
                 continue
 
-            # "위생산" 배제
-            if "위생산" in code or "위생산" in maker:
-                continue
+            # "위생산" 오인식 제거
+            if "위생산" in maker:
+                maker = ""
+            if "위생산" in code:
+                continue  # 코드 자체가 위생산이면 유효한 품목이 아님
 
             items.append({
                 "색상코드": code,
