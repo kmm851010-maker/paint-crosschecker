@@ -774,7 +774,7 @@ def page_work_log():
 
     st.markdown("---")
     st.subheader("4. 특이 사항")
-    note_text = st.text_area("특이사항 내용 입력", "- AGV 정상 가동\n- 특이 안전사항 없음", height=100)
+    note_text = st.text_area("특이사항 내용 입력", "", height=100)
 
     st.markdown("---")
     excel_bytes = generate_work_log_excel(selected_date, shift_data_final, work_items_data, safety_items_data, note_text)
