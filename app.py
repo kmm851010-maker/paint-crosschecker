@@ -96,11 +96,13 @@ def page_cross_check():
             try:
                 plan_bytes_raw = plan_file.getvalue()
                 plan_ext = plan_file.name.lower().rsplit(".", 1)[-1]
+                plan_fname = plan_file.name
                 if plan_ext in ("jpg", "jpeg", "png", "webp"):
                     plan_bytes = compress_image(plan_bytes_raw)
+                    plan_fname = plan_fname.rsplit(".", 1)[0] + ".jpg"
                 else:
                     plan_bytes = plan_bytes_raw
-                plan_data = extract_production_plan(plan_bytes, plan_file.name, api_key)
+                plan_data = extract_production_plan(plan_bytes, plan_fname, api_key)
                 plan_rows = flatten_production_plan(plan_data)
                 plan_df = pd.DataFrame(plan_rows)
             except Exception as e:
@@ -111,11 +113,13 @@ def page_cross_check():
             try:
                 erp_bytes_raw = erp_file.getvalue()
                 erp_ext = erp_file.name.lower().rsplit(".", 1)[-1]
+                erp_fname = erp_file.name
                 if erp_ext in ("jpg", "jpeg", "png", "webp"):
                     erp_bytes = compress_image(erp_bytes_raw)
+                    erp_fname = erp_fname.rsplit(".", 1)[0] + ".jpg"
                 else:
                     erp_bytes = erp_bytes_raw
-                erp_df = process_erp_file(erp_bytes, erp_file.name, api_key)
+                erp_df = process_erp_file(erp_bytes, erp_fname, api_key)
             except Exception as e:
                 st.error(f"ERP 명세서 분석 실패: {e}")
                 st.stop()
@@ -127,7 +131,7 @@ def page_cross_check():
         st.session_state["cc_erp_df"] = erp_df
         st.session_state["cc_result_df"] = result_df
         st.session_state["cc_plan_bytes"] = plan_bytes
-        st.session_state["cc_plan_name"] = plan_file.name
+        st.session_state["cc_plan_name"] = plan_fname
         st.session_state["cc_overlay"] = None
 
     # 저장된 결과가 있으면 표시
