@@ -110,12 +110,11 @@ def page_cross_check():
                         st.error(f"생산계획서 분석 실패: {e}")
                         st.stop()
             else:
-                # 엑셀/CSV → 직접 파싱
+                # 엑셀/CSV → 전용 파서
                 with st.spinner("엑셀 파일 분석 중..."):
                     try:
-                        from modules.vision_ocr import extract_production_plan, flatten_production_plan
-                        plan_data = extract_production_plan(plan_bytes, plan_fname, api_key)
-                        plan_rows = flatten_production_plan(plan_data)
+                        from modules.plan_excel_parser import parse_plan_excel
+                        plan_rows = parse_plan_excel(plan_bytes, plan_fname)
                         plan_df = pd.DataFrame(plan_rows)
                         st.session_state["cc_precision_items"] = None
                         st.session_state["cc_parse_method"] = "excel"
