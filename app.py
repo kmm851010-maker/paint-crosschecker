@@ -34,7 +34,7 @@ st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(
     "메뉴 선택",
-    ["🔍 생산계획 vs 입고 교차검증", "📊 캡처 이미지 → 엑셀 변환기"],
+    ["📊 캡처 이미지 → 엑셀 변환기", "🔍 생산계획 vs 입고 교차검증"],
     label_visibility="collapsed",
 )
 
