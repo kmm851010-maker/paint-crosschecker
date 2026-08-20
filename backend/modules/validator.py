@@ -111,17 +111,20 @@ def validate_item(item: dict) -> dict:
     if "신규" in item:
         item["신규"] = qty
 
-    # 3. 제조사 화이트리스트 검증
+    # 3. 제조사 검증 (한글/영문만 허용, 숫자·특수기호 포함 시 경고)
     maker = str(item.get("maker", "") or item.get("제조사", "")).strip()
-    if maker and maker not in MANUFACTURER_WHITELIST:
-        # 유사도 기반 자동 교정 시도
+    if maker:
+        # 퍼지 매칭 시도
         corrected_maker = _fuzzy_match_maker(maker)
         if corrected_maker:
             warnings.append(f"제조사 자동 교정: {maker} → {corrected_maker}")
             maker = corrected_maker
             score -= 0.1
-        else:
-            warnings.append(f"제조사 미등록: {maker} (허용: {', '.join(MANUFACTURER_WHITELIST)})")
+
+        # 숫자·특수기호 포함 여부 체크
+        import re as _re
+        if _re.search(r"[0-9!@#$%^&*()+=\[\]{}<>?/\\|~`]", maker):
+            warnings.append(f"제조사에 숫자/특수기호 포함: {maker}")
             score -= 0.2
 
     item["maker"] = maker
