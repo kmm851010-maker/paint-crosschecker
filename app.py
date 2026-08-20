@@ -122,9 +122,12 @@ def page_cross_check():
         incoming_html_full = incoming_df.to_html(border=1)
         encoded = b64.b64encode(incoming_html_full.encode()).decode()
         st.components.v1.html(
-            f"""<button onclick="var h=atob('{encoded}');var w=window.open('','','width=800,height=600');w.document.write('<html><head><meta charset="utf-8"><title>입고 예정 품목</title><style>table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #333;padding:8px;text-align:center}}</style></head><body><h2>입고 예정 품목</h2>'+h+'</body></html>');w.document.close();w.print();"
-            style="padding:8px 20px;background:#4B2D8E;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🖨 인쇄</button>""",
+            f"""<style>@media print{{.no-print{{display:none}}}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #333;padding:8px;text-align:center}}</style>
+            <button class="no-print" onclick="window.print()"
+            style="padding:8px 20px;background:#4B2D8E;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;margin-bottom:10px;">🖨 인쇄</button>
+            <h3>입고 예정 품목</h3>{incoming_html_full}""",
             height=45,
+            scrolling=True,
         )
 
         # 초기화 버튼
@@ -234,13 +237,14 @@ def page_cross_check():
                 )
 
                 # 인쇄 버튼
-                import base64 as b64
                 result_html = result_df.to_html(index=False, border=1)
-                encoded_r = b64.b64encode(result_html.encode()).decode()
                 st.components.v1.html(
-                    f"""<button onclick="var h=atob('{encoded_r}');var w=window.open('','','width=800,height=600');w.document.write('<html><head><meta charset="utf-8"><title>교차검증 결과</title><style>table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #333;padding:8px;text-align:center}}</style></head><body><h2>교차검증 결과</h2>'+h+'</body></html>');w.document.close();w.print();"
-                    style="padding:8px 20px;background:#4B2D8E;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🖨 인쇄</button>""",
+                    f"""<style>@media print{{.no-print{{display:none}}}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #333;padding:8px;text-align:center}}</style>
+                    <button class="no-print" onclick="window.print()"
+                    style="padding:8px 20px;background:#4B2D8E;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;margin-bottom:10px;">🖨 인쇄</button>
+                    <h3>교차검증 결과</h3>{result_html}""",
                     height=45,
+                    scrolling=True,
                 )
 
                 # 엑셀 다운로드
