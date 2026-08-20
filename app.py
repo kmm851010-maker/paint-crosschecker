@@ -37,12 +37,10 @@ menu = st.sidebar.radio(
 # 메뉴 1: 생산계획 vs 입고 교차검증
 # ══════════════════════════════════════
 def page_cross_check():
-    from modules.vision_ocr import extract_production_plan, flatten_production_plan
     from modules.erp_parser import process_erp_file
     from modules.matcher import cross_check
     from modules.excel_generator import generate_report
     from utils.formatter import style_result_table, format_summary
-    from utils.image_compress import compress_image
 
     st.title("🔍 생산계획 vs 입고 교차검증")
     st.caption("① 생산계획서 첨부 → 입고 리스트 확인 → ② 입고 완료 후 ERP 첨부 → 검증")
@@ -50,14 +48,18 @@ def page_cross_check():
     # ── STEP 1: 생산계획서 첨부 → 입고 예정 리스트 ──
     st.subheader("① 생산계획서 첨부")
     plan_file = st.file_uploader(
-        "생산계획서 사진을 업로드하세요",
-        type=["jpg", "jpeg", "png", "webp"],
+        "생산계획서를 업로드하세요 (이미지 또는 엑셀)",
+        type=["jpg", "jpeg", "png", "webp", "xlsx", "xls", "csv"],
         key="plan_upload",
-        help="출력 직후 촬영한 깨끗한 인쇄 상태의 사진",
+        help="인쇄물 사진 또는 엑셀 파일",
     )
 
     if plan_file:
-        st.image(plan_file, caption="업로드된 생산계획서", use_container_width=True)
+        ext = plan_file.name.lower().rsplit(".", 1)[-1]
+        if ext in ("jpg", "jpeg", "png", "webp"):
+            st.image(plan_file, caption="업로드된 생산계획서", use_container_width=True)
+        else:
+            st.success(f"📄 {plan_file.name} 업로드 완료")
 
     # 생산계획서 분석 버튼
     if plan_file and "cc_plan_df" not in st.session_state:
@@ -66,22 +68,50 @@ def page_cross_check():
                 st.error("API Key가 설정되지 않았습니다. 관리자에게 문의하세요.")
                 st.stop()
 
-            with st.spinner("생산계획서 OCR 분석 중..."):
-                try:
-                    plan_bytes_raw = plan_file.getvalue()
-                    plan_ext = plan_file.name.lower().rsplit(".", 1)[-1]
-                    plan_fname = plan_file.name
-                    if plan_ext in ("jpg", "jpeg", "png", "webp"):
-                        plan_bytes = compress_image(plan_bytes_raw)
-                        plan_fname = plan_fname.rsplit(".", 1)[0] + ".jpg"
-                    else:
-                        plan_bytes = plan_bytes_raw
-                    plan_data = extract_production_plan(plan_bytes, plan_fname, api_key)
-                    plan_rows = flatten_production_plan(plan_data)
-                    plan_df = pd.DataFrame(plan_rows)
-                except Exception as e:
-                    st.error(f"생산계획서 분석 실패: {e}")
-                    st.stop()
+            plan_bytes = plan_file.getvalue()
+            plan_fname = plan_file.name
+            plan_ext = plan_fname.lower().rsplit(".", 1)[-1]
+            is_image = plan_ext in ("jpg", "jpeg", "png", "webp")
+
+            if is_image:
+                # 정밀 파이프라인 (OpenCV 그리드 → 타겟 OCR)
+                with st.spinner("정밀 분석 중... (그리드 감지 → 셀 단위 OCR → 검증)"):
+                    try:
+                        from modules.precision_ocr import extract_plan_precision
+                        result = extract_plan_precision(plan_bytes, plan_fname, api_key)
+                        items = result["items"]
+
+                        plan_rows = []
+                        for item in items:
+                            plan_rows.append({
+                                "라인": item.get("layer", ""),
+                                "위치": "",
+                                "색상코드": item.get("item_code", ""),
+                                "제조사": item.get("maker", ""),
+                                "재고": 0,
+                                "신규": item.get("quantity", 0),
+                                "생산량": 0,
+                            })
+                        plan_df = pd.DataFrame(plan_rows)
+
+                        st.session_state["cc_precision_items"] = items
+                        st.session_state["cc_parse_method"] = result.get("method", "fallback")
+                    except Exception as e:
+                        st.error(f"생산계획서 분석 실패: {e}")
+                        st.stop()
+            else:
+                # 엑셀/CSV → 직접 파싱
+                with st.spinner("엑셀 파일 분석 중..."):
+                    try:
+                        from modules.vision_ocr import extract_production_plan, flatten_production_plan
+                        plan_data = extract_production_plan(plan_bytes, plan_fname, api_key)
+                        plan_rows = flatten_production_plan(plan_data)
+                        plan_df = pd.DataFrame(plan_rows)
+                        st.session_state["cc_precision_items"] = None
+                        st.session_state["cc_parse_method"] = "excel"
+                    except Exception as e:
+                        st.error(f"생산계획서 분석 실패: {e}")
+                        st.stop()
 
             st.session_state["cc_plan_df"] = plan_df
             st.session_state["cc_plan_bytes"] = plan_bytes
@@ -93,6 +123,14 @@ def page_cross_check():
         plan_df = st.session_state["cc_plan_df"]
 
         st.markdown("---")
+        parse_method = st.session_state.get("cc_parse_method", "")
+        if parse_method == "grid":
+            st.success("✅ 정밀 파이프라인 (OpenCV 그리드 + 셀 단위 OCR)")
+        elif parse_method == "fallback":
+            st.info("ℹ️ 전체 이미지 OCR 모드 (그리드 감지 실패)")
+        elif parse_method == "excel":
+            st.info("ℹ️ 엑셀 파일 직접 파싱")
+
         st.subheader("📦 입고 예정 품목 리스트")
 
         incoming_df = plan_df[plan_df["신규"] > 0][["색상코드", "제조사", "신규"]].copy()
@@ -101,7 +139,44 @@ def page_cross_check():
         incoming_df.index += 1
         incoming_df.index.name = "No."
 
-        st.dataframe(incoming_df, use_container_width=True)
+        # 정밀 모드: 셀 크롭 이미지 + 경고 표시
+        precision_items = st.session_state.get("cc_precision_items")
+        if precision_items:
+            has_warnings = any(item.get("warnings") for item in precision_items)
+            if has_warnings:
+                st.warning("⚠️ 일부 항목에 경고가 있습니다. 아래에서 원본 셀 이미지를 확인하세요.")
+
+            for i, item in enumerate(precision_items):
+                with st.expander(
+                    f"{'⚠️' if item.get('warnings') else '✅'} "
+                    f"{item.get('item_code', '?')} | {item.get('maker', '')} | "
+                    f"수량: {item.get('quantity', 0)} "
+                    f"(신뢰도: {item.get('confidence', 0):.0%})",
+                    expanded=bool(item.get("warnings")),
+                ):
+                    col_info, col_code_img, col_qty_img = st.columns([2, 1, 1])
+                    with col_info:
+                        st.write(f"**품목코드:** {item.get('item_code', '')}")
+                        st.write(f"**제조사:** {item.get('maker', '')}")
+                        st.write(f"**수량:** {item.get('quantity', 0)}")
+                        if item.get("note"):
+                            st.write(f"**비고:** {item['note']}")
+                        if item.get("layer"):
+                            st.write(f"**레이어:** {item['layer']}")
+                        for w in item.get("warnings", []):
+                            st.error(f"⚠️ {w}")
+                    with col_code_img:
+                        cell_imgs = item.get("cell_images", {})
+                        if cell_imgs.get("code"):
+                            st.caption("원본 코드 셀")
+                            st.image(f"data:image/png;base64,{cell_imgs['code']}", width=150)
+                    with col_qty_img:
+                        if cell_imgs.get("new"):
+                            st.caption("원본 수량 셀")
+                            st.image(f"data:image/png;base64,{cell_imgs['new']}", width=100)
+        else:
+            st.dataframe(incoming_df, use_container_width=True)
+
         st.success(f"총 {len(incoming_df)}개 품목 | 합계: {int(incoming_df['입고예정수량'].sum())}개")
 
         # 입고 예정 엑셀 다운로드 + 인쇄
