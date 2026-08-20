@@ -118,7 +118,16 @@ def page_cross_check():
                     unique_h.append(hs)
             padded = [list(r[:len(unique_h)]) + [""] * max(0, len(unique_h) - len(r)) for r in rows]
             full_table_df = pd.DataFrame(padded, columns=unique_h)
-            st.dataframe(full_table_df, use_container_width=True, hide_index=True)
+
+            col_img, col_table = st.columns(2)
+            with col_img:
+                st.caption("원본 이미지")
+                plan_bytes = st.session_state.get("cc_plan_bytes")
+                if plan_bytes:
+                    st.image(plan_bytes, use_container_width=True)
+            with col_table:
+                st.caption(f"변환 결과 ({len(rows)}행 × {len(headers)}열)")
+                st.dataframe(full_table_df, use_container_width=True, hide_index=True)
 
             # 엑셀 다운로드
             from modules.excel_converter import convert_to_excel
