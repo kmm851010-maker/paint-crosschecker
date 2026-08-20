@@ -742,7 +742,7 @@ def page_work_log():
         with rc1:
             leave_name = st.selectbox("대상자", ALL_MEMBERS, key="leave_name")
         with rc2:
-            leave_type = st.selectbox("구분", ["정기휴가", "공가", "휴직", "대근", "교육"], key="leave_type")
+            leave_type = st.selectbox("구분", ["정기휴가", "연차", "특별휴가", "명휴", "생일휴가", "공가", "공상휴업", "산재", "휴직", "대근", "교육"], key="leave_type")
         with rc3:
             leave_start = st.date_input("시작일", datetime.date.today(), key="leave_start")
         with rc4:
@@ -851,7 +851,7 @@ def page_work_log():
         with c4:
             st.markdown("**휴무**")
             off_name = st.text_input("휴무자", value=shift_auto["휴무_근무자"])
-            off_type = st.selectbox("휴무 구분", ["교대휴무","주휴휴무","정기휴가","공가"],
+            off_type = st.selectbox("휴무 구분", ["교대휴무","주휴휴무","정기휴가","연차","특별휴가","명휴","생일휴가","공가","공상휴업","산재","휴직","교육"],
                                     index=0 if shift_auto["휴무_구분"]=="교대휴무" else 1)
 
         shift_data_final = {
