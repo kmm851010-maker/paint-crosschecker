@@ -81,8 +81,11 @@ def page_cross_check():
             with st.spinner("생산계획서 분석 중... (Tool Use 정밀 추출)"):
                 try:
                     from modules.vision_ocr import extract_production_plan
-                    plan_rows = extract_production_plan(plan_bytes, plan_fname, api_key)
-                    plan_df = pd.DataFrame(plan_rows)
+                    result = extract_production_plan(plan_bytes, plan_fname, api_key)
+                    plan_df = pd.DataFrame(result["items"])
+                    st.session_state["cc_ocr_diffs"] = result.get("diffs", [])
+                    st.session_state["cc_ocr_match"] = result.get("match", True)
+                    st.session_state["cc_ocr_counts"] = (result.get("count_1", 0), result.get("count_2", 0))
                 except Exception as e:
                     st.error(f"생산계획서 분석 실패: {e}")
                     st.stop()
@@ -97,6 +100,19 @@ def page_cross_check():
         plan_df = st.session_state["cc_plan_df"]
 
         st.markdown("---")
+
+        # 2회 OCR 비교 결과 표시
+        ocr_match = st.session_state.get("cc_ocr_match", True)
+        ocr_diffs = st.session_state.get("cc_ocr_diffs", [])
+        ocr_counts = st.session_state.get("cc_ocr_counts", (0, 0))
+
+        if ocr_match:
+            st.success(f"✅ 2회 인식 결과 일치 (1차: {ocr_counts[0]}건, 2차: {ocr_counts[1]}건)")
+        else:
+            st.warning(f"⚠️ 2회 인식 결과 불일치 (1차: {ocr_counts[0]}건, 2차: {ocr_counts[1]}건) — 아래 차이점을 확인하세요")
+            diff_df = pd.DataFrame(ocr_diffs)
+            st.dataframe(diff_df, use_container_width=True, hide_index=True)
+
         st.subheader("📦 입고 예정 품목 리스트")
 
         cols = ["색상코드", "제조사", "신규"]
