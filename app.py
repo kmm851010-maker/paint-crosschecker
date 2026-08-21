@@ -940,55 +940,59 @@ def page_work_log():
         except (ValueError, TypeError):
             return 0
 
-    # 업무현황 폰트 확대
+    # 업무현황 폰트 확대 + 테두리
     st.markdown("""<style>
     .work-section small{font-size:15px !important;}
     .work-section p, .work-section span, .work-section strong{font-size:16px !important;}
     .work-section input{font-size:16px !important; padding:6px 8px !important;}
     .work-section [data-testid="stMetricValue"]{font-size:18px !important;}
+    .work-row{border:1px solid #D0C5E0; border-radius:6px; padding:6px 4px; margin-bottom:4px; background:#FAFAFE;}
+    .work-header{border:2px solid #4B2D8E; border-radius:6px; padding:8px 4px; margin-bottom:6px; background:#F0EDF5;}
     </style><div class="work-section">""", unsafe_allow_html=True)
 
     # 헤더 행
-    if is_2person:
-        hdr = st.columns([3, 1, 1, 1, 1])
-        hdr[0].markdown("**작업 항목**")
-        hdr[1].markdown("**주간**")
-        hdr[2].markdown("**야간**")
-    else:
-        hdr = st.columns([3, 1, 1, 1, 1, 1])
-        hdr[0].markdown("**작업 항목**")
-        hdr[1].markdown("**1근**")
-        hdr[2].markdown("**2근**")
-        hdr[3].markdown("**3근**")
-    hdr[-2].markdown("**일합계**")
-    hdr[-1].markdown("**월누계**")
+    with st.container(border=True):
+        if is_2person:
+            hdr = st.columns([3, 1, 1, 1, 1])
+            hdr[0].markdown("**작업 항목**")
+            hdr[1].markdown("**주간**")
+            hdr[2].markdown("**야간**")
+        else:
+            hdr = st.columns([3, 1, 1, 1, 1, 1])
+            hdr[0].markdown("**작업 항목**")
+            hdr[1].markdown("**1근**")
+            hdr[2].markdown("**2근**")
+            hdr[3].markdown("**3근**")
+        hdr[-2].markdown("**일합계**")
+        hdr[-1].markdown("**월누계**")
 
     work_items_data = []
     for i, name in enumerate(item_names):
         loaded_item = loaded_data.get(name, {})
-        if is_2person:
-            row = st.columns([3, 1, 1, 1, 1])
-            load_keys = ["day", "night"]
-        else:
-            row = st.columns([3, 1, 1, 1, 1, 1])
-            load_keys = ["s1", "s2", "s3"]
+        with st.container(border=True):
+            if is_2person:
+                row = st.columns([3, 1, 1, 1, 1])
+                load_keys = ["day", "night"]
+            else:
+                row = st.columns([3, 1, 1, 1, 1, 1])
+                load_keys = ["s1", "s2", "s3"]
 
-        row[0].markdown(f"<small>{name}</small>", unsafe_allow_html=True)
+            row[0].markdown(f"**{name}**")
 
-        vals = []
-        for j, lk in enumerate(load_keys):
-            default_val = loaded_item.get(lk, 0) if loaded_item else 0
-            default_str = str(default_val) if default_val > 0 else ""
-            raw = row[j + 1].text_input(f"_{i}_{j}", value=default_str, key=f"wl_{shift_labels[j]}_{i}", label_visibility="collapsed")
-            vals.append(safe_calc(raw))
+            vals = []
+            for j, lk in enumerate(load_keys):
+                default_val = loaded_item.get(lk, 0) if loaded_item else 0
+                default_str = str(default_val) if default_val > 0 else ""
+                raw = row[j + 1].text_input(f"_{i}_{j}", value=default_str, key=f"wl_{shift_labels[j]}_{i}", label_visibility="collapsed")
+                vals.append(safe_calc(raw))
 
-        daily_sum = sum(vals)
-        row[-2].markdown(f"**{daily_sum}**")
+            daily_sum = sum(vals)
+            row[-2].markdown(f"### {daily_sum}")
 
-        # 월누계 = 이전 누적(오늘 제외) + 오늘 일합계, 항상 자동
-        prev_total = month_totals_default[i]
-        running_month = prev_total + daily_sum
-        row[-1].markdown(f"**{running_month}**")
+            # 월누계 = 이전 누적(오늘 제외) + 오늘 일합계
+            prev_total = month_totals_default[i]
+            running_month = prev_total + daily_sum
+            row[-1].markdown(f"### {running_month}")
 
         if is_2person:
             work_items_data.append({
