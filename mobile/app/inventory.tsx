@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   Modal,
   ScrollView,
   StyleSheet,
@@ -14,6 +15,15 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 
 import { COLORS } from "../src/constants/config";
 import { parseBarcodeText, registerDrums, getSectorInventory, type DrumItem } from "../src/services/api";
+
+// 스캔 박스 영역 (화면 중앙 기준)
+const SCREEN = Dimensions.get("window");
+const BOX_W = 340;
+const BOX_H = 130;
+const BOX_LEFT = (SCREEN.width - BOX_W) / 2;
+const BOX_TOP = (SCREEN.height - BOX_H) / 2;
+const BOX_RIGHT = BOX_LEFT + BOX_W;
+const BOX_BOTTOM = BOX_TOP + BOX_H;
 
 const SECTORS = [
   "신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리",
@@ -41,7 +51,13 @@ export default function InventoryScreen() {
   const scanCooldown = useRef(false);
 
   // ── 스캔 처리 ──
-  const handleBarcodeScan = async ({ data }: { data: string }) => {
+  const handleBarcodeScan = async ({ data, bounds }: { data: string; bounds?: { origin: { x: number; y: number }; size: { width: number; height: number } } }) => {
+    // 박스 영역 밖 바코드 무시
+    if (bounds) {
+      const cx = bounds.origin.x + bounds.size.width / 2;
+      const cy = bounds.origin.y + bounds.size.height / 2;
+      if (cx < BOX_LEFT || cx > BOX_RIGHT || cy < BOX_TOP || cy > BOX_BOTTOM) return;
+    }
     // 같은 바코드는 2초간 중복 차단, 다른 바코드는 즉시 허용
     if (data === lastScanned.current && scanCooldown.current) return;
     scanCooldown.current = true;
@@ -290,7 +306,7 @@ const styles = StyleSheet.create({
 
   // 스캔 오버레이
   scanOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
-  scanBox: { width: 280, height: 120, borderWidth: 2, borderColor: "#fff", borderRadius: 8 },
+  scanBox: { width: 340, height: 130, borderWidth: 2, borderColor: "#fff", borderRadius: 8 },
   batchBadge: { position: "absolute", top: 60, alignSelf: "center", backgroundColor: "rgba(0,0,0,0.7)", paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 },
   batchBadgeText: { color: "#fff", fontSize: 15, fontWeight: "700" },
   lastScannedBox: { position: "absolute", bottom: 120, left: 16, right: 16, backgroundColor: "rgba(0,0,0,0.7)", padding: 10, borderRadius: 8 },
