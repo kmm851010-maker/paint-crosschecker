@@ -810,50 +810,59 @@ def page_work_log():
     _TIME_OPTS = ["없음"] + [f"{h:02d}:{m:02d}" for h in range(0, 24) for m in (0, 30)]
 
     def _calc_ot(start_str, end_str):
-        """시작~종료 시간 → (연장시간, 유형). 야간 기준: 22:00~06:00"""
+        """시작~종료 시간 → (주간연장H, 야간연장H). 야간 기준: 22:00~06:00"""
         if start_str == "없음" or end_str == "없음":
-            return 0.0, ""
+            return 0.0, 0.0
         sh, sm = int(start_str[:2]), int(start_str[3:])
         eh, em = int(end_str[:2]), int(end_str[3:])
         start_min = sh * 60 + sm
         end_min = eh * 60 + em
         if end_min <= start_min:
             end_min += 24 * 60  # 자정 넘어가는 경우
-        hours = round((end_min - start_min) / 60 * 2) / 2  # 0.5 단위 반올림
-        if hours <= 0:
-            return 0.0, ""
+        total_min = end_min - start_min
+        if total_min <= 0:
+            return 0.0, 0.0
         # 야간: 22:00(1320분) ~ 06:00 다음날(1800분)
-        is_night = start_min < 1800 and end_min > 1320
-        return hours, ("야간연장" if is_night else "주간연장")
+        night_start, night_end = 22 * 60, 30 * 60
+        overlap_start = max(start_min, night_start)
+        overlap_end = min(end_min, night_end)
+        night_min = max(0, overlap_end - overlap_start)
+        day_min = total_min - night_min
+        return round(day_min / 60 * 2) / 2, round(night_min / 60 * 2) / 2
 
     def _ot_widget(start_key, end_key):
-        """연장 시간대 선택 위젯. (ot_hours, ot_type, start_str, end_str) 반환"""
+        """연장 시간대 선택 위젯. (day_ot, night_ot, start_str, end_str) 반환"""
         start = st.selectbox("연장 시작", _TIME_OPTS, key=start_key)
         if start == "없음":
-            return 0.0, "", "없음", "없음"
+            return 0.0, 0.0, "없음", "없음"
         end = st.selectbox("연장 종료", _TIME_OPTS, key=end_key)
-        ot, ot_type = _calc_ot(start, end)
-        if ot > 0:
-            color = "#C62828" if ot_type == "야간연장" else "#1565C0"
+        day_ot, night_ot = _calc_ot(start, end)
+        total_ot = day_ot + night_ot
+        if total_ot > 0:
+            parts = []
+            if day_ot > 0:
+                parts.append(f'<span style="background:#1565C0;color:#fff;border-radius:4px;padding:2px 7px">주간 {day_ot}H</span>')
+            if night_ot > 0:
+                parts.append(f'<span style="background:#C62828;color:#fff;border-radius:4px;padding:2px 7px">야간 {night_ot}H</span>')
             st.markdown(
-                f'<div style="background:{color};color:#fff;border-radius:6px;'
-                f'padding:4px 8px;text-align:center;font-size:13px;font-weight:700;margin-top:2px">'
-                f'{ot_type} {ot}H &nbsp;({start}~{end})</div>',
+                f'<div style="text-align:center;font-size:13px;font-weight:700;margin-top:3px">'
+                f'{" + ".join(parts)}<br>'
+                f'<small style="color:#666;font-weight:400">{start}~{end} (계 {total_ot}H)</small></div>',
                 unsafe_allow_html=True
             )
-        return ot, ot_type, start, end
+        return day_ot, night_ot, start, end
 
     if is_2person:
         c1, c2, c3 = st.columns(3)
         with c1:
             st.markdown("**주간** (06:30~18:30)")
             day_name = st.text_input("주간 근무자", value=shift_auto["주간_근무자"])
-            day_ot, _, _, _ = _ot_widget("day_ot_start", "day_ot_end")
+            day_day_ot, day_night_ot, _, _ = _ot_widget("day_ot_start", "day_ot_end")
             day_note = st.text_input("주간 비고", "대근 연장4H")
         with c2:
             st.markdown("**야간** (18:30~06:30)")
             night_name = st.text_input("야간 근무자", value=shift_auto["야간_근무자"])
-            night_ot, _, _, _ = _ot_widget("night_ot_start", "night_ot_end")
+            night_day_ot, night_night_ot, _, _ = _ot_widget("night_ot_start", "night_ot_end")
             night_note = st.text_input("야간 비고", "대근 연장4H")
         with c3:
             st.markdown("**휴무**")
@@ -861,8 +870,12 @@ def page_work_log():
             off_type = st.selectbox("휴무 구분", ["교대휴무","주휴휴무"], index=0 if shift_auto["휴무_구분"]=="교대휴무" else 1)
 
         shift_data_final = {
-            "1근_조": shift_auto["주간_조"], "1근_근무자": day_name, "1근_연장": 4 + day_ot, "1근_비고": day_note,
-            "2근_조": shift_auto["야간_조"], "2근_근무자": night_name, "2근_연장": 4 + night_ot, "2근_비고": night_note,
+            "1근_조": shift_auto["주간_조"], "1근_근무자": day_name,
+            "1근_연장": 4 + day_day_ot + day_night_ot,
+            "1근_주간연장": 4 + day_day_ot, "1근_야간연장": day_night_ot, "1근_비고": day_note,
+            "2근_조": shift_auto["야간_조"], "2근_근무자": night_name,
+            "2근_연장": 4 + night_day_ot + night_night_ot,
+            "2근_주간연장": night_day_ot, "2근_야간연장": 4 + night_night_ot, "2근_비고": night_note,
             "3근_조": "", "3근_근무자": shift_auto["leave_person"], "3근_연장": 0, "3근_비고": shift_auto["leave_type"],
             "휴무_조": shift_auto["휴무_조"], "휴무_근무자": off_name, "휴무_구분": off_type,
             "is_2person": True,
@@ -872,17 +885,17 @@ def page_work_log():
         with c1:
             st.markdown("**1근** (06:30~14:30)")
             s1_name = st.text_input("1근 근무자", value=shift_auto["1근_근무자"])
-            s1_ot, s1_ot_type, _, _ = _ot_widget("s1_ot_start", "s1_ot_end")
+            s1_day_ot, s1_night_ot, _, _ = _ot_widget("s1_ot_start", "s1_ot_end")
             s1_note = st.text_input("1근 비고", "")
         with c2:
             st.markdown("**2근** (14:30~22:30)")
             s2_name = st.text_input("2근 근무자", value=shift_auto["2근_근무자"])
-            s2_ot, s2_ot_type, _, _ = _ot_widget("s2_ot_start", "s2_ot_end")
+            s2_day_ot, s2_night_ot, _, _ = _ot_widget("s2_ot_start", "s2_ot_end")
             s2_note = st.text_input("2근 비고", "")
         with c3:
             st.markdown("**3근** (22:30~06:30)")
             s3_name = st.text_input("3근 근무자", value=shift_auto["3근_근무자"])
-            s3_ot, s3_ot_type, _, _ = _ot_widget("s3_ot_start", "s3_ot_end")
+            s3_day_ot, s3_night_ot, _, _ = _ot_widget("s3_ot_start", "s3_ot_end")
             s3_note = st.text_input("3근 비고", "")
         with c4:
             st.markdown("**휴무**")
@@ -891,9 +904,12 @@ def page_work_log():
                                     index=0 if shift_auto["휴무_구분"]=="교대휴무" else 1)
 
         shift_data_final = {
-            "1근_조": shift_auto["1근_조"], "1근_근무자": s1_name, "1근_연장": s1_ot, "1근_연장유형": s1_ot_type, "1근_비고": s1_note,
-            "2근_조": shift_auto["2근_조"], "2근_근무자": s2_name, "2근_연장": s2_ot, "2근_연장유형": s2_ot_type, "2근_비고": s2_note,
-            "3근_조": shift_auto["3근_조"], "3근_근무자": s3_name, "3근_연장": s3_ot, "3근_연장유형": s3_ot_type, "3근_비고": s3_note,
+            "1근_조": shift_auto["1근_조"], "1근_근무자": s1_name,
+            "1근_연장": s1_day_ot + s1_night_ot, "1근_주간연장": s1_day_ot, "1근_야간연장": s1_night_ot, "1근_비고": s1_note,
+            "2근_조": shift_auto["2근_조"], "2근_근무자": s2_name,
+            "2근_연장": s2_day_ot + s2_night_ot, "2근_주간연장": s2_day_ot, "2근_야간연장": s2_night_ot, "2근_비고": s2_note,
+            "3근_조": shift_auto["3근_조"], "3근_근무자": s3_name,
+            "3근_연장": s3_day_ot + s3_night_ot, "3근_주간연장": s3_day_ot, "3근_야간연장": s3_night_ot, "3근_비고": s3_note,
             "휴무_조": shift_auto["휴무_조"], "휴무_근무자": off_name, "휴무_구분": off_type,
             "is_2person": False,
         }
@@ -1223,14 +1239,16 @@ def page_statistics():
             for shift_key, night_key in [("1근_근무자", "1근"), ("2근_근무자", "2근"), ("3근_근무자", "3근")]:
                 worker = shift.get(shift_key, "")
                 ot = _safe_float(shift.get(f"{night_key}_연장", 0))
-                ot_type = shift.get(f"{night_key}_연장유형", "")
                 if worker in stats:
                     stats[worker]["근무일수"] += 1
                     stats[worker]["기본근로"] += 8
                     stats[worker]["연장근로_잔업"] += ot
                     base_night = NIGHT_HOURS.get(night_key, 0)
-                    # 야간연장이면 연장시간도 야간에 추가
-                    if ot_type == "야간연장":
+                    # 새 형식: _야간연장 필드 우선 사용, 없으면 구형 _연장유형으로 판단
+                    explicit_night = shift.get(f"{night_key}_야간연장")
+                    if explicit_night is not None:
+                        base_night += _safe_float(explicit_night)
+                    elif shift.get(f"{night_key}_연장유형") == "야간연장":
                         base_night += ot
                     stats[worker]["야간근로"] += base_night
 
