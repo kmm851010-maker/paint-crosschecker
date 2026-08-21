@@ -941,7 +941,7 @@ def page_work_log():
                         load_keys = ["s1", "s2", "s3"]
                     default_val = loaded_item.get(load_keys[j], 0) if loaded_item else 0
                     default_str = str(default_val) if default_val > 0 else ""
-                    raw = cols[j].text_input(label, value=default_str, key=f"wl_{label}_{i}", placeholder="0 또는 10+5")
+                    raw = cols[j].text_input(label, value=default_str, key=f"wl_{label}_{i}", placeholder="")
                     vals.append(safe_calc(raw))
                 # 일합계 실시간 계산
                 daily_sum = sum(vals)
