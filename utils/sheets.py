@@ -28,12 +28,14 @@ def _get_client():
 def _get_sheet():
     """스프레드시트의 작업일지 시트를 반환. 없으면 생성."""
     client = _get_client()
-    try:
-        spreadsheet_id = st.secrets["SPREADSHEET_ID"]
-    except (KeyError, FileNotFoundError):
-        raise ValueError("SPREADSHEET_ID가 Streamlit Secrets에 설정되지 않았습니다.")
+    spreadsheet_id = st.secrets["SPREADSHEET_ID"]
 
-    spreadsheet = client.open_by_key(spreadsheet_id)
+    try:
+        spreadsheet = client.open_by_key(spreadsheet_id)
+    except gspread.exceptions.APIError as e:
+        raise ValueError(f"스프레드시트 접근 실패 (ID: {spreadsheet_id[:10]}...): {e}")
+    except Exception as e:
+        raise ValueError(f"스프레드시트 열기 실패: {type(e).__name__}: {e}")
 
     try:
         ws = spreadsheet.worksheet(SHEET_NAME)
