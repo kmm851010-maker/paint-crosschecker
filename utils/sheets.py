@@ -87,13 +87,15 @@ def load_work_items(selected_date):
 
 
 def get_monthly_totals(selected_date):
+    """해당 월 누계를 반환합니다. 선택 날짜는 제외 (이중 합산 방지)."""
     try:
         ws = _get_or_create_sheet("업무현황")
         month_prefix = selected_date.replace(day=1).strftime("%Y-%m-")
+        today_str = selected_date.strftime("%Y-%m-%d")
         all_data = ws.get_all_values()
         monthly = {}
         for row in all_data[1:]:
-            if row and row[0].startswith(month_prefix):
+            if row and row[0].startswith(month_prefix) and row[0] != today_str:
                 name = row[1]
                 try:
                     monthly[name] = monthly.get(name, 0) + (int(float(row[7])) if row[7] else 0)

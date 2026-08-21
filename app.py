@@ -962,19 +962,10 @@ def page_work_log():
                 # 일합계 실시간 계산
                 daily_sum = sum(vals)
                 cols[len(shift_labels)].metric("일합계", daily_sum)
-                # 월누계: 사용자 수정값 유지 + 일합계 자동 반영
+                # 월누계 = 이전 저장 누적(오늘 제외) + 오늘 일합계
                 prev_total = month_totals_default[i]
-                base_key = f"wl_month_base_{i}"
-                if base_key not in st.session_state:
-                    st.session_state[base_key] = prev_total
-                running_month = st.session_state[base_key] + daily_sum
-                new_val = cols[len(shift_labels) + 1].number_input(
-                    "월누계", value=running_month, min_value=0, step=1, key=f"wl_month_{i}"
-                )
-                # 사용자가 직접 수정하면 base 업데이트
-                if new_val != running_month:
-                    st.session_state[base_key] = new_val - daily_sum
-                    running_month = new_val
+                running_month = prev_total + daily_sum
+                cols[len(shift_labels) + 1].metric("월누계", running_month)
 
         if is_2person:
             work_items_data.append({
