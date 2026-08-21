@@ -124,10 +124,8 @@ export default function InventoryScreen() {
           barcodeScannerSettings={{ barcodeTypes: ["pdf417", "code128", "code39", "qr", "datamatrix", "aztec", "ean13", "ean8"] }}
         />
         {/* 스캔 가이드 박스 */}
-        <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-          <View style={styles.scanOverlay}>
-            <View style={styles.scanBox} />
-          </View>
+        <View style={styles.scanOverlay} pointerEvents="none">
+          <View style={styles.scanBox} />
         </View>
         {/* 배치 카운터 */}
         <View style={styles.batchBadge}>
@@ -291,7 +289,7 @@ const styles = StyleSheet.create({
   permText: { fontSize: 16, color: COLORS.textPrimary, marginBottom: 16 },
 
   // 스캔 오버레이
-  scanOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
+  scanOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center" },
   scanBox: { width: 260, height: 120, borderWidth: 2, borderColor: "#fff", borderRadius: 8 },
   batchBadge: { position: "absolute", top: 60, alignSelf: "center", backgroundColor: "rgba(0,0,0,0.7)", paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 },
   batchBadgeText: { color: "#fff", fontSize: 15, fontWeight: "700" },
