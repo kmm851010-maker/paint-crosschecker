@@ -962,10 +962,12 @@ def page_work_log():
                 # 일합계 실시간 계산
                 daily_sum = sum(vals)
                 cols[len(shift_labels)].metric("일합계", daily_sum)
-                # 월누계 = Google Sheets 누적 + 오늘 일합계 (실시간)
+                # 월누계 = Google Sheets 누적 + 오늘 일합계 (실시간 + 수정 가능)
                 prev_total = month_totals_default[i]
-                running_month = prev_total + daily_sum
-                cols[len(shift_labels) + 1].metric("월누계", running_month)
+                auto_month = prev_total + daily_sum
+                running_month = cols[len(shift_labels) + 1].number_input(
+                    "월누계", value=auto_month, min_value=0, step=1, key=f"wl_month_{i}"
+                )
 
         if is_2person:
             work_items_data.append({
