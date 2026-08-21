@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   FlatList,
   Modal,
   ScrollView,
@@ -10,6 +11,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
+const SCREEN_HEIGHT = Dimensions.get("window").height;
 import { Stack } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 
@@ -287,7 +290,7 @@ const styles = StyleSheet.create({
   permText: { fontSize: 16, color: COLORS.textPrimary, marginBottom: 16 },
 
   // 스캔 오버레이
-  scanBox: { position: "absolute", top: "35%", left: "10%", right: "10%", height: 130, borderWidth: 2, borderColor: "#fff", borderRadius: 8 },
+  scanBox: { position: "absolute", top: SCREEN_HEIGHT * 0.35, left: "10%", right: "10%", height: 130, borderWidth: 2, borderColor: "#fff", borderRadius: 8 },
   batchBadge: { position: "absolute", top: 60, alignSelf: "center", backgroundColor: "rgba(0,0,0,0.7)", paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 },
   batchBadgeText: { color: "#fff", fontSize: 15, fontWeight: "700" },
   lastScannedBox: { position: "absolute", bottom: 120, left: 16, right: 16, backgroundColor: "rgba(0,0,0,0.7)", padding: 10, borderRadius: 8 },
