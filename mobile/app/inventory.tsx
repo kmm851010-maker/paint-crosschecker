@@ -47,6 +47,7 @@ export default function InventoryScreen() {
   const [batch, setBatch] = useState<DrumItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [sectorData, setSectorData] = useState<Record<string, any[]>>({});
+  const [scanViewSize, setScanViewSize] = useState({ width: 0, height: 0 });
   const lastScanned = useRef<string>("");
   const scanCooldown = useRef(false);
 
@@ -130,8 +131,15 @@ export default function InventoryScreen() {
 
   // ── 스캔 화면 ──
   if (mode === "scanning") {
+    const boxW = 340, boxH = 130;
+    const boxTop = scanViewSize.height > 0 ? (scanViewSize.height - boxH) / 2 : 0;
+    const boxLeft = scanViewSize.width > 0 ? (scanViewSize.width - boxW) / 2 : 0;
+
     return (
-      <View style={{ flex: 1, backgroundColor: "#000" }}>
+      <View
+        style={{ flex: 1, backgroundColor: "#000" }}
+        onLayout={(e) => setScanViewSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
+      >
         <Stack.Screen options={{ title: "바코드 스캔", headerShown: false }} />
         <CameraView
           style={StyleSheet.absoluteFillObject}
@@ -139,8 +147,10 @@ export default function InventoryScreen() {
           onBarcodeScanned={handleBarcodeScan}
           barcodeScannerSettings={{ barcodeTypes: ["pdf417", "code128", "code39", "qr", "datamatrix", "aztec", "ean13", "ean8"] }}
         />
-        {/* 스캔 가이드 박스 - 픽셀 좌표로 직접 배치 */}
-        <View style={styles.scanBox} pointerEvents="none" />
+        {/* 스캔 가이드 박스 - 실제 View 크기 측정 후 배치 */}
+        {scanViewSize.height > 0 && (
+          <View style={{ position: "absolute", top: boxTop, left: boxLeft, width: boxW, height: boxH, borderWidth: 2, borderColor: "#fff", borderRadius: 8 }} pointerEvents="none" />
+        )}
         {/* 배치 카운터 */}
         <View style={styles.batchBadge}>
           <Text style={styles.batchBadgeText}>스캔됨: {batch.length}드럼</Text>
