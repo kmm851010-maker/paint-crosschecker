@@ -131,34 +131,19 @@ export default function InventoryScreen() {
 
   // ── 스캔 화면 ──
   if (mode === "scanning") {
-    // CSS의 top:50% left:50% translate(-50%,-50%) 와 동일한 원리
-    const BOX_W = 340, BOX_H = 130;
-
     return (
       <View style={{ flex: 1, backgroundColor: "#000" }}>
-        <Stack.Screen options={{ title: "바코드 스캔", headerShown: false }} />
+        <Stack.Screen options={{ title: "바코드 스캔", headerShown: true }} />
         <CameraView
-          style={StyleSheet.absoluteFillObject}
+          style={{ flex: 1 }}
           facing="back"
           onBarcodeScanned={handleBarcodeScan}
           barcodeScannerSettings={{ barcodeTypes: ["pdf417", "code128", "code39", "qr", "datamatrix", "aztec", "ean13", "ean8"] }}
         />
-        {/* 스캔 가이드 박스: top/left 50% + 음수 마진으로 정중앙 고정 */}
-        <View
-          pointerEvents="none"
-          style={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            width: BOX_W,
-            height: BOX_H,
-            marginTop: -BOX_H / 2,
-            marginLeft: -BOX_W / 2,
-            borderWidth: 2,
-            borderColor: "#fff",
-            borderRadius: 8,
-          }}
-        />
+        {/* 스캔 가이드 박스: absoluteFillObject + center */}
+        <View pointerEvents="none" style={styles.scanOverlay}>
+          <View style={styles.scanBox} />
+        </View>
         {/* 배치 카운터 */}
         <View style={styles.batchBadge}>
           <Text style={styles.batchBadgeText}>스캔됨: {batch.length}드럼</Text>
@@ -320,8 +305,9 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   permText: { fontSize: 16, color: COLORS.textPrimary, marginBottom: 16 },
 
-  // 스캔 박스 - 픽셀 좌표로 정확히 배치
-  scanBox: { position: "absolute", top: BOX_TOP, left: BOX_LEFT, width: BOX_W, height: BOX_H, borderWidth: 2, borderColor: "#fff", borderRadius: 8 },
+  // 스캔 오버레이 + 박스
+  scanOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
+  scanBox: { width: 340, height: 130, borderWidth: 2, borderColor: "#fff", borderRadius: 8 },
   batchBadge: { position: "absolute", top: 60, alignSelf: "center", backgroundColor: "rgba(0,0,0,0.7)", paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 },
   batchBadgeText: { color: "#fff", fontSize: 15, fontWeight: "700" },
   lastScannedBox: { position: "absolute", bottom: 120, left: 16, right: 16, backgroundColor: "rgba(0,0,0,0.7)", padding: 10, borderRadius: 8 },
