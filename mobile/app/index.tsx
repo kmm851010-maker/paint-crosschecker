@@ -189,9 +189,14 @@ export default function HomeScreen() {
         options={{
           title: "KG Counter",
           headerRight: () => (
-            <TouchableOpacity onPress={handleLogout} style={{ marginRight: 4 }}>
-              <Text style={{ color: "#fff", fontSize: 13 }}>{userName} | 로그아웃</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginRight: 4 }}>
+              <TouchableOpacity onPress={() => router.push("/inventory")}>
+                <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>재고</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleLogout}>
+                <Text style={{ color: "#fff", fontSize: 13 }}>{userName} | 로그아웃</Text>
+              </TouchableOpacity>
+            </View>
           ),
         }}
       />

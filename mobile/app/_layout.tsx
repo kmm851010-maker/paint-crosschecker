@@ -14,6 +14,7 @@ export default function RootLayout() {
       >
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="index" />
+        <Stack.Screen name="inventory" />
       </Stack>
     </>
   );

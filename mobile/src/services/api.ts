@@ -136,6 +136,50 @@ export async function generateIncomingExcel(
   return data.excel_base64;
 }
 
+// ── 재고 관리 ──
+
+export interface DrumItem {
+  lot: string;
+  product: string;
+  maker: string;
+}
+
+export interface SectorInventory {
+  [sector: string]: DrumItem & { registered: string; updated: string }[];
+}
+
+export async function parseBarcodeText(rawText: string): Promise<DrumItem> {
+  const response = await fetch(`${API_BASE_URL}/api/inventory/parse-barcode`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ raw_text: rawText }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "파싱 실패" }));
+    throw new Error(error.detail || `서버 오류 (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function registerDrums(drums: DrumItem[], sector: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/inventory/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ drums, sector }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "등록 실패" }));
+    throw new Error(error.detail || `서버 오류 (${response.status})`);
+  }
+}
+
+export async function getSectorInventory(): Promise<SectorInventory> {
+  const response = await fetch(`${API_BASE_URL}/api/inventory/sectors`);
+  if (!response.ok) throw new Error("재고 조회 실패");
+  const data = await response.json();
+  return data.sectors;
+}
+
 // 교차검증 결과 엑셀
 export async function downloadExcelBase64(
   planFileUris: string[],

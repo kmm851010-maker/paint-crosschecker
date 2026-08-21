@@ -200,6 +200,59 @@ async def generate_incoming_excel_endpoint(req: IncomingPlanRequest):
         raise HTTPException(status_code=500, detail=f"입고 예정 엑셀 생성 실패: {str(e)}")
 
 
+# --- 재고 관리 ---
+
+class ParseBarcodeRequest(BaseModel):
+    raw_text: str
+
+
+class DrumItem(BaseModel):
+    lot: str
+    product: str
+    maker: str
+
+
+class InventoryRegisterRequest(BaseModel):
+    drums: list[DrumItem]
+    sector: str
+
+
+@app.post("/api/inventory/parse-barcode")
+async def parse_barcode_endpoint(req: ParseBarcodeRequest):
+    """바코드 텍스트에서 LOT/품명/제조사 파싱"""
+    from utils.inventory_sheets import parse_barcode
+    result = parse_barcode(req.raw_text)
+    if not result:
+        raise HTTPException(status_code=400, detail="바코드 형식이 올바르지 않습니다. (최소 16자리 필요)")
+    return result
+
+
+@app.post("/api/inventory/register")
+async def inventory_register(req: InventoryRegisterRequest):
+    """드럼 목록을 섹터에 등록/이동, 라인입고 시 재고에서 제거"""
+    from utils.inventory_sheets import save_drums_to_sector, checkout_drums, CHECKOUT_SECTOR
+    drums = [d.model_dump() for d in req.drums]
+    try:
+        if req.sector == CHECKOUT_SECTOR:
+            checkout_drums(drums)
+        else:
+            save_drums_to_sector(drums, req.sector)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, "count": len(drums), "sector": req.sector}
+
+
+@app.get("/api/inventory/sectors")
+async def get_inventory_sectors():
+    """섹터별 보관 드럼 현황 조회"""
+    from utils.inventory_sheets import get_sector_inventory
+    try:
+        sectors = get_sector_inventory()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, "sectors": sectors}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
