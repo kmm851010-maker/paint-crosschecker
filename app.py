@@ -946,27 +946,34 @@ def page_work_log():
         target_col = col_left if i < 6 else col_right
         with target_col:
             with st.expander(f"📦 {name}", expanded=True):
-                cols = st.columns(len(shift_labels) + 2)
+                # 근무 입력
+                shift_cols = st.columns(len(shift_labels))
                 vals = []
                 loaded_item = loaded_data.get(name, {})
                 for j, label in enumerate(shift_labels):
-                    # 불러온 데이터가 있으면 기본값으로 표시
                     if is_2person:
                         load_keys = ["day", "night"]
                     else:
                         load_keys = ["s1", "s2", "s3"]
                     default_val = loaded_item.get(load_keys[j], 0) if loaded_item else 0
                     default_str = str(default_val) if default_val > 0 else ""
-                    raw = cols[j].text_input(label, value=default_str, key=f"wl_{label}_{i}", placeholder="")
+                    raw = shift_cols[j].text_input(label, value=default_str, key=f"wl_{label}_{i}", placeholder="")
                     vals.append(safe_calc(raw))
-                # 일합계 실시간 계산
+
+                # 합계 행: 일합계 + 기준값 + 월누계
+                sum_cols = st.columns(3)
                 daily_sum = sum(vals)
-                cols[len(shift_labels)].metric("일합계", daily_sum)
-                # 월누계 = 자동계산값 표시 + 수정 가능
+                sum_cols[0].metric("일합계", daily_sum)
+
                 prev_total = month_totals_default[i]
-                auto_month = prev_total + daily_sum
-                raw_month = cols[len(shift_labels) + 1].text_input("월누계", value=str(auto_month), key=f"wl_month_{i}")
-                running_month = safe_calc(raw_month) if raw_month.strip() else auto_month
+                base_key = f"wl_base_{i}"
+                if base_key not in st.session_state:
+                    st.session_state[base_key] = prev_total
+                base_val = sum_cols[1].number_input("기준값", value=st.session_state[base_key], min_value=0, step=1, key=f"wl_base_input_{i}")
+                st.session_state[base_key] = base_val
+
+                running_month = base_val + daily_sum
+                sum_cols[2].metric("월누계", running_month)
 
         if is_2person:
             work_items_data.append({
