@@ -940,8 +940,13 @@ def page_work_log():
         except (ValueError, TypeError):
             return 0
 
-    # 컴팩트 스타일
-    st.markdown('<style>div[data-testid="stNumberInput"] input{padding:4px 8px !important;} div[data-testid="stTextInput"] input{padding:4px 8px !important;}</style>', unsafe_allow_html=True)
+    # 업무현황 폰트 확대
+    st.markdown("""<style>
+    .work-section small{font-size:15px !important;}
+    .work-section p, .work-section span, .work-section strong{font-size:16px !important;}
+    .work-section input{font-size:16px !important; padding:6px 8px !important;}
+    .work-section [data-testid="stMetricValue"]{font-size:18px !important;}
+    </style><div class="work-section">""", unsafe_allow_html=True)
 
     # 헤더 행
     if is_2person:
@@ -996,6 +1001,7 @@ def page_work_log():
                 "day": None, "night": None, "month_total": running_month
             })
 
+    st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("---")
     st.subheader("3. 안전 관리 사항")
     safety_questions = [
