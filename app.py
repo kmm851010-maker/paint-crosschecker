@@ -789,8 +789,8 @@ def page_work_log():
         )
         st.success(
             f"📅 **{selected_date.strftime('%Y년 %m월 %d일')}** 2인 근무\n\n"
-            f"주간(06:30~18:30): **{shift_auto['주간_조']}조 {shift_auto['주간_근무자']}** | "
-            f"야간(18:30~06:30): **{shift_auto['야간_조']}조 {shift_auto['야간_근무자']}** | "
+            f"주간(06:30-18:30): **{shift_auto['주간_조']}조 {shift_auto['주간_근무자']}** | "
+            f"야간(18:30-06:30): **{shift_auto['야간_조']}조 {shift_auto['야간_근무자']}** | "
             f"휴가: **{shift_auto['leave_person']}** | "
             f"휴무: **{shift_auto['휴무_조']}조 {shift_auto['휴무_근무자']}**"
         )
