@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "scheme": "kg-paint-checker",
     "userInterfaceStyle": "light",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "splash": {
       "backgroundColor": "#4B2D8E"
     },
