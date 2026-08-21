@@ -908,6 +908,21 @@ def page_work_log():
             pass
         st.session_state[load_key] = True
 
+    # 새로 작성 버튼
+    if st.session_state.get(f"wl_loaded_{selected_date}"):
+        if st.button("🆕 새로 작성 (저장 데이터 무시)", key="new_write"):
+            _item_names = [
+                "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
+                "신나 하차 수량", "신나 공급 수량", "논크롬 공급 수량",
+                "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
+                "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수"
+            ]
+            for idx in range(len(_item_names)):
+                for label in ["1근", "2근", "3근", "주간", "야간"]:
+                    st.session_state[f"wl_{label}_{idx}"] = ""
+            st.session_state[f"wl_loaded_{selected_date}"] = {}
+            st.rerun()
+
     loaded_data = st.session_state.get(f"wl_loaded_{selected_date}") or {}
     loaded_detail = st.session_state.get(f"wl_detail_{selected_date}") or {}
 
