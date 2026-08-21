@@ -817,6 +817,11 @@ def page_work_log():
                     "end": leave_end.isoformat(),
                     "sub": leave_sub,
                 })
+                try:
+                    from utils.sheets import save_leaves
+                    save_leaves(st.session_state["leave_list"])
+                except Exception:
+                    pass
                 st.rerun()
 
         # 등록된 목록 표시
@@ -829,6 +834,11 @@ def page_work_log():
                 with col_d:
                     if st.button("삭제", key=f"del_leave_{i}"):
                         st.session_state["leave_list"].pop(i)
+                        try:
+                            from utils.sheets import save_leaves
+                            save_leaves(st.session_state["leave_list"])
+                        except Exception:
+                            pass
                         st.rerun()
 
     st.markdown("---")
