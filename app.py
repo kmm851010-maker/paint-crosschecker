@@ -5,6 +5,8 @@
 
 import os
 import datetime
+import time
+import secrets
 
 import pandas as pd
 import streamlit as st
@@ -19,6 +21,27 @@ st.set_page_config(
 )
 
 # ──────────────────────────────────────
+# 세션 관리 (새로고침 유지 + 3시간 무활동 자동 로그아웃)
+# ──────────────────────────────────────
+_SESSIONS: dict = {}          # token -> {username, last_active}
+_SESSION_TTL = 3 * 60 * 60   # 3시간 (초)
+
+def _validate_token(token: str):
+    sess = _SESSIONS.get(token)
+    if not sess:
+        return None
+    if time.time() - sess["last_active"] > _SESSION_TTL:
+        _SESSIONS.pop(token, None)
+        return None
+    sess["last_active"] = time.time()
+    return sess["username"]
+
+def _create_token(username: str) -> str:
+    token = secrets.token_urlsafe(32)
+    _SESSIONS[token] = {"username": username, "last_active": time.time()}
+    return token
+
+# ──────────────────────────────────────
 # 로그인 처리
 # ──────────────────────────────────────
 def _check_login():
@@ -26,6 +49,19 @@ def _check_login():
     users = auth_cfg.get("users", {})
     # users 없으면 단일 password 모드
     single_pw = auth_cfg.get("password", "")
+
+    # URL 토큰으로 세션 복원 (새로고침 시 로그인 유지)
+    token = st.query_params.get("t", "")
+    if token:
+        uname = _validate_token(token)
+        if uname:
+            st.session_state["authenticated"] = True
+            st.session_state["username"] = uname
+            st.session_state["_token"] = token
+            return True
+        else:
+            # 만료된 토큰 제거
+            st.query_params.pop("t", None)
 
     if st.session_state.get("authenticated"):
         return True
@@ -67,15 +103,23 @@ def _check_login():
         # users dict 있으면 개인 ID/PW, 없으면 단일 PW
         if users:
             if users.get(uid.strip().lower()) == pw:
+                uname = uid.strip().lower()
+                token = _create_token(uname)
                 st.session_state["authenticated"] = True
-                st.session_state["username"] = uid.strip().lower()
+                st.session_state["username"] = uname
+                st.session_state["_token"] = token
+                st.query_params["t"] = token
                 st.rerun()
             else:
                 st.error("아이디 또는 비밀번호가 올바르지 않습니다.")
         else:
             if pw == single_pw:
+                uname = uid or "user"
+                token = _create_token(uname)
                 st.session_state["authenticated"] = True
-                st.session_state["username"] = uid or "user"
+                st.session_state["username"] = uname
+                st.session_state["_token"] = token
+                st.query_params["t"] = token
                 st.rerun()
             else:
                 st.error("비밀번호가 올바르지 않습니다.")
@@ -164,6 +208,8 @@ _uname = st.session_state.get("username", "")
 if _uname:
     st.sidebar.caption(f"👤 {_uname}")
 if st.sidebar.button("🚪 로그아웃", use_container_width=True):
+    _SESSIONS.pop(st.session_state.get("_token", ""), None)
+    st.query_params.clear()
     st.session_state.clear()
     st.rerun()
 st.sidebar.markdown("---")
@@ -1585,7 +1631,7 @@ def page_inventory():
         ensure_ascii=False
     )
 
-    tab_scan, tab_status = st.tabs(["📷 바코드 스캔", "📊 재고 현황"])
+    tab_status, tab_scan = st.tabs(["📊 재고 현황", "📷 바코드 스캔"])
 
     with tab_scan:
         scanner_html = f"""<!DOCTYPE html>
@@ -1749,7 +1795,7 @@ async function processBarcode(data) {{
   try {{
     const res = await fetch(BACKEND + '/api/inventory/parse-barcode', {{
       method:'POST', headers:{{'Content-Type':'application/json'}},
-      body: JSON.stringify({{text: data}})
+      body: JSON.stringify({{raw_text: data}})
     }});
     if (!res.ok) throw new Error(await res.text());
     const drum = await res.json();
@@ -1857,7 +1903,7 @@ init();
         try:
             resp = _req.get(f"{BACKEND}/api/inventory/sectors", timeout=10)
             if resp.ok:
-                data = resp.json()
+                data = resp.json().get("sectors", {})
                 if not data:
                     st.info("보관 중인 드럼 없음")
                 else:
