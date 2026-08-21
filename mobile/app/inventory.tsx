@@ -140,7 +140,7 @@ export default function InventoryScreen() {
           barcodeScannerSettings={{ barcodeTypes: ["pdf417", "code128", "code39", "qr", "datamatrix", "aztec", "ean13", "ean8"] }}
         />
         {/* 스캔 가이드 박스 */}
-        <View style={styles.scanOverlay} pointerEvents="none">
+        <View style={[StyleSheet.absoluteFillObject, { alignItems: "center", justifyContent: "center" }]} pointerEvents="none">
           <View style={styles.scanBox} />
         </View>
         {/* 배치 카운터 */}
