@@ -2,8 +2,6 @@ import React, { useState, useRef, useEffect } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
-  FlatList,
   Modal,
   ScrollView,
   StyleSheet,
@@ -11,8 +9,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-
-const SCREEN_HEIGHT = Dimensions.get("window").height;
 import { Stack } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 
@@ -46,7 +42,8 @@ export default function InventoryScreen() {
 
   // ── 스캔 처리 ──
   const handleBarcodeScan = async ({ data }: { data: string }) => {
-    if (scanCooldown.current || data === lastScanned.current) return;
+    // 같은 바코드는 2초간 중복 차단, 다른 바코드는 즉시 허용
+    if (data === lastScanned.current && scanCooldown.current) return;
     scanCooldown.current = true;
     lastScanned.current = data;
     setTimeout(() => { scanCooldown.current = false; }, 2000);
@@ -125,35 +122,36 @@ export default function InventoryScreen() {
           facing="back"
           onBarcodeScanned={handleBarcodeScan}
           barcodeScannerSettings={{ barcodeTypes: ["pdf417", "code128", "code39", "qr", "datamatrix", "aztec", "ean13", "ean8"] }}
-        >
-          {/* 스캔 가이드 박스 - CameraView 기준 중앙 */}
-          <View style={styles.scanBox} pointerEvents="none" />
-          {/* 배치 카운터 */}
-          <View style={styles.batchBadge}>
-            <Text style={styles.batchBadgeText}>스캔됨: {batch.length}드럼</Text>
+        />
+        {/* 스캔 가이드 박스 */}
+        <View style={styles.scanOverlay} pointerEvents="none">
+          <View style={styles.scanBox} />
+        </View>
+        {/* 배치 카운터 */}
+        <View style={styles.batchBadge}>
+          <Text style={styles.batchBadgeText}>스캔됨: {batch.length}드럼</Text>
+        </View>
+        {/* 최근 스캔 */}
+        {batch.length > 0 && (
+          <View style={styles.lastScannedBox}>
+            <Text style={styles.lastScannedText}>
+              최근: {batch[batch.length - 1].lot} ({batch[batch.length - 1].maker})
+            </Text>
           </View>
-          {/* 최근 스캔 */}
-          {batch.length > 0 && (
-            <View style={styles.lastScannedBox}>
-              <Text style={styles.lastScannedText}>
-                최근: {batch[batch.length - 1].lot} ({batch[batch.length - 1].maker})
-              </Text>
-            </View>
-          )}
-          {/* 하단 버튼 */}
-          <View style={styles.scanFooter}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => setMode("idle")}>
-              <Text style={styles.cancelBtnText}>취소</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.doneBtn, batch.length === 0 && styles.btnDisabled]}
-              onPress={() => { if (batch.length > 0) setMode("sectorPick"); }}
-              disabled={batch.length === 0}
-            >
-              <Text style={styles.doneBtnText}>완료 ({batch.length})</Text>
-            </TouchableOpacity>
-          </View>
-        </CameraView>
+        )}
+        {/* 하단 버튼 */}
+        <View style={styles.scanFooter}>
+          <TouchableOpacity style={styles.cancelBtn} onPress={() => setMode("idle")}>
+            <Text style={styles.cancelBtnText}>취소</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.doneBtn, batch.length === 0 && styles.btnDisabled]}
+            onPress={() => { if (batch.length > 0) setMode("sectorPick"); }}
+            disabled={batch.length === 0}
+          >
+            <Text style={styles.doneBtnText}>완료 ({batch.length})</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -291,7 +289,8 @@ const styles = StyleSheet.create({
   permText: { fontSize: 16, color: COLORS.textPrimary, marginBottom: 16 },
 
   // 스캔 오버레이
-  scanBox: { position: "absolute", top: "38%", left: "10%", right: "10%", height: 130, borderWidth: 2, borderColor: "#fff", borderRadius: 8 },
+  scanOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
+  scanBox: { width: 280, height: 120, borderWidth: 2, borderColor: "#fff", borderRadius: 8 },
   batchBadge: { position: "absolute", top: 60, alignSelf: "center", backgroundColor: "rgba(0,0,0,0.7)", paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 },
   batchBadgeText: { color: "#fff", fontSize: 15, fontWeight: "700" },
   lastScannedBox: { position: "absolute", bottom: 120, left: 16, right: 16, backgroundColor: "rgba(0,0,0,0.7)", padding: 10, borderRadius: 8 },
