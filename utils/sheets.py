@@ -127,6 +127,54 @@ def _update_monthly_totals(ws, selected_date):
                 ws.update_cell(i + 1, 9, monthly[name])  # 9번째 컬럼 = 월누계
 
 
+def load_work_log(selected_date):
+    """해당 날짜의 저장된 작업일지 데이터를 불러옵니다."""
+    try:
+        ws = _get_sheet()
+        if ws is None:
+            return None
+
+        date_str = selected_date.strftime("%Y-%m-%d")
+        all_data = ws.get_all_values()
+
+        items = {}
+        for i, row in enumerate(all_data):
+            if i == 0:
+                continue
+            if row and row[0] == date_str:
+                name = row[1]
+                try:
+                    items[name] = {
+                        "s1": int(float(row[2])) if row[2] else 0,
+                        "s2": int(float(row[3])) if row[3] else 0,
+                        "s3": int(float(row[4])) if row[4] else 0,
+                        "day": int(float(row[5])) if row[5] else 0,
+                        "night": int(float(row[6])) if row[6] else 0,
+                    }
+                except (ValueError, IndexError):
+                    pass
+
+        return items if items else None
+    except Exception:
+        return None
+
+
+def has_saved_data(selected_date):
+    """해당 날짜에 저장된 데이터가 있는지 확인합니다."""
+    try:
+        ws = _get_sheet()
+        if ws is None:
+            return False
+        date_str = selected_date.strftime("%Y-%m-%d")
+        all_data = ws.get_all_values()
+        for row in all_data[1:]:
+            if row and row[0] == date_str:
+                return True
+        return False
+    except Exception:
+        return False
+
+
 def get_monthly_totals(selected_date):
     """해당 월의 작업항목별 월누계를 반환합니다."""
     try:

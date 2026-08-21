@@ -857,6 +857,37 @@ def page_work_log():
         }
 
     st.markdown("---")
+
+    # 기존 데이터 불러오기
+    if f"wl_loaded_{selected_date}" not in st.session_state:
+        st.session_state[f"wl_loaded_{selected_date}"] = None
+        try:
+            from utils.sheets import has_saved_data
+            if has_saved_data(selected_date):
+                st.session_state[f"wl_ask_load_{selected_date}"] = True
+        except Exception:
+            pass
+
+    if st.session_state.get(f"wl_ask_load_{selected_date}"):
+        st.info(f"📂 {selected_date.strftime('%Y-%m-%d')}에 저장된 작업일지가 있습니다.")
+        lc1, lc2 = st.columns(2)
+        with lc1:
+            if st.button("✅ 불러오기", use_container_width=True, key="load_yes"):
+                try:
+                    from utils.sheets import load_work_log
+                    loaded = load_work_log(selected_date)
+                    st.session_state[f"wl_loaded_{selected_date}"] = loaded
+                except Exception:
+                    pass
+                st.session_state[f"wl_ask_load_{selected_date}"] = False
+                st.rerun()
+        with lc2:
+            if st.button("❌ 새로 작성", use_container_width=True, key="load_no"):
+                st.session_state[f"wl_ask_load_{selected_date}"] = False
+                st.rerun()
+
+    loaded_data = st.session_state.get(f"wl_loaded_{selected_date}") or {}
+
     st.subheader("2. 업무 현황 입력")
     item_names = [
         "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
@@ -901,16 +932,28 @@ def page_work_log():
             with st.expander(f"📦 {name}", expanded=True):
                 cols = st.columns(len(shift_labels) + 2)
                 vals = []
+                loaded_item = loaded_data.get(name, {})
                 for j, label in enumerate(shift_labels):
-                    raw = cols[j].text_input(label, value="", key=f"wl_{label}_{i}", placeholder="0 또는 10+5")
+                    # 불러온 데이터가 있으면 기본값으로 표시
+                    if is_2person:
+                        load_keys = ["day", "night"]
+                    else:
+                        load_keys = ["s1", "s2", "s3"]
+                    default_val = loaded_item.get(load_keys[j], 0) if loaded_item else 0
+                    default_str = str(default_val) if default_val > 0 else ""
+                    raw = cols[j].text_input(label, value=default_str, key=f"wl_{label}_{i}", placeholder="0 또는 10+5")
                     vals.append(safe_calc(raw))
                 # 일합계 실시간 계산
                 daily_sum = sum(vals)
                 cols[len(shift_labels)].metric("일합계", daily_sum)
-                # 월누계 = 이전 누적 + 오늘 합계 (수정 가능)
+                # 월누계 = 이전 누적 + 오늘 합계 (수정 가능, +/- 없음)
                 prev_total = month_totals_default[i]
                 auto_month = prev_total + daily_sum
-                running_month = cols[len(shift_labels) + 1].number_input("월누계", value=auto_month, step=1, key=f"wl_month_{i}")
+                month_raw = cols[len(shift_labels) + 1].text_input("월누계", value=str(auto_month), key=f"wl_month_{i}")
+                try:
+                    running_month = int(float(month_raw)) if month_raw.strip() else auto_month
+                except (ValueError, TypeError):
+                    running_month = auto_month
 
         if is_2person:
             work_items_data.append({
