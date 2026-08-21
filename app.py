@@ -11,12 +11,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# 모듈 캐시 초기화
-import importlib
-for mod_name in list(__import__('sys').modules.keys()):
-    if mod_name.startswith("modules."):
-        del __import__('sys').modules[mod_name]
-
 st.set_page_config(
     page_title="스마트 공정·자재 관리",
     page_icon="🏭",
@@ -870,7 +864,13 @@ def page_work_log():
         "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
         "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수"
     ]
-    month_totals_default = [2960, 4116, 1108, 486, 495, 49, 3196, 167, 478, 132, 42, 39]
+    # Google Sheets에서 월누계 자동 로드
+    try:
+        from utils.sheets import get_monthly_totals
+        monthly_totals = get_monthly_totals(selected_date)
+    except Exception:
+        monthly_totals = {}
+    month_totals_default = [monthly_totals.get(name, 0) for name in item_names]
 
     if is_2person:
         shift_labels = ["주간", "야간"]
@@ -931,16 +931,30 @@ def page_work_log():
     note_text = st.text_area("특이사항 내용 입력", "", height=100)
 
     st.markdown("---")
-    excel_bytes = generate_work_log_excel(selected_date, shift_data_final, work_items_data, safety_items_data, note_text)
-    file_name = f"칼라지게차_일일업무보고_{selected_date.strftime('%Y%m%d')}.xlsx"
-    st.download_button(
-        label="📥 작업일지 엑셀 파일 다운로드 (.xlsx)",
-        data=excel_bytes,
-        file_name=file_name,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        type="primary",
-        use_container_width=True
-    )
+
+    # Google Sheets 저장 + 엑셀 다운로드
+    col_save, col_dl = st.columns(2)
+    with col_save:
+        if st.button("💾 저장 (Google Sheets)", use_container_width=True, type="primary"):
+            try:
+                from utils.sheets import save_work_log
+                if save_work_log(selected_date, work_items_data):
+                    st.success("✅ Google Sheets에 저장 완료! 월누계 자동 계산됨.")
+                else:
+                    st.error("저장 실패")
+            except Exception as e:
+                st.error(f"저장 실패: {e}")
+
+    with col_dl:
+        excel_bytes = generate_work_log_excel(selected_date, shift_data_final, work_items_data, safety_items_data, note_text)
+        file_name = f"칼라지게차_일일업무보고_{selected_date.strftime('%Y%m%d')}.xlsx"
+        st.download_button(
+            label="📥 엑셀 다운로드",
+            data=excel_bytes,
+            file_name=file_name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
 
 
 # ──────────────────────────────────────

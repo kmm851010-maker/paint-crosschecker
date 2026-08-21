@@ -22,3 +22,5 @@ Thumbs.db
 *.apk
 *.ipa
 *.aab
+api json/
+streamlit_secrets.txt

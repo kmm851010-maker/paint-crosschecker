@@ -9,7 +9,6 @@ from io import BytesIO
 
 import pandas as pd
 
-from modules.vision_ocr import extract_erp_from_image
 
 
 def normalize_color_code(code: str) -> str:
@@ -118,6 +117,7 @@ def parse_erp_image(
     image_bytes: bytes, file_name: str, api_key: str
 ) -> pd.DataFrame:
     """이미지를 OCR 처리하여 집계 DataFrame을 반환합니다. 범용 형식 지원."""
+    from modules.vision_ocr import extract_erp_from_image
     data = extract_erp_from_image(image_bytes, file_name, api_key)
 
     # 범용 형식 (items)
