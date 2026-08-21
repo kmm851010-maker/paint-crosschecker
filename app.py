@@ -4,6 +4,7 @@
 """
 
 import os
+import datetime
 
 import pandas as pd
 import streamlit as st
@@ -101,6 +102,63 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 
+
+
+# ──────────────────────────────────────
+# 근무 교대 스케줄 공통 헬퍼
+# ──────────────────────────────────────
+_CYCLE_20 = [
+    ('B', 'C', 'D', 'A'), ('B', 'C', 'A', 'D'), ('B', 'C', 'A', 'D'),
+    ('B', 'D', 'A', 'C'), ('B', 'D', 'A', 'C'), ('C', 'D', 'A', 'B'),
+    ('C', 'D', 'B', 'A'), ('C', 'D', 'B', 'A'), ('C', 'A', 'B', 'D'),
+    ('C', 'A', 'B', 'D'), ('D', 'A', 'B', 'C'), ('D', 'A', 'C', 'B'),
+    ('D', 'A', 'C', 'B'), ('D', 'B', 'C', 'A'), ('D', 'B', 'C', 'A'),
+    ('A', 'B', 'C', 'D'), ('A', 'B', 'D', 'C'), ('A', 'B', 'D', 'C'),
+    ('A', 'C', 'D', 'B'), ('A', 'C', 'D', 'B'),
+]
+_BASE_DATE = datetime.date(2026, 3, 1)
+_NIGHT_HOURS_BASE = {"1근": 0, "2근": 0.5, "3근": 7.5}
+
+
+def _shift_for_date(target_date, members):
+    idx = (target_date - _BASE_DATE).days % 20
+    s1, s2, s3, off = _CYCLE_20[idx]
+    prev_off = _CYCLE_20[(target_date - datetime.timedelta(days=1) - _BASE_DATE).days % 20][3]
+    off_type = "주휴휴무" if prev_off == off else "교대휴무"
+    return {
+        "1근_조": s1, "1근_근무자": members.get(s1, s1),
+        "2근_조": s2, "2근_근무자": members.get(s2, s2),
+        "3근_조": s3, "3근_근무자": members.get(s3, s3),
+        "휴무_조": off, "휴무_근무자": members.get(off, off),
+        "휴무_구분": off_type, "is_2person": False,
+        "leave_person": "", "leave_type": "",
+    }
+
+
+def _apply_leaves_stat(shift, target_date, leaves):
+    result = shift.copy()
+    for lv in leaves:
+        try:
+            start = datetime.date.fromisoformat(lv["start"])
+            end = datetime.date.fromisoformat(lv["end"])
+        except Exception:
+            continue
+        if start <= target_date <= end:
+            absent, ltype = lv["name"], lv["type"]
+            if result["1근_근무자"] == absent:
+                result.update({"is_2person": True, "leave_person": absent, "leave_type": ltype,
+                                "주간_근무자": result["2근_근무자"], "야간_근무자": result["3근_근무자"],
+                                "주간_조": result["2근_조"], "야간_조": result["3근_조"]})
+            elif result["2근_근무자"] == absent:
+                result.update({"is_2person": True, "leave_person": absent, "leave_type": ltype,
+                                "주간_근무자": result["1근_근무자"], "야간_근무자": result["3근_근무자"],
+                                "주간_조": result["1근_조"], "야간_조": result["3근_조"]})
+            elif result["3근_근무자"] == absent:
+                result.update({"is_2person": True, "leave_person": absent, "leave_type": ltype,
+                                "주간_근무자": result["1근_근무자"], "야간_근무자": result["2근_근무자"],
+                                "주간_조": result["1근_조"], "야간_조": result["2근_조"]})
+            break
+    return result
 
 
 # ══════════════════════════════════════
@@ -1187,90 +1245,126 @@ def page_statistics():
         st.error(f"데이터 로드 실패: {e}")
         return
 
-    if not daily_details:
-        st.warning(f"{year}년 {month}월에 저장된 작업일지가 없습니다.")
-        return
+    # 휴가 등록 데이터 로드 (교대 스케줄 기반 계산용)
+    try:
+        from utils.sheets import load_leaves
+        base_leaves = load_leaves()
+    except Exception:
+        base_leaves = []
 
-    # 직원별 통계 계산
+    def _sf(val):
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            import re
+            nums = re.findall(r'[\d.]+', str(val))
+            return float(nums[0]) if nums else 0
+
+    # 직원별 통계 계산 (전체 날짜: 저장 일지 우선, 없으면 교대 스케줄 기반)
     stats = {name: {
         "근무일수": 0, "기본근로": 0, "연장근로_대근": 0,
         "연장근로_주간": 0, "연장근로_야간": 0,
         "야간근로": 0, "휴가일수": 0, "대근횟수": 0, "휴가내역": []
     } for name in ALL_MEMBERS}
 
-    for date_str, detail in daily_details.items():
-        shift = detail.get("shift", {})
-        is_2p = shift.get("is_2person", False)
+    saved_days = len(daily_details)
 
-        def _safe_float(val):
-            try:
-                return float(val)
-            except (ValueError, TypeError):
-                import re
-                nums = re.findall(r'[\d.]+', str(val))
-                return float(nums[0]) if nums else 0
+    for day in range(1, days_in_month + 1):
+        date = datetime.date(year, month, day)
+        date_str = date.strftime("%Y-%m-%d")
 
-        if is_2p:
-            day_worker = shift.get("1근_근무자", "")
-            night_worker = shift.get("2근_근무자", "")
-            leave_worker = shift.get("3근_근무자", "")
+        if date_str in daily_details:
+            # ── 저장된 일지 데이터 사용 ──
+            shift = daily_details[date_str].get("shift", {})
+            is_2p = shift.get("is_2person", False)
 
-            if day_worker in stats:
-                stats[day_worker]["근무일수"] += 1
-                stats[day_worker]["기본근로"] += 8
-                stats[day_worker]["연장근로_대근"] += 4
-                # 새 형식: _주간연장 = 4 + 추가주간, _야간연장 = 추가야간
-                extra_day = max(0, _safe_float(shift.get("1근_주간연장", 4)) - 4)
-                extra_night = _safe_float(shift.get("1근_야간연장", 0))
-                stats[day_worker]["연장근로_주간"] += extra_day
-                stats[day_worker]["연장근로_야간"] += extra_night
-                stats[day_worker]["야간근로"] += NIGHT_HOURS.get("주간", 0)
-                stats[day_worker]["대근횟수"] += 1
+            if is_2p:
+                day_worker = shift.get("1근_근무자", "")
+                night_worker = shift.get("2근_근무자", "")
+                leave_worker = shift.get("3근_근무자", "")
+                if day_worker in stats:
+                    stats[day_worker]["근무일수"] += 1
+                    stats[day_worker]["기본근로"] += 8
+                    stats[day_worker]["연장근로_대근"] += 4
+                    stats[day_worker]["연장근로_주간"] += max(0, _sf(shift.get("1근_주간연장", 4)) - 4)
+                    stats[day_worker]["연장근로_야간"] += _sf(shift.get("1근_야간연장", 0))
+                    stats[day_worker]["야간근로"] += NIGHT_HOURS.get("주간", 0)
+                    stats[day_worker]["대근횟수"] += 1
+                if night_worker in stats:
+                    stats[night_worker]["근무일수"] += 1
+                    stats[night_worker]["기본근로"] += 8
+                    stats[night_worker]["연장근로_대근"] += 4
+                    stats[night_worker]["연장근로_주간"] += _sf(shift.get("2근_주간연장", 0))
+                    stats[night_worker]["연장근로_야간"] += max(0, _sf(shift.get("2근_야간연장", 4)) - 4)
+                    stats[night_worker]["야간근로"] += 8
+                    stats[night_worker]["대근횟수"] += 1
+                leave_type = shift.get("3근_비고", "")
+                if leave_worker in stats and leave_type:
+                    stats[leave_worker]["휴가일수"] += 1
+                    stats[leave_worker]["휴가내역"].append(f"{date_str}: {leave_type}")
+            else:
+                for shift_key, night_key in [("1근_근무자", "1근"), ("2근_근무자", "2근"), ("3근_근무자", "3근")]:
+                    worker = shift.get(shift_key, "")
+                    ot = _sf(shift.get(f"{night_key}_연장", 0))
+                    if worker in stats:
+                        stats[worker]["근무일수"] += 1
+                        stats[worker]["기본근로"] += 8
+                        base_night = NIGHT_HOURS.get(night_key, 0)
+                        explicit_day = shift.get(f"{night_key}_주간연장")
+                        explicit_night = shift.get(f"{night_key}_야간연장")
+                        if explicit_day is not None or explicit_night is not None:
+                            day_ot = _sf(explicit_day or 0)
+                            night_ot = _sf(explicit_night or 0)
+                        elif shift.get(f"{night_key}_연장유형") == "야간연장":
+                            day_ot, night_ot = 0, ot
+                        else:
+                            day_ot, night_ot = ot, 0
+                        stats[worker]["연장근로_주간"] += day_ot
+                        stats[worker]["연장근로_야간"] += night_ot
+                        stats[worker]["야간근로"] += base_night + night_ot
+            off_worker = shift.get("휴무_근무자", "")
+            off_type = shift.get("휴무_구분", "")
+            if off_worker in stats and off_type not in ("교대휴무", "주휴휴무", ""):
+                stats[off_worker]["휴가일수"] += 1
+                stats[off_worker]["휴가내역"].append(f"{date_str}: {off_type}")
 
-            if night_worker in stats:
-                stats[night_worker]["근무일수"] += 1
-                stats[night_worker]["기본근로"] += 8
-                stats[night_worker]["연장근로_대근"] += 4
-                extra_day = _safe_float(shift.get("2근_주간연장", 0))
-                extra_night = max(0, _safe_float(shift.get("2근_야간연장", 4)) - 4)
-                stats[night_worker]["연장근로_주간"] += extra_day
-                stats[night_worker]["연장근로_야간"] += extra_night
-                stats[night_worker]["야간근로"] += 8
-                stats[night_worker]["대근횟수"] += 1
-
-            leave_type = shift.get("3근_비고", "")
-            if leave_worker in stats and leave_type:
-                stats[leave_worker]["휴가일수"] += 1
-                stats[leave_worker]["휴가내역"].append(f"{date_str}: {leave_type}")
         else:
-            # 3인 정상 근무
-            for shift_key, night_key in [("1근_근무자", "1근"), ("2근_근무자", "2근"), ("3근_근무자", "3근")]:
-                worker = shift.get(shift_key, "")
-                ot = _safe_float(shift.get(f"{night_key}_연장", 0))
-                if worker in stats:
-                    stats[worker]["근무일수"] += 1
-                    stats[worker]["기본근로"] += 8
-                    base_night = NIGHT_HOURS.get(night_key, 0)
-                    # 새 형식: _주간연장 / _야간연장 필드 우선 사용
-                    explicit_day = shift.get(f"{night_key}_주간연장")
-                    explicit_night = shift.get(f"{night_key}_야간연장")
-                    if explicit_day is not None or explicit_night is not None:
-                        day_ot = _safe_float(explicit_day or 0)
-                        night_ot = _safe_float(explicit_night or 0)
-                    elif shift.get(f"{night_key}_연장유형") == "야간연장":
-                        day_ot, night_ot = 0, ot
-                    else:
-                        day_ot, night_ot = ot, 0
-                    stats[worker]["연장근로_주간"] += day_ot
-                    stats[worker]["연장근로_야간"] += night_ot
-                    stats[worker]["야간근로"] += base_night + night_ot
+            # ── 교대 스케줄 기반 기본값 계산 ──
+            shift = _shift_for_date(date, MEMBERS)
+            shift = _apply_leaves_stat(shift, date, base_leaves)
+            is_2p = shift.get("is_2person", False)
 
-        # 교대휴무/주휴휴무자
-        off_worker = shift.get("휴무_근무자", "")
-        off_type = shift.get("휴무_구분", "")
-        if off_worker in stats and off_type not in ("교대휴무", "주휴휴무", ""):
-            stats[off_worker]["휴가일수"] += 1
-            stats[off_worker]["휴가내역"].append(f"{date_str}: {off_type}")
+            if is_2p:
+                day_w = shift.get("주간_근무자", "")
+                night_w = shift.get("야간_근무자", "")
+                leave_w = shift.get("leave_person", "")
+                leave_t = shift.get("leave_type", "")
+                if day_w in stats:
+                    stats[day_w]["근무일수"] += 1
+                    stats[day_w]["기본근로"] += 8
+                    stats[day_w]["연장근로_대근"] += 4
+                    stats[day_w]["대근횟수"] += 1
+                if night_w in stats:
+                    stats[night_w]["근무일수"] += 1
+                    stats[night_w]["기본근로"] += 8
+                    stats[night_w]["연장근로_대근"] += 4
+                    stats[night_w]["야간근로"] += 8
+                    stats[night_w]["대근횟수"] += 1
+                if leave_w in stats and leave_t:
+                    stats[leave_w]["휴가일수"] += 1
+                    stats[leave_w]["휴가내역"].append(f"{date_str}: {leave_t} (예정)")
+            else:
+                for worker_key, sk in [("1근_근무자", "1근"), ("2근_근무자", "2근"), ("3근_근무자", "3근")]:
+                    worker = shift.get(worker_key, "")
+                    if worker in stats:
+                        stats[worker]["근무일수"] += 1
+                        stats[worker]["기본근로"] += 8
+                        stats[worker]["야간근로"] += _NIGHT_HOURS_BASE.get(sk, 0)
+                off_worker = shift.get("휴무_근무자", "")
+                off_type = shift.get("휴무_구분", "")
+                if off_worker in stats and off_type not in ("교대휴무", "주휴휴무", ""):
+                    stats[off_worker]["휴가일수"] += 1
+                    stats[off_worker]["휴가내역"].append(f"{date_str}: {off_type} (예정)")
 
     # 올해 전체 휴가 데이터 로드
     year_leaves = {name: [] for name in ALL_MEMBERS}
@@ -1302,7 +1396,7 @@ def page_statistics():
     # 통계 표시
     st.markdown("---")
     st.subheader(f"📊 {year}년 {month}월 직원별 근무 통계")
-    st.caption(f"저장된 일지: {len(daily_details)}일분")
+    st.caption(f"저장된 일지: {saved_days}일분 / 나머지 {days_in_month - saved_days}일은 교대 스케줄 기반 예측값")
 
     for name in ALL_MEMBERS:
         s = stats[name]
