@@ -1274,7 +1274,7 @@ def page_statistics():
     stats = {name: {
         "근무일수": 0, "기본근로": 0, "연장근로_대근": 0,
         "연장근로_주간": 0, "연장근로_야간": 0,
-        "야간근로": 0, "휴가일수": 0, "대근횟수": 0, "휴가내역": []
+        "야간근로": 0, "휴가일수": 0, "대근횟수": 0, "휴가내역": [], "대근내역": []
     } for name in ALL_MEMBERS}
 
     saved_days = len(daily_details)
@@ -1292,7 +1292,9 @@ def page_statistics():
                 day_worker = shift.get("1근_근무자", "")
                 night_worker = shift.get("2근_근무자", "")
                 leave_worker = shift.get("3근_근무자", "")
+                leave_type = shift.get("3근_비고", "")
                 if day_worker in stats:
+                    day_total = _sf(shift.get("1근_연장", 4))
                     stats[day_worker]["근무일수"] += 1
                     stats[day_worker]["기본근로"] += 8
                     stats[day_worker]["연장근로_대근"] += 4
@@ -1300,7 +1302,9 @@ def page_statistics():
                     stats[day_worker]["연장근로_야간"] += _sf(shift.get("1근_야간연장", 0))
                     stats[day_worker]["야간근로"] += NIGHT_HOURS.get("주간", 0)
                     stats[day_worker]["대근횟수"] += 1
+                    stats[day_worker]["대근내역"].append({"날짜": date_str, "휴가자": leave_worker, "휴가구분": leave_type, "시간": day_total, "구분": "주간"})
                 if night_worker in stats:
+                    night_total = _sf(shift.get("2근_연장", 4))
                     stats[night_worker]["근무일수"] += 1
                     stats[night_worker]["기본근로"] += 8
                     stats[night_worker]["연장근로_대근"] += 4
@@ -1308,7 +1312,7 @@ def page_statistics():
                     stats[night_worker]["연장근로_야간"] += max(0, _sf(shift.get("2근_야간연장", 4)) - 4)
                     stats[night_worker]["야간근로"] += 8
                     stats[night_worker]["대근횟수"] += 1
-                leave_type = shift.get("3근_비고", "")
+                    stats[night_worker]["대근내역"].append({"날짜": date_str, "휴가자": leave_worker, "휴가구분": leave_type, "시간": night_total, "구분": "야간"})
                 if leave_worker in stats and leave_type:
                     stats[leave_worker]["휴가일수"] += 1
                     stats[leave_worker]["휴가내역"].append(f"{date_str}: {leave_type}")
@@ -1354,12 +1358,14 @@ def page_statistics():
                     stats[day_w]["기본근로"] += 8
                     stats[day_w]["연장근로_대근"] += 4
                     stats[day_w]["대근횟수"] += 1
+                    stats[day_w]["대근내역"].append({"날짜": date_str, "휴가자": leave_w, "휴가구분": leave_t, "시간": 4, "구분": "주간"})
                 if night_w in stats:
                     stats[night_w]["근무일수"] += 1
                     stats[night_w]["기본근로"] += 8
                     stats[night_w]["연장근로_대근"] += 4
                     stats[night_w]["야간근로"] += 8
                     stats[night_w]["대근횟수"] += 1
+                    stats[night_w]["대근내역"].append({"날짜": date_str, "휴가자": leave_w, "휴가구분": leave_t, "시간": 4, "구분": "야간"})
                 if leave_w in stats and leave_t:
                     stats[leave_w]["휴가일수"] += 1
                     stats[leave_w]["휴가내역"].append(f"{date_str}: {leave_t} (예정)")
@@ -1423,12 +1429,19 @@ def page_statistics():
             mc6.metric("야간근로", f"{s['야간근로']}H")
             mc7.metric("휴가(월)", f"{s['휴가일수']}일")
 
+            total_daegeun_h = sum(d["시간"] for d in s["대근내역"])
             st.caption(
-                f"대근 {s['대근횟수']}회 | "
+                f"대근 {s['대근횟수']}회 ({total_daegeun_h}H) | "
                 f"총 연장 {total_ot}H (주간 {s['연장근로_주간']}H + 야간 {s['연장근로_야간']}H + 대근 {s['연장근로_대근']}H) | "
                 f"총 근로 {s['기본근로'] + total_ot}H | "
                 f"올해 휴가 총 {len(yr_leaves)}일"
             )
+
+            # 대근 상세 내역
+            if s["대근내역"]:
+                with st.expander(f"🔄 대근 내역 ({s['대근횟수']}회 · 계 {total_daegeun_h}H)"):
+                    for d in s["대근내역"]:
+                        st.write(f"{d['날짜']} | {d['구분']} | {d['휴가자']} {d['휴가구분']}으로 대근 | {d['시간']}H")
 
             # 이번 달 휴가 내역
             if s["휴가내역"]:
