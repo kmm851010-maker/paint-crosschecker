@@ -2,11 +2,13 @@ import React, { useState, useRef, useEffect } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Modal,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
+  Vibration,
   View,
 } from "react-native";
 import { Stack } from "expo-router";
@@ -40,14 +42,24 @@ export default function InventoryScreen() {
   const [scanViewSize, setScanViewSize] = useState({ width: 0, height: 0 });
   const lastScanned = useRef<string>("");
   const scanCooldown = useRef(false);
+  const flashAnim = useRef(new Animated.Value(0)).current;
 
   // ── 스캔 처리 ──
+  const triggerFeedback = () => {
+    Vibration.vibrate(80);
+    Animated.sequence([
+      Animated.timing(flashAnim, { toValue: 0.35, duration: 80, useNativeDriver: true }),
+      Animated.timing(flashAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start();
+  };
+
   const handleBarcodeScan = async ({ data }: { data: string }) => {
     // 같은 바코드는 2초간 중복 차단, 다른 바코드는 즉시 허용
     if (data === lastScanned.current && scanCooldown.current) return;
     scanCooldown.current = true;
     lastScanned.current = data;
     setTimeout(() => { scanCooldown.current = false; }, 2000);
+    triggerFeedback();
 
     try {
       const drum = await parseBarcodeText(data);
@@ -124,18 +136,21 @@ export default function InventoryScreen() {
           onBarcodeScanned={handleBarcodeScan}
           barcodeScannerSettings={{ barcodeTypes: ["pdf417", "code128", "code39", "qr", "datamatrix", "aztec", "ean13", "ean8"] }}
         />
-        {/* 배치 카운터 */}
-        <View style={styles.batchBadge}>
-          <Text style={styles.batchBadgeText}>스캔됨: {batch.length}드럼</Text>
-        </View>
-        {/* 최근 스캔 */}
-        {batch.length > 0 && (
-          <View style={styles.lastScannedBox}>
-            <Text style={styles.lastScannedText}>
-              최근: {batch[batch.length - 1].lot} ({batch[batch.length - 1].maker})
-            </Text>
+        {/* 인식 플래시 */}
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: "#4AFF91", opacity: flashAnim }]} />
+        {/* 상단 정보 */}
+        <View style={styles.scanTopBar}>
+          <View style={styles.batchBadge}>
+            <Text style={styles.batchBadgeText}>스캔됨: {batch.length}드럼</Text>
           </View>
-        )}
+          {batch.length > 0 && (
+            <View style={styles.lastScannedBox}>
+              <Text style={styles.lastScannedText}>
+                {batch[batch.length - 1].lot}  {batch[batch.length - 1].product}  ({batch[batch.length - 1].maker})
+              </Text>
+            </View>
+          )}
+        </View>
         {/* 하단 버튼 */}
         <View style={styles.scanFooter}>
           <TouchableOpacity style={styles.cancelBtn} onPress={() => setMode("idle")}>
@@ -285,9 +300,10 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   permText: { fontSize: 16, color: COLORS.textPrimary, marginBottom: 16 },
 
-  batchBadge: { position: "absolute", top: 60, alignSelf: "center", backgroundColor: "rgba(0,0,0,0.7)", paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 },
+  batchBadge: { alignSelf: "center", backgroundColor: "rgba(0,0,0,0.7)", paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 },
   batchBadgeText: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  lastScannedBox: { position: "absolute", bottom: 120, left: 16, right: 16, backgroundColor: "rgba(0,0,0,0.7)", padding: 10, borderRadius: 8 },
+  scanTopBar: { position: "absolute", top: 12, left: 16, right: 16, gap: 8 },
+  lastScannedBox: { backgroundColor: "rgba(0,0,0,0.75)", padding: 10, borderRadius: 8 },
   lastScannedText: { color: "#4AFF91", fontSize: 13, textAlign: "center" },
   scanFooter: { position: "absolute", bottom: 40, left: 16, right: 16, flexDirection: "row", gap: 12 },
   cancelBtn: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", paddingVertical: 16, borderRadius: 12, alignItems: "center", borderWidth: 1, borderColor: "#fff" },
