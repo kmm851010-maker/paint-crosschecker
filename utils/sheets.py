@@ -28,9 +28,10 @@ def _get_client():
 def _get_sheet():
     """스프레드시트의 작업일지 시트를 반환. 없으면 생성."""
     client = _get_client()
-    spreadsheet_id = st.secrets.get("SPREADSHEET_ID", "")
-    if not spreadsheet_id:
-        return None
+    try:
+        spreadsheet_id = st.secrets["SPREADSHEET_ID"]
+    except (KeyError, FileNotFoundError):
+        raise ValueError("SPREADSHEET_ID가 Streamlit Secrets에 설정되지 않았습니다.")
 
     spreadsheet = client.open_by_key(spreadsheet_id)
 
@@ -90,8 +91,7 @@ def save_work_log(selected_date, work_items):
 
         return True
     except Exception as e:
-        st.error(f"Google Sheets 저장 실패: {e}")
-        return False
+        raise e
 
 
 def _update_monthly_totals(ws, selected_date):

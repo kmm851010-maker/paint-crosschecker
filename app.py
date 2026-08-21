@@ -938,12 +938,13 @@ def page_work_log():
         if st.button("💾 저장 (Google Sheets)", use_container_width=True, type="primary"):
             try:
                 from utils.sheets import save_work_log
-                if save_work_log(selected_date, work_items_data):
+                result = save_work_log(selected_date, work_items_data)
+                if result:
                     st.success("✅ Google Sheets에 저장 완료! 월누계 자동 계산됨.")
                 else:
-                    st.error("저장 실패")
+                    st.error("저장 실패: Google Sheets 연결을 확인하세요.")
             except Exception as e:
-                st.error(f"저장 실패: {e}")
+                st.error(f"저장 실패: {type(e).__name__}: {e}")
 
     with col_dl:
         excel_bytes = generate_work_log_excel(selected_date, shift_data_final, work_items_data, safety_items_data, note_text)
