@@ -32,7 +32,8 @@ def _get_secret() -> bytes:
 
 def _create_token(username: str) -> str:
     ts = str(int(time.time()))
-    payload = base64.urlsafe_b64encode(f"{username}:{ts}".encode()).decode()
+    # rstrip("=") - URL에서 = 패딩 문제 방지
+    payload = base64.urlsafe_b64encode(f"{username}:{ts}".encode()).decode().rstrip("=")
     sig = hmac.new(_get_secret(), payload.encode(), hashlib.sha256).hexdigest()[:24]
     return f"{payload}.{sig}"
 
@@ -42,7 +43,9 @@ def _validate_token(token: str):
         expected = hmac.new(_get_secret(), payload.encode(), hashlib.sha256).hexdigest()[:24]
         if not hmac.compare_digest(sig, expected):
             return None
-        decoded = base64.urlsafe_b64decode(payload.encode()).decode()
+        # 패딩 복원 후 디코드
+        padded = payload + "=" * ((-len(payload)) % 4)
+        decoded = base64.urlsafe_b64decode(padded.encode()).decode()
         username, ts = decoded.rsplit(":", 1)
         if time.time() - int(ts) > _SESSION_TTL:
             return None
@@ -217,7 +220,6 @@ _uname = st.session_state.get("username", "")
 if _uname:
     st.sidebar.caption(f"👤 {_uname}")
 if st.sidebar.button("🚪 로그아웃", use_container_width=True):
-    _SESSIONS.pop(st.session_state.get("_token", ""), None)
     st.query_params.clear()
     st.session_state.clear()
     st.rerun()
