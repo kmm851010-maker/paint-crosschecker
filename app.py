@@ -1158,16 +1158,22 @@ def page_work_log():
         except (ValueError, TypeError):
             return 0
 
-    # 업무현황 폰트 확대 + 테두리
+    # 업무현황 + 안전관리 스타일
     st.markdown("""<style>
-    .work-section small{font-size:11px !important;}
-    .work-section p, .work-section span, .work-section strong{font-size:11px !important;}
-    .work-section input{font-size:11px !important; padding:2px 4px !important;}
-    .work-section [data-testid="stMetricValue"]{font-size:13px !important;}
-    .work-section [data-testid="stVerticalBlock"] > div{gap:0.2rem !important;}
-    .work-section .stTextInput{margin-bottom:0 !important;}
-    .work-row{border:1px solid #D0C5E0; border-radius:4px; padding:2px 2px; margin-bottom:2px; background:#FAFAFE;}
-    .work-header{border:2px solid #4B2D8E; border-radius:4px; padding:4px 2px; margin-bottom:4px; background:#F0EDF5;}
+    /* 업무현황 */
+    .work-section p, .work-section span, .work-section strong{font-size:11px !important; line-height:1.2 !important;}
+    .work-section input{font-size:11px !important; padding:1px 4px !important; height:28px !important;}
+    .work-section .stTextInput > div{min-height:0 !important;}
+    .work-section .stTextInput{margin-bottom:0 !important; padding-bottom:0 !important;}
+    .work-section [data-testid="stVerticalBlock"] > div{gap:0.15rem !important;}
+    .work-section [data-testid="stVerticalBlockBorderWrapper"]{padding:3px 8px !important;}
+    .work-row{border:1px solid #D0C5E0; border-radius:4px; padding:1px 2px; margin-bottom:2px; background:#FAFAFE;}
+    .work-header{border:2px solid #4B2D8E; border-radius:4px; padding:3px 2px; margin-bottom:3px; background:#F0EDF5;}
+    /* 안전관리 */
+    .safety-section p, .safety-section span, .safety-section label{font-size:10px !important; line-height:1.1 !important;}
+    .safety-section .stCheckbox{margin:0 !important; padding:0 !important;}
+    .safety-section [data-testid="stVerticalBlock"] > div{gap:0.05rem !important;}
+    .safety-section [data-testid="stVerticalBlockBorderWrapper"]{padding:2px 6px !important;}
     </style><div class="work-section">""", unsafe_allow_html=True)
 
     # 헤더 행
@@ -1207,12 +1213,12 @@ def page_work_log():
                 vals.append(safe_calc(raw))
 
             daily_sum = sum(vals)
-            row[-2].markdown(f"### {daily_sum}")
+            row[-2].markdown(f"**{daily_sum}**")
 
             # 월누계 = 이전 누적(오늘 제외) + 오늘 일합계
             prev_total = month_totals_default[i]
             running_month = prev_total + daily_sum
-            row[-1].markdown(f"### {running_month}")
+            row[-1].markdown(f"**{running_month}**")
 
         if is_2person:
             work_items_data.append({
@@ -1228,6 +1234,7 @@ def page_work_log():
     st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("---")
     st.subheader("3. 안전 관리 사항")
+    st.markdown('<div class="safety-section">', unsafe_allow_html=True)
     safety_questions = [
         "작업 계획에 따라 작업 절차를 준수 하였는가?",
         "안전장치(후방 경보장치 , 안전밸트 등) 기능의 이상 유무를 점검 하였는가?",
@@ -1251,6 +1258,7 @@ def page_work_log():
             chk_s3 = sc3.checkbox("3근", value=True, key=f"safe_s3_{i}")
             safety_items_data.append({"text": q, "s1": chk_s1, "s2": chk_s2, "s3": chk_s3, "day": False, "night": False})
 
+    st.markdown('</div>', unsafe_allow_html=True)
     st.markdown("---")
     st.subheader("4. 특이 사항")
     note_text = st.text_area("특이사항 내용 입력", "", height=100)
