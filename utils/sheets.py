@@ -1,8 +1,9 @@
 """
 Google Sheets 연동 모듈
-작업일지 데이터 저장/조회 + 월누계 자동 계산
+작업일지 전체 데이터 저장/조회 + 월누계 자동 계산
 """
 
+import json
 import datetime
 
 import gspread
@@ -15,136 +16,63 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-SHEET_NAME = "작업일지"
-
 
 def _get_client():
-    """Streamlit secrets에서 서비스 계정 인증."""
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
     return gspread.authorize(creds)
 
 
-def _get_sheet():
-    """스프레드시트의 작업일지 시트를 반환. 없으면 생성."""
+def _get_spreadsheet():
     client = _get_client()
     spreadsheet_id = st.secrets["SPREADSHEET_ID"]
+    return client.open_by_key(spreadsheet_id)
 
-    try:
-        spreadsheet = client.open_by_key(spreadsheet_id)
-    except gspread.exceptions.APIError as e:
-        raise ValueError(f"스프레드시트 접근 실패 (ID: {spreadsheet_id[:10]}...): {e}")
-    except Exception as e:
-        raise ValueError(f"스프레드시트 열기 실패: {type(e).__name__}: {e}")
 
+def _get_or_create_sheet(name, headers=None):
+    sp = _get_spreadsheet()
     try:
-        ws = spreadsheet.worksheet(SHEET_NAME)
+        ws = sp.worksheet(name)
     except gspread.exceptions.WorksheetNotFound:
-        ws = spreadsheet.add_worksheet(title=SHEET_NAME, rows=1000, cols=20)
-        # 헤더 작성
-        headers = [
-            "날짜", "작업항목",
-            "1근", "2근", "3근", "주간", "야간", "합계", "월누계"
-        ]
-        ws.append_row(headers)
-
+        ws = sp.add_worksheet(title=name, rows=2000, cols=20)
+        if headers:
+            ws.append_row(headers)
     return ws
 
 
-def save_work_log(selected_date, work_items):
-    """작업일지 데이터를 Google Sheets에 저장합니다."""
-    try:
-        ws = _get_sheet()
-        if ws is None:
-            return False
+# ── 업무현황 ──
 
-        date_str = selected_date.strftime("%Y-%m-%d")
+def save_work_items(selected_date, work_items):
+    ws = _get_or_create_sheet("업무현황", ["날짜", "항목", "1근", "2근", "3근", "주간", "야간", "합계", "월누계"])
+    date_str = selected_date.strftime("%Y-%m-%d")
 
-        # 기존 해당 날짜 데이터 삭제
-        all_data = ws.get_all_values()
-        rows_to_delete = []
-        for i, row in enumerate(all_data):
-            if i == 0:
-                continue  # 헤더 스킵
-            if row and row[0] == date_str:
-                rows_to_delete.append(i + 1)  # 1-indexed
-
-        # 역순으로 삭제 (인덱스 밀림 방지)
-        for row_idx in reversed(rows_to_delete):
-            ws.delete_rows(row_idx)
-
-        # 새 데이터 추가
-        for item in work_items:
-            s1 = item.get("s1") or 0
-            s2 = item.get("s2") or 0
-            s3 = item.get("s3") or 0
-            day = item.get("day") or 0
-            night = item.get("night") or 0
-            total = (s1 or 0) + (s2 or 0) + (s3 or 0) + (day or 0) + (night or 0)
-
-            ws.append_row([
-                date_str,
-                item["name"],
-                s1, s2, s3, day, night, total, 0
-            ])
-
-        # 월누계 자동 계산
-        _update_monthly_totals(ws, selected_date)
-
-        return True
-    except Exception as e:
-        raise e
-
-
-def _update_monthly_totals(ws, selected_date):
-    """해당 월의 월누계를 자동 계산합니다."""
-    month_start = selected_date.replace(day=1).strftime("%Y-%m-")
-
+    # 해당 날짜 삭제
     all_data = ws.get_all_values()
-    if len(all_data) <= 1:
-        return
+    rows_del = [i + 1 for i, row in enumerate(all_data) if i > 0 and row and row[0] == date_str]
+    for idx in reversed(rows_del):
+        ws.delete_rows(idx)
 
-    # 해당 월 데이터 집계
-    monthly = {}
-    for i, row in enumerate(all_data):
-        if i == 0:
-            continue
-        if row[0].startswith(month_start):
-            name = row[1]
-            try:
-                daily_total = int(float(row[7])) if row[7] else 0
-            except (ValueError, IndexError):
-                daily_total = 0
-            monthly[name] = monthly.get(name, 0) + daily_total
-
-    # 월누계 업데이트
-    for i, row in enumerate(all_data):
-        if i == 0:
-            continue
-        if row[0].startswith(month_start):
-            name = row[1]
-            if name in monthly:
-                ws.update_cell(i + 1, 9, monthly[name])  # 9번째 컬럼 = 월누계
+    # 저장
+    for item in work_items:
+        s1 = item.get("s1") or 0
+        s2 = item.get("s2") or 0
+        s3 = item.get("s3") or 0
+        day = item.get("day") or 0
+        night = item.get("night") or 0
+        total = s1 + s2 + s3 + day + night
+        ws.append_row([date_str, item["name"], s1, s2, s3, day, night, total, item.get("month_total", 0)])
 
 
-def load_work_log(selected_date):
-    """해당 날짜의 저장된 작업일지 데이터를 불러옵니다."""
+def load_work_items(selected_date):
     try:
-        ws = _get_sheet()
-        if ws is None:
-            return None
-
+        ws = _get_or_create_sheet("업무현황")
         date_str = selected_date.strftime("%Y-%m-%d")
         all_data = ws.get_all_values()
-
         items = {}
-        for i, row in enumerate(all_data):
-            if i == 0:
-                continue
+        for row in all_data[1:]:
             if row and row[0] == date_str:
-                name = row[1]
                 try:
-                    items[name] = {
+                    items[row[1]] = {
                         "s1": int(float(row[2])) if row[2] else 0,
                         "s2": int(float(row[3])) if row[3] else 0,
                         "s3": int(float(row[4])) if row[4] else 0,
@@ -153,50 +81,114 @@ def load_work_log(selected_date):
                     }
                 except (ValueError, IndexError):
                     pass
-
         return items if items else None
     except Exception:
         return None
 
 
-def has_saved_data(selected_date):
-    """해당 날짜에 저장된 데이터가 있는지 확인합니다."""
-    try:
-        ws = _get_sheet()
-        if ws is None:
-            return False
-        date_str = selected_date.strftime("%Y-%m-%d")
-        all_data = ws.get_all_values()
-        for row in all_data[1:]:
-            if row and row[0] == date_str:
-                return True
-        return False
-    except Exception:
-        return False
-
-
 def get_monthly_totals(selected_date):
-    """해당 월의 작업항목별 월누계를 반환합니다."""
     try:
-        ws = _get_sheet()
-        if ws is None:
-            return {}
-
-        month_start = selected_date.replace(day=1).strftime("%Y-%m-")
-
+        ws = _get_or_create_sheet("업무현황")
+        month_prefix = selected_date.replace(day=1).strftime("%Y-%m-")
         all_data = ws.get_all_values()
         monthly = {}
-        for i, row in enumerate(all_data):
-            if i == 0:
-                continue
-            if row[0].startswith(month_start):
+        for row in all_data[1:]:
+            if row and row[0].startswith(month_prefix):
                 name = row[1]
                 try:
-                    daily_total = int(float(row[7])) if row[7] else 0
+                    monthly[name] = monthly.get(name, 0) + (int(float(row[7])) if row[7] else 0)
                 except (ValueError, IndexError):
-                    daily_total = 0
-                monthly[name] = monthly.get(name, 0) + daily_total
-
+                    pass
         return monthly
     except Exception:
         return {}
+
+
+def has_saved_data(selected_date):
+    try:
+        ws = _get_or_create_sheet("업무현황")
+        date_str = selected_date.strftime("%Y-%m-%d")
+        all_data = ws.get_all_values()
+        return any(row[0] == date_str for row in all_data[1:] if row)
+    except Exception:
+        return False
+
+
+# ── 휴가/대근 등록 ──
+
+def save_leaves(leave_list):
+    ws = _get_or_create_sheet("휴가등록", ["이름", "구분", "시작일", "종료일", "대근자"])
+    ws.clear()
+    ws.append_row(["이름", "구분", "시작일", "종료일", "대근자"])
+    for lv in leave_list:
+        ws.append_row([lv["name"], lv["type"], lv["start"], lv["end"], lv.get("sub", "")])
+
+
+def load_leaves():
+    try:
+        ws = _get_or_create_sheet("휴가등록")
+        all_data = ws.get_all_values()
+        leaves = []
+        for row in all_data[1:]:
+            if row and len(row) >= 4 and row[0]:
+                leaves.append({
+                    "name": row[0], "type": row[1],
+                    "start": row[2], "end": row[3],
+                    "sub": row[4] if len(row) > 4 else "",
+                })
+        return leaves
+    except Exception:
+        return []
+
+
+# ── 일지 상세 (인원현황, 안전, 특이사항) ──
+
+def save_daily_detail(selected_date, shift_data, safety_items, note_text):
+    ws = _get_or_create_sheet("일지상세", ["날짜", "데이터"])
+    date_str = selected_date.strftime("%Y-%m-%d")
+
+    all_data = ws.get_all_values()
+    rows_del = [i + 1 for i, row in enumerate(all_data) if i > 0 and row and row[0] == date_str]
+    for idx in reversed(rows_del):
+        ws.delete_rows(idx)
+
+    detail = json.dumps({
+        "shift": shift_data,
+        "safety": safety_items,
+        "note": note_text,
+    }, ensure_ascii=False)
+
+    ws.append_row([date_str, detail])
+
+
+def load_daily_detail(selected_date):
+    try:
+        ws = _get_or_create_sheet("일지상세")
+        date_str = selected_date.strftime("%Y-%m-%d")
+        all_data = ws.get_all_values()
+        for row in all_data[1:]:
+            if row and row[0] == date_str and len(row) > 1:
+                return json.loads(row[1])
+        return None
+    except Exception:
+        return None
+
+
+# ── 통합 저장/불러오기 ──
+
+def save_all(selected_date, work_items, shift_data, safety_items, note_text, leave_list):
+    save_work_items(selected_date, work_items)
+    save_daily_detail(selected_date, shift_data, safety_items, note_text)
+    save_leaves(leave_list)
+    return True
+
+
+def load_all(selected_date):
+    work = load_work_items(selected_date)
+    detail = load_daily_detail(selected_date)
+    leaves = load_leaves()
+    return {
+        "work_items": work,
+        "detail": detail,
+        "leaves": leaves,
+    }

@@ -859,6 +859,18 @@ def page_work_log():
     st.markdown("---")
 
     # 기존 데이터 불러오기
+    # 휴가 데이터 Google Sheets에서 로드 (최초 1회)
+    if "leave_loaded" not in st.session_state:
+        try:
+            from utils.sheets import load_leaves
+            saved_leaves = load_leaves()
+            if saved_leaves:
+                st.session_state["leave_list"] = saved_leaves
+            st.session_state["leave_loaded"] = True
+        except Exception:
+            st.session_state["leave_loaded"] = True
+
+    # 작업일지 불러오기
     if f"wl_loaded_{selected_date}" not in st.session_state:
         st.session_state[f"wl_loaded_{selected_date}"] = None
         try:
@@ -874,9 +886,12 @@ def page_work_log():
         with lc1:
             if st.button("✅ 불러오기", use_container_width=True, key="load_yes"):
                 try:
-                    from utils.sheets import load_work_log
-                    loaded = load_work_log(selected_date)
-                    st.session_state[f"wl_loaded_{selected_date}"] = loaded
+                    from utils.sheets import load_all
+                    all_data = load_all(selected_date)
+                    st.session_state[f"wl_loaded_{selected_date}"] = all_data.get("work_items")
+                    st.session_state[f"wl_detail_{selected_date}"] = all_data.get("detail")
+                    if all_data.get("leaves"):
+                        st.session_state["leave_list"] = all_data["leaves"]
                 except Exception:
                     pass
                 st.session_state[f"wl_ask_load_{selected_date}"] = False
@@ -887,6 +902,7 @@ def page_work_log():
                 st.rerun()
 
     loaded_data = st.session_state.get(f"wl_loaded_{selected_date}") or {}
+    loaded_detail = st.session_state.get(f"wl_detail_{selected_date}") or {}
 
     st.subheader("2. 업무 현황 입력")
     item_names = [
@@ -1001,14 +1017,14 @@ def page_work_log():
     # Google Sheets 저장 + 엑셀 다운로드
     col_save, col_dl = st.columns(2)
     with col_save:
-        if st.button("💾 저장 (Google Sheets)", use_container_width=True, type="primary"):
+        if st.button("💾 전체 저장 (Google Sheets)", use_container_width=True, type="primary"):
             try:
-                from utils.sheets import save_work_log
-                result = save_work_log(selected_date, work_items_data)
-                if result:
-                    st.success("✅ Google Sheets에 저장 완료! 월누계 자동 계산됨.")
-                else:
-                    st.error("저장 실패: Google Sheets 연결을 확인하세요.")
+                from utils.sheets import save_all
+                save_all(
+                    selected_date, work_items_data, shift_data_final,
+                    safety_items_data, note_text, st.session_state.get("leave_list", [])
+                )
+                st.success("✅ 전체 저장 완료! (업무현황 + 인원 + 안전 + 특이사항 + 휴가)")
             except Exception as e:
                 st.error(f"저장 실패: {type(e).__name__}: {e}")
 
