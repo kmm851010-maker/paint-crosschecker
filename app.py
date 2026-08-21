@@ -888,10 +888,26 @@ def page_work_log():
                 try:
                     from utils.sheets import load_all
                     all_data = load_all(selected_date)
-                    st.session_state[f"wl_loaded_{selected_date}"] = all_data.get("work_items")
+                    work_items = all_data.get("work_items") or {}
+                    st.session_state[f"wl_loaded_{selected_date}"] = work_items
                     st.session_state[f"wl_detail_{selected_date}"] = all_data.get("detail")
                     if all_data.get("leaves"):
                         st.session_state["leave_list"] = all_data["leaves"]
+
+                    # 각 입력칸 session_state 강제 복원
+                    _item_names = [
+                        "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
+                        "신나 하차 수량", "신나 공급 수량", "논크롬 공급 수량",
+                        "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
+                        "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수"
+                    ]
+                    _shift_labels = ["1근", "2근", "3근"]
+                    _load_keys = ["s1", "s2", "s3"]
+                    for idx, nm in enumerate(_item_names):
+                        item = work_items.get(nm, {})
+                        for j, lk in enumerate(_load_keys):
+                            val = item.get(lk, 0)
+                            st.session_state[f"wl_{_shift_labels[j]}_{idx}"] = str(val) if val > 0 else ""
                 except Exception:
                     pass
                 st.session_state[f"wl_ask_load_{selected_date}"] = False
