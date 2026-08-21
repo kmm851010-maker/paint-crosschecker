@@ -81,7 +81,9 @@ st.markdown("""
 # 사이드바
 # ──────────────────────────────────────
 st.sidebar.image("assets/kg.jpg", width=160)
-st.sidebar.caption("당진생산지원팀 제조지원계\n칼라반지게차 업무도우미")
+_dept = st.secrets.get("company", {}).get("dept", "")
+_team = st.secrets.get("company", {}).get("team", "업무도우미")
+st.sidebar.caption(f"{_dept}\n{_team} 업무도우미" if _dept else f"KG스틸 {_team} 업무도우미")
 st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(
@@ -562,7 +564,8 @@ def page_work_log():
 
         ws.row_dimensions[2].height = 32
         ws.merge_cells('A2:H2')
-        ws['A2'] = "칼라지게차 일일 업무 보고"
+        _doc_team = st.secrets.get("company", {}).get("team", "")
+        ws['A2'] = f"{_doc_team} 일일 업무 보고" if _doc_team else "일일 업무 보고"
         ws['A2'].font = font_title
         ws['A2'].alignment = align_c
 
@@ -720,7 +723,8 @@ def page_work_log():
         return result
 
     # ── UI ──
-    st.title("📋 칼라지게차 일일 업무 보고 작성")
+    _title_team = st.secrets.get("company", {}).get("team", "")
+    st.title(f"📋 {_title_team} 일일 업무 보고 작성" if _title_team else "📋 일일 업무 보고 작성")
 
     # 달력 크게 표시
     st.markdown("""
@@ -1126,7 +1130,8 @@ def page_work_log():
 
     with col_dl:
         excel_bytes = generate_work_log_excel(selected_date, shift_data_final, work_items_data, safety_items_data, note_text)
-        file_name = f"칼라지게차_일일업무보고_{selected_date.strftime('%Y%m%d')}.xlsx"
+        _fn_team = st.secrets.get("company", {}).get("team", "일일업무")
+        file_name = f"{_fn_team}_일일업무보고_{selected_date.strftime('%Y%m%d')}.xlsx"
         st.download_button(
             label="📥 엑셀 다운로드",
             data=excel_bytes,
