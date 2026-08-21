@@ -966,10 +966,7 @@ def page_work_log():
                 prev_total = month_totals_default[i]
                 auto_month = prev_total + daily_sum
                 raw_month = cols[len(shift_labels) + 1].text_input("월누계", value=str(auto_month), key=f"wl_month_{i}")
-                try:
-                    running_month = int(float(raw_month)) if raw_month.strip() else auto_month
-                except (ValueError, TypeError):
-                    running_month = auto_month
+                running_month = safe_calc(raw_month) if raw_month.strip() else auto_month
 
         if is_2person:
             work_items_data.append({
