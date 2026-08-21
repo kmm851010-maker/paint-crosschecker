@@ -18,6 +18,59 @@ st.set_page_config(
     layout="wide",
 )
 
+# ──────────────────────────────────────
+# 로그인 처리
+# ──────────────────────────────────────
+def _check_login():
+    auth_cfg = st.secrets.get("auth", {})
+    users = auth_cfg.get("users", {})
+    # users 없으면 단일 password 모드
+    single_pw = auth_cfg.get("password", "")
+
+    if st.session_state.get("authenticated"):
+        return True
+
+    st.markdown("""
+    <style>
+        [data-testid="stSidebar"] { display: none; }
+        .login-box { max-width: 380px; margin: 80px auto; padding: 40px;
+                     background: #fff; border-radius: 16px;
+                     box-shadow: 0 4px 24px rgba(75,45,142,0.15); }
+        .login-title { color: #4B2D8E; font-size: 24px; font-weight: 700;
+                       text-align: center; margin-bottom: 8px; }
+        .login-sub { color: #888; font-size: 14px; text-align: center; margin-bottom: 24px; }
+    </style>
+    <div class="login-box">
+        <div class="login-title">🔐 KG스틸 업무도우미</div>
+        <div class="login-sub">로그인이 필요합니다</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    with st.form("login_form"):
+        if users:
+            uid = st.text_input("아이디")
+        pw = st.text_input("비밀번호", type="password")
+        submitted = st.form_submit_button("로그인", use_container_width=True)
+
+    if submitted:
+        if users:
+            if users.get(uid) == pw:
+                st.session_state["authenticated"] = True
+                st.session_state["username"] = uid
+                st.rerun()
+            else:
+                st.error("아이디 또는 비밀번호가 올바르지 않습니다.")
+        else:
+            if pw == single_pw:
+                st.session_state["authenticated"] = True
+                st.rerun()
+            else:
+                st.error("비밀번호가 올바르지 않습니다.")
+    return False
+
+if not _check_login():
+    st.stop()
+
 api_key = os.getenv("ANTHROPIC_API_KEY", "")
 
 # KG스틸 브랜드 CSS
@@ -93,6 +146,13 @@ menu = st.sidebar.radio(
     label_visibility="collapsed",
 )
 
+st.sidebar.markdown("---")
+_uname = st.session_state.get("username", "")
+if _uname:
+    st.sidebar.caption(f"👤 {_uname}")
+if st.sidebar.button("🚪 로그아웃", use_container_width=True):
+    st.session_state.clear()
+    st.rerun()
 st.sidebar.markdown("---")
 st.sidebar.markdown("📱 **모바일 앱**")
 st.sidebar.markdown(
