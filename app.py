@@ -33,26 +33,31 @@ def _check_login():
     st.markdown("""
     <style>
         [data-testid="stSidebar"] { display: none; }
-        .login-box { max-width: 380px; margin: 80px auto; padding: 40px;
-                     background: #fff; border-radius: 16px;
-                     box-shadow: 0 4px 24px rgba(75,45,142,0.15); }
-        .login-title { color: #4B2D8E; font-size: 24px; font-weight: 700;
-                       text-align: center; margin-bottom: 8px; }
-        .login-sub { color: #888; font-size: 14px; text-align: center; margin-bottom: 24px; }
+        .block-container { max-width: 420px !important; margin: 60px auto !important; padding: 0 16px !important; }
+        .login-header { background: linear-gradient(135deg, #4B2D8E 0%, #6B3FA0 100%);
+                        border-radius: 16px 16px 0 0; padding: 36px 24px 28px;
+                        text-align: center; margin-bottom: 0; }
+        .login-logo { font-size: 48px; margin-bottom: 8px; }
+        .login-title { color: #fff; font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+        .login-sub { color: #D4C5F0; font-size: 13px; }
+        .login-body { background: #fff; border-radius: 0 0 16px 16px;
+                      padding: 28px 24px 24px; box-shadow: 0 8px 32px rgba(75,45,142,0.18); }
     </style>
-    <div class="login-box">
-        <div class="login-title">🔐 KG스틸 업무도우미</div>
-        <div class="login-sub">로그인이 필요합니다</div>
+    <div class="login-header">
+        <div class="login-logo">⚙️</div>
+        <div class="login-title">KG스틸 업무도우미</div>
+        <div class="login-sub">당진생산지원팀 전용 시스템</div>
     </div>
+    <div class="login-body"></div>
     """, unsafe_allow_html=True)
 
     with st.form("login_form"):
-        if users:
-            uid = st.text_input("아이디")
-        pw = st.text_input("비밀번호", type="password")
-        submitted = st.form_submit_button("로그인", use_container_width=True)
+        uid = st.text_input("아이디", placeholder="아이디를 입력하세요")
+        pw = st.text_input("비밀번호", type="password", placeholder="비밀번호를 입력하세요")
+        submitted = st.form_submit_button("🔐  로그인", use_container_width=True, type="primary")
 
     if submitted:
+        # users dict 있으면 개인 ID/PW, 없으면 단일 PW
         if users:
             if users.get(uid) == pw:
                 st.session_state["authenticated"] = True
@@ -63,6 +68,7 @@ def _check_login():
         else:
             if pw == single_pw:
                 st.session_state["authenticated"] = True
+                st.session_state["username"] = uid or "user"
                 st.rerun()
             else:
                 st.error("비밀번호가 올바르지 않습니다.")
@@ -1147,12 +1153,14 @@ def page_work_log():
 
     # 업무현황 폰트 확대 + 테두리
     st.markdown("""<style>
-    .work-section small{font-size:15px !important;}
-    .work-section p, .work-section span, .work-section strong{font-size:16px !important;}
-    .work-section input{font-size:16px !important; padding:6px 8px !important;}
-    .work-section [data-testid="stMetricValue"]{font-size:18px !important;}
-    .work-row{border:1px solid #D0C5E0; border-radius:6px; padding:6px 4px; margin-bottom:4px; background:#FAFAFE;}
-    .work-header{border:2px solid #4B2D8E; border-radius:6px; padding:8px 4px; margin-bottom:6px; background:#F0EDF5;}
+    .work-section small{font-size:11px !important;}
+    .work-section p, .work-section span, .work-section strong{font-size:11px !important;}
+    .work-section input{font-size:11px !important; padding:2px 4px !important;}
+    .work-section [data-testid="stMetricValue"]{font-size:13px !important;}
+    .work-section [data-testid="stVerticalBlock"] > div{gap:0.2rem !important;}
+    .work-section .stTextInput{margin-bottom:0 !important;}
+    .work-row{border:1px solid #D0C5E0; border-radius:4px; padding:2px 2px; margin-bottom:2px; background:#FAFAFE;}
+    .work-header{border:2px solid #4B2D8E; border-radius:4px; padding:4px 2px; margin-bottom:4px; background:#F0EDF5;}
     </style><div class="work-section">""", unsafe_allow_html=True)
 
     # 헤더 행
@@ -1444,10 +1452,12 @@ def page_statistics():
 
     # 올해 전체 휴가 데이터 로드
     year_leaves = {name: [] for name in ALL_MEMBERS}
+    saved_dates_year = set()
     try:
         year_prefix = f"{year}-"
         for row in all_data[1:]:
             if row and row[0].startswith(year_prefix) and len(row) > 1:
+                saved_dates_year.add(row[0])
                 try:
                     import json as _json
                     detail = _json.loads(row[1])
@@ -1468,6 +1478,22 @@ def page_statistics():
                     pass
     except Exception:
         pass
+
+    # 휴가 레지스트리에서 저장 일지 없는 날짜 보완
+    today_kst = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
+    for lv in base_leaves:
+        try:
+            lv_start = datetime.date.fromisoformat(lv["start"])
+            lv_end = datetime.date.fromisoformat(lv["end"])
+        except Exception:
+            continue
+        cur = lv_start
+        while cur <= lv_end and cur <= today_kst:
+            if cur.year == year:
+                ds = cur.strftime("%Y-%m-%d")
+                if ds not in saved_dates_year and lv["name"] in year_leaves:
+                    year_leaves[lv["name"]].append({"날짜": ds, "구분": lv["type"]})
+            cur += datetime.timedelta(days=1)
 
     # 통계 표시
     st.markdown("---")
