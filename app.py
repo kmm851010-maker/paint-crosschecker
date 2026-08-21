@@ -1414,6 +1414,14 @@ def page_statistics():
     st.subheader(f"📊 {year}년 {month}월 직원별 근무 통계")
     st.caption(f"저장된 일지: {saved_days}일분 / 나머지 {days_in_month - saved_days}일은 교대 스케줄 기반 예측값")
 
+    def _fh(v):
+        """float/int 시간값을 깔끔하게 표시 (4.0 → 4, 5.5 → 5.5)"""
+        try:
+            v = float(v)
+            return int(v) if v == int(v) else v
+        except Exception:
+            return v
+
     for name in ALL_MEMBERS:
         s = stats[name]
         total_ot = s["연장근로_대근"] + s["연장근로_주간"] + s["연장근로_야간"]
@@ -1422,28 +1430,26 @@ def page_statistics():
             st.markdown(f"### {name}")
             mc1, mc2, mc3, mc4, mc5, mc6, mc7 = st.columns(7)
             mc1.metric("근무일수", f"{s['근무일수']}일")
-            mc2.metric("기본근로", f"{s['기본근로']}H")
-            mc3.metric("연장(대근)", f"{s['연장근로_대근']}H")
-            mc4.metric("주간연장", f"{s['연장근로_주간']}H")
-            mc5.metric("야간연장", f"{s['연장근로_야간']}H")
-            mc6.metric("야간근로", f"{s['야간근로']}H")
+            mc2.metric("기본근로", f"{_fh(s['기본근로'])}H")
+            mc3.metric("연장(대근)", f"{_fh(s['연장근로_대근'])}H")
+            mc4.metric("주간연장", f"{_fh(s['연장근로_주간'])}H")
+            mc5.metric("야간연장", f"{_fh(s['연장근로_야간'])}H")
+            mc6.metric("야간근로", f"{_fh(s['야간근로'])}H")
             mc7.metric("휴가(월)", f"{s['휴가일수']}일")
 
             total_daegeun_h = sum(d["시간"] for d in s["대근내역"])
-            _dgh = int(total_daegeun_h) if total_daegeun_h == int(total_daegeun_h) else total_daegeun_h
             st.caption(
-                f"대근 {s['대근횟수']}회 ({_dgh}H) | "
-                f"총 연장 {total_ot}H (주간 {s['연장근로_주간']}H + 야간 {s['연장근로_야간']}H + 대근 {s['연장근로_대근']}H) | "
-                f"총 근로 {s['기본근로'] + total_ot}H | "
+                f"대근 {s['대근횟수']}회 ({_fh(total_daegeun_h)}H) | "
+                f"총 연장 {_fh(total_ot)}H (주간 {_fh(s['연장근로_주간'])}H + 야간 {_fh(s['연장근로_야간'])}H + 대근 {_fh(s['연장근로_대근'])}H) | "
+                f"총 근로 {_fh(s['기본근로'] + total_ot)}H | "
                 f"올해 휴가 총 {len(yr_leaves)}일"
             )
 
             # 대근 상세 내역
             if s["대근내역"]:
-                with st.expander(f"🔄 대근 내역 ({s['대근횟수']}회 · 계 {total_daegeun_h}H)"):
+                with st.expander(f"🔄 대근 내역 ({s['대근횟수']}회 · 계 {_fh(total_daegeun_h)}H)"):
                     for d in s["대근내역"]:
-                        h = int(d['시간']) if d['시간'] == int(d['시간']) else d['시간']
-                        st.write(f"{d['날짜']} | {d['구분']} | {d['휴가자']} {d['휴가구분']}으로 대근 | {h}H")
+                        st.write(f"{d['날짜']} | {d['구분']} | {d['휴가자']} {d['휴가구분']}으로 대근 | {_fh(d['시간'])}H")
 
             # 이번 달 휴가 내역
             if s["휴가내역"]:
