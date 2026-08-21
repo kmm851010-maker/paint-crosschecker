@@ -883,22 +883,28 @@ def page_work_log():
         target_col = col_left if i < 6 else col_right
         with target_col:
             with st.expander(f"📦 {name}", expanded=True):
-                cols = st.columns(len(shift_labels) + 1)
+                cols = st.columns(len(shift_labels) + 2)
                 vals = []
                 for j, label in enumerate(shift_labels):
                     v = cols[j].number_input(label, min_value=0, step=1, key=f"wl_{label}_{i}")
                     vals.append(v)
-                v_month = cols[-1].number_input("월누계", value=month_totals_default[i], step=1, key=f"wl_month_{i}")
+                # 일합계 실시간 계산
+                daily_sum = sum(vals)
+                cols[len(shift_labels)].metric("일합계", daily_sum)
+                # 월누계 = 이전 누적 + 오늘 합계
+                prev_total = month_totals_default[i]
+                running_month = prev_total + daily_sum
+                cols[len(shift_labels) + 1].metric("월누계", running_month)
 
         if is_2person:
             work_items_data.append({
                 "name": name, "s1": None, "s2": None, "s3": None,
-                "day": vals[0] or None, "night": vals[1] or None, "month_total": v_month
+                "day": vals[0] or None, "night": vals[1] or None, "month_total": running_month
             })
         else:
             work_items_data.append({
                 "name": name, "s1": vals[0] or None, "s2": vals[1] or None, "s3": vals[2] or None,
-                "day": None, "night": None, "month_total": v_month
+                "day": None, "night": None, "month_total": running_month
             })
 
     st.markdown("---")
