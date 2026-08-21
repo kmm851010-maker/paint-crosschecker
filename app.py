@@ -836,16 +836,19 @@ def page_work_log():
             st.markdown("**1근** (06:30~14:30)")
             s1_name = st.text_input("1근 근무자", value=shift_auto["1근_근무자"])
             s1_ot = st.number_input("연장(시간)", min_value=0.0, step=0.5, value=0.0, key="s1_ot")
+            s1_ot_type = st.selectbox("연장유형", ["주간연장", "야간연장"], key="s1_ot_type") if s1_ot > 0 else "주간연장"
             s1_note = st.text_input("1근 비고", "")
         with c2:
             st.markdown("**2근** (14:30~22:30)")
             s2_name = st.text_input("2근 근무자", value=shift_auto["2근_근무자"])
             s2_ot = st.number_input("연장(시간)", min_value=0.0, step=0.5, value=0.0, key="s2_ot")
+            s2_ot_type = st.selectbox("연장유형", ["야간연장", "주간연장"], key="s2_ot_type") if s2_ot > 0 else "야간연장"
             s2_note = st.text_input("2근 비고", "")
         with c3:
             st.markdown("**3근** (22:30~06:30)")
             s3_name = st.text_input("3근 근무자", value=shift_auto["3근_근무자"])
             s3_ot = st.number_input("연장(시간)", min_value=0.0, step=0.5, value=0.0, key="s3_ot")
+            s3_ot_type = "야간연장" if s3_ot > 0 else ""
             s3_note = st.text_input("3근 비고", "")
         with c4:
             st.markdown("**휴무**")
@@ -854,9 +857,9 @@ def page_work_log():
                                     index=0 if shift_auto["휴무_구분"]=="교대휴무" else 1)
 
         shift_data_final = {
-            "1근_조": shift_auto["1근_조"], "1근_근무자": s1_name, "1근_연장": s1_ot, "1근_비고": s1_note,
-            "2근_조": shift_auto["2근_조"], "2근_근무자": s2_name, "2근_연장": s2_ot, "2근_비고": s2_note,
-            "3근_조": shift_auto["3근_조"], "3근_근무자": s3_name, "3근_연장": s3_ot, "3근_비고": s3_note,
+            "1근_조": shift_auto["1근_조"], "1근_근무자": s1_name, "1근_연장": s1_ot, "1근_연장유형": s1_ot_type, "1근_비고": s1_note,
+            "2근_조": shift_auto["2근_조"], "2근_근무자": s2_name, "2근_연장": s2_ot, "2근_연장유형": s2_ot_type, "2근_비고": s2_note,
+            "3근_조": shift_auto["3근_조"], "3근_근무자": s3_name, "3근_연장": s3_ot, "3근_연장유형": s3_ot_type, "3근_비고": s3_note,
             "휴무_조": shift_auto["휴무_조"], "휴무_근무자": off_name, "휴무_구분": off_type,
             "is_2person": False,
         }
@@ -1178,11 +1181,16 @@ def page_statistics():
             for shift_key, night_key in [("1근_근무자", "1근"), ("2근_근무자", "2근"), ("3근_근무자", "3근")]:
                 worker = shift.get(shift_key, "")
                 ot = float(shift.get(f"{night_key}_연장", 0) or 0)
+                ot_type = shift.get(f"{night_key}_연장유형", "")
                 if worker in stats:
                     stats[worker]["근무일수"] += 1
                     stats[worker]["기본근로"] += 8
                     stats[worker]["연장근로_잔업"] += ot
-                    stats[worker]["야간근로"] += NIGHT_HOURS.get(night_key, 0)
+                    base_night = NIGHT_HOURS.get(night_key, 0)
+                    # 야간연장이면 연장시간도 야간에 추가
+                    if ot_type == "야간연장":
+                        base_night += ot
+                    stats[worker]["야간근로"] += base_night
 
         # 교대휴무/주휴휴무자
         off_worker = shift.get("휴무_근무자", "")
