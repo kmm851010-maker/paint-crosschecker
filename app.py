@@ -81,7 +81,7 @@ st.markdown("""
 # 사이드바
 # ──────────────────────────────────────
 st.sidebar.image("assets/kg.jpg", width=160)
-st.sidebar.caption("스마트 공정·자재 관리 시스템")
+st.sidebar.caption("당진생산지원팀 제조지원계\n칼라반지게차 업무도우미")
 st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(
