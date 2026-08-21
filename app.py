@@ -513,7 +513,7 @@ def page_work_log():
     from openpyxl.utils import get_column_letter
 
     # 4조 3교대 로테이션 (KG스틸 20일 주기)
-    MEMBERS = {'A': '최준일', 'B': '문주영', 'C': '이상석', 'D': '강명모'}
+    MEMBERS = dict(st.secrets.get("members", {'A': '직원A', 'B': '직원B', 'C': '직원C', 'D': '직원D'}))
     CYCLE_20 = [
         ('B', 'C', 'D', 'A'), ('B', 'C', 'A', 'D'), ('B', 'C', 'A', 'D'),
         ('B', 'D', 'A', 'C'), ('B', 'D', 'A', 'C'), ('C', 'D', 'A', 'B'),
@@ -1145,7 +1145,7 @@ def page_statistics():
 
     st.title("📈 월별 근무 통계")
 
-    MEMBERS = {'A': '최준일', 'B': '문주영', 'C': '이상석', 'D': '강명모'}
+    MEMBERS = dict(st.secrets.get("members", {'A': '직원A', 'B': '직원B', 'C': '직원C', 'D': '직원D'}))
     ALL_MEMBERS = list(MEMBERS.values())
 
     # 야간근로 기준시간 (근무 유형별)
