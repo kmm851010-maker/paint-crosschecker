@@ -1651,57 +1651,130 @@ def page_inventory():
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 body {{ background:#000; font-family:-apple-system,sans-serif; overflow:hidden; }}
 button {{ -webkit-tap-highlight-color:transparent; }}
+
+/* 모바일 전체 화면 강제 오버레이 */
+.qr-modal-container {{
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  background-color: #000 !important;
+  z-index: 99999 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}}
+
+/* 카메라 비디오 레이어 */
+.qr-video-feed {{
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  z-index: 1 !important;
+}}
+
+/* 정중앙 스캔 가이드 사각형 (화면 정중앙 강제 고정) */
+.qr-target-box {{
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  width: 260px !important;
+  height: 260px !important;
+  border: 3px solid #00ff88 !important;
+  border-radius: 16px !important;
+  box-shadow: 0 0 0 4000px rgba(0,0,0,0.55) !important;
+  z-index: 10 !important;
+  pointer-events: none !important;
+}}
+
+/* 상단 상태 뱃지 */
+.qr-top-bar {{
+  position: absolute !important;
+  top: max(24px, env(safe-area-inset-top)) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  background: rgba(0,0,0,0.8) !important;
+  color: #fff !important;
+  padding: 8px 20px !important;
+  border-radius: 30px !important;
+  font-size: 15px !important;
+  font-weight: bold !important;
+  z-index: 20 !important;
+  white-space: nowrap !important;
+}}
+
+/* 최근 스캔 */
+#lastScanned {{
+  display: none;
+  position: absolute !important;
+  bottom: 130px !important;
+  left: 16px !important;
+  right: 16px !important;
+  z-index: 20 !important;
+  background: rgba(0,0,0,0.7) !important;
+  padding: 10px !important;
+  border-radius: 8px !important;
+  color: #4AFF91 !important;
+  font-size: 13px !important;
+  text-align: center !important;
+}}
+
+/* 하단 버튼 영역 */
+.qr-bottom-bar {{
+  position: absolute !important;
+  bottom: max(30px, env(safe-area-inset-bottom)) !important;
+  left: 0 !important;
+  right: 0 !important;
+  display: flex !important;
+  justify-content: center !important;
+  gap: 20px !important;
+  z-index: 20 !important;
+  padding: 0 20px !important;
+}}
+
+.qr-btn {{
+  flex: 1 !important;
+  max-width: 140px !important;
+  height: 48px !important;
+  border-radius: 12px !important;
+  border: none !important;
+  font-size: 16px !important;
+  font-weight: bold !important;
+  color: #fff !important;
+  cursor: pointer !important;
+}}
+
+.qr-btn-cancel {{ background: rgba(255,255,255,0.25) !important; }}
+.qr-btn-confirm {{ background: #007bff !important; opacity: 0.5; }}
+.qr-btn-confirm:not(:disabled) {{ opacity: 1 !important; }}
 </style>
 </head>
 <body>
 
-<!-- 1. 최상위 래퍼 -->
-<div id="wrapper" style="width:100%;height:100dvh;position:relative;overflow:hidden;background:#000;">
+<div class="qr-modal-container">
+  <!-- 카메라 영상 -->
+  <video id="qr-video" class="qr-video-feed" autoplay playsinline muted></video>
 
-  <!-- 2. 비디오/카메라 레이어 -->
-  <video id="video"
-    style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1;"
-    playsinline autoplay muted></video>
-  <canvas id="canvas" style="display:none;"></canvas>
+  <!-- 스캔 가이드 박스 (정중앙 고정) -->
+  <div class="qr-target-box"></div>
 
-  <!-- 3. 가이드 박스 오버레이 — flex column과 완전히 독립된 absolute -->
-  <div style="position:absolute;inset:0;z-index:10;display:flex;
-              justify-content:center;align-items:center;pointer-events:none;">
-    <div id="guide"
-      style="width:300px;height:130px;border:2px solid rgba(255,255,255,0.9);
-             border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,0.35);"></div>
-  </div>
-
-  <!-- 4. 상단 UI -->
-  <div id="badge"
-    style="position:absolute;top:calc(20px + env(safe-area-inset-top));left:50%;
-           transform:translateX(-50%);z-index:20;
-           background:rgba(0,0,0,0.7);padding:8px 20px;border-radius:20px;
-           color:#fff;font-size:15px;font-weight:700;white-space:nowrap;">
-    스캔됨: 0드럼
+  <!-- 상단 안내 -->
+  <div class="qr-top-bar">
+    스캔됨: <span id="scan-count-text">0</span>드럼
   </div>
 
   <!-- 최근 스캔 -->
-  <div id="lastScanned"
-    style="display:none;position:absolute;bottom:130px;left:16px;right:16px;z-index:20;
-           background:rgba(0,0,0,0.7);padding:10px;border-radius:8px;
-           color:#4AFF91;font-size:13px;text-align:center;"></div>
+  <div id="lastScanned"></div>
 
-  <!-- 5. 하단 버튼 바 -->
-  <div style="position:absolute;bottom:calc(30px + env(safe-area-inset-bottom));
-              left:0;right:0;z-index:20;display:flex;
-              justify-content:space-around;padding:0 16px;gap:12px;">
-    <button onclick="cancelScan()"
-      style="flex:1;padding:16px;background:rgba(0,0,0,0.6);color:#fff;
-             border:1px solid #fff;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;">
-      취소
-    </button>
-    <button id="doneBtn" onclick="doneScan()" disabled
-      style="flex:2;padding:16px;background:#4B2D8E;color:#fff;
-             border:none;border-radius:12px;font-size:16px;font-weight:700;
-             cursor:pointer;opacity:0.5;">
-      완료 (0)
-    </button>
+  <!-- 하단 액션 -->
+  <div class="qr-bottom-bar">
+    <button type="button" class="qr-btn qr-btn-cancel" onclick="closeScanner()">취소</button>
+    <button type="button" id="confirmBtn" class="qr-btn qr-btn-confirm" onclick="finishScan()" disabled>완료 (0)</button>
   </div>
 
   <!-- 섹터 선택 패널 -->
@@ -1729,12 +1802,11 @@ button {{ -webkit-tap-highlight-color:transparent; }}
       style="color:#4AFF91;font-size:18px;font-weight:700;
              text-align:center;padding:0 32px;"></div>
     <button onclick="resetScanner()"
-      style="padding:14px 32px;background:#4B2D8E;color:#fff;border:none;
+      style="padding:14px 32px;background:#007bff;color:#fff;border:none;
              border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;">
       계속 스캔
     </button>
   </div>
-
 </div>
 
 <script>
@@ -1751,9 +1823,8 @@ let detector = null;
 async function init() {{
   if ('BarcodeDetector' in window) {{
     try {{
-      detector = new BarcodeDetector({{
-        formats: ['pdf417','code_128','code_39','qr_code','data_matrix','aztec','ean_13','ean_8']
-      }});
+      // QR 코드만 인식
+      detector = new BarcodeDetector({{ formats: ['qr_code'] }});
     }} catch(e) {{ detector = null; }}
   }}
   await startCamera();
@@ -1764,24 +1835,23 @@ async function startCamera() {{
     const stream = await navigator.mediaDevices.getUserMedia({{
       video: {{ facingMode: 'environment', width: {{ideal:1280}}, height: {{ideal:720}} }}
     }});
-    const video = document.getElementById('video');
+    const video = document.getElementById('qr-video');
     video.srcObject = stream;
     await video.play();
     requestAnimationFrame(scanLoop);
   }} catch(e) {{
-    document.getElementById('badge').textContent = '카메라 오류: ' + e.message;
-    document.getElementById('badge').style.background = 'rgba(180,0,0,0.8)';
+    document.querySelector('.qr-top-bar').textContent = '카메라 오류: ' + e.message;
   }}
 }}
 
 function getGuideRect() {{
-  return document.getElementById('guide').getBoundingClientRect();
+  return document.querySelector('.qr-target-box').getBoundingClientRect();
 }}
 
 async function scanLoop() {{
   animId = requestAnimationFrame(scanLoop);
   if (!detector) return;
-  const video = document.getElementById('video');
+  const video = document.getElementById('qr-video');
   if (video.readyState < 2) return;
   try {{
     const barcodes = await detector.detect(video);
@@ -1819,11 +1889,10 @@ async function processBarcode(data) {{
 
 function updateUI() {{
   const n = batch.length;
-  document.getElementById('badge').textContent = '스캔됨: ' + n + '드럼';
-  const btn = document.getElementById('doneBtn');
+  document.getElementById('scan-count-text').textContent = n;
+  const btn = document.getElementById('confirmBtn');
   btn.textContent = '완료 (' + n + ')';
   btn.disabled = n === 0;
-  btn.style.opacity = n === 0 ? '0.5' : '1';
 }}
 
 function flash(text, ok) {{
@@ -1833,7 +1902,7 @@ function flash(text, ok) {{
   el.style.display = 'block';
 }}
 
-function doneScan() {{
+function finishScan() {{
   if (!batch.length) return;
   document.getElementById('sectorTitle').textContent = batch.length + '드럼 → 섹터 선택';
   const el = document.getElementById('sectorBtns');
@@ -1850,8 +1919,7 @@ function doneScan() {{
   co.style.cssText = 'display:block;width:100%;padding:14px;background:#E53935;border:none;border-radius:10px;font-size:16px;font-weight:600;color:#fff;cursor:pointer;';
   co.onclick = () => selectSector(CHECKOUT);
   el.appendChild(co);
-  const panel = document.getElementById('sectorPanel');
-  panel.style.display = 'flex';
+  document.getElementById('sectorPanel').style.display = 'flex';
 }}
 
 function closeSectorPanel() {{
@@ -1881,9 +1949,8 @@ async function selectSector(sector) {{
 
 function showResult(msg, ok) {{
   const el = document.getElementById('resultMsg');
-  const txt = document.getElementById('resultText');
-  txt.textContent = msg;
-  txt.style.color = ok ? '#4AFF91' : '#FF6B6B';
+  document.getElementById('resultText').textContent = msg;
+  document.getElementById('resultText').style.color = ok ? '#4AFF91' : '#FF6B6B';
   el.style.display = 'flex';
 }}
 
@@ -1893,11 +1960,11 @@ function resetScanner() {{
   animId = requestAnimationFrame(scanLoop);
 }}
 
-function cancelScan() {{
+function closeScanner() {{
   if (animId) cancelAnimationFrame(animId);
-  const v = document.getElementById('video');
+  const v = document.getElementById('qr-video');
   if (v.srcObject) v.srcObject.getTracks().forEach(t => t.stop());
-  document.getElementById('badge').textContent = '취소됨';
+  document.querySelector('.qr-top-bar').innerHTML = '스캔됨: <span id="scan-count-text">0</span>드럼';
 }}
 
 init();
