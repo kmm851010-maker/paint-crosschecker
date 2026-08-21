@@ -940,50 +940,50 @@ def page_work_log():
         except (ValueError, TypeError):
             return 0
 
+    # 컴팩트 스타일
+    st.markdown('<style>div[data-testid="stNumberInput"] input{padding:4px 8px !important;} div[data-testid="stTextInput"] input{padding:4px 8px !important;}</style>', unsafe_allow_html=True)
+
+    # 헤더 행
+    if is_2person:
+        hdr = st.columns([3, 1, 1, 1, 1])
+        hdr[0].markdown("**작업 항목**")
+        hdr[1].markdown("**주간**")
+        hdr[2].markdown("**야간**")
+    else:
+        hdr = st.columns([3, 1, 1, 1, 1, 1])
+        hdr[0].markdown("**작업 항목**")
+        hdr[1].markdown("**1근**")
+        hdr[2].markdown("**2근**")
+        hdr[3].markdown("**3근**")
+    hdr[-2].markdown("**일합계**")
+    hdr[-1].markdown("**월누계**")
+
     work_items_data = []
-    col_left, col_right = st.columns(2)
     for i, name in enumerate(item_names):
-        target_col = col_left if i < 6 else col_right
-        with target_col:
-            with st.expander(f"📦 {name}", expanded=True):
-                # 근무 입력
-                shift_cols = st.columns(len(shift_labels))
-                vals = []
-                loaded_item = loaded_data.get(name, {})
-                for j, label in enumerate(shift_labels):
-                    if is_2person:
-                        load_keys = ["day", "night"]
-                    else:
-                        load_keys = ["s1", "s2", "s3"]
-                    default_val = loaded_item.get(load_keys[j], 0) if loaded_item else 0
-                    default_str = str(default_val) if default_val > 0 else ""
-                    raw = shift_cols[j].text_input(label, value=default_str, key=f"wl_{label}_{i}", placeholder="")
-                    vals.append(safe_calc(raw))
+        loaded_item = loaded_data.get(name, {})
+        if is_2person:
+            row = st.columns([3, 1, 1, 1, 1])
+            load_keys = ["day", "night"]
+        else:
+            row = st.columns([3, 1, 1, 1, 1, 1])
+            load_keys = ["s1", "s2", "s3"]
 
-                # 합계 행: 일합계 + 월누계
-                sum_cols = st.columns(2)
-                daily_sum = sum(vals)
-                sum_cols[0].metric("일합계", daily_sum)
+        row[0].markdown(f"<small>{name}</small>", unsafe_allow_html=True)
 
-                # 월누계: 저장된 값 또는 자동계산값, 수정 가능
-                prev_total = month_totals_default[i]
-                # 불러온 데이터에 월누계가 있으면 사용
-                loaded_month = 0
-                if loaded_item:
-                    loaded_month = loaded_item.get("month_total", 0)
-                auto_month = loaded_month if loaded_month > 0 else prev_total + daily_sum
-                month_key = f"wl_month_val_{i}"
-                if month_key not in st.session_state:
-                    st.session_state[month_key] = auto_month
-                # 일합계 변동분 반영
-                prev_daily_key = f"wl_prev_daily_{i}"
-                prev_daily = st.session_state.get(prev_daily_key, 0)
-                if daily_sum != prev_daily:
-                    st.session_state[month_key] += (daily_sum - prev_daily)
-                    st.session_state[prev_daily_key] = daily_sum
-                running_month = sum_cols[1].number_input("월누계", value=st.session_state[month_key], min_value=0, step=1, key=f"wl_month_input_{i}")
-                st.session_state[month_key] = running_month
-                st.session_state[prev_daily_key] = daily_sum
+        vals = []
+        for j, lk in enumerate(load_keys):
+            default_val = loaded_item.get(lk, 0) if loaded_item else 0
+            default_str = str(default_val) if default_val > 0 else ""
+            raw = row[j + 1].text_input(f"_{i}_{j}", value=default_str, key=f"wl_{shift_labels[j]}_{i}", label_visibility="collapsed")
+            vals.append(safe_calc(raw))
+
+        daily_sum = sum(vals)
+        row[-2].markdown(f"**{daily_sum}**")
+
+        # 월누계 = 이전 누적(오늘 제외) + 오늘 일합계, 항상 자동
+        prev_total = month_totals_default[i]
+        running_month = prev_total + daily_sum
+        row[-1].markdown(f"**{running_month}**")
 
         if is_2person:
             work_items_data.append({
