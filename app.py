@@ -1209,6 +1209,33 @@ def page_statistics():
             stats[off_worker]["휴가일수"] += 1
             stats[off_worker]["휴가내역"].append(f"{date_str}: {off_type}")
 
+    # 올해 전체 휴가 데이터 로드
+    year_leaves = {name: [] for name in ALL_MEMBERS}
+    try:
+        year_prefix = f"{year}-"
+        for row in all_data[1:]:
+            if row and row[0].startswith(year_prefix) and len(row) > 1:
+                try:
+                    import json as _json
+                    detail = _json.loads(row[1])
+                    shift_y = detail.get("shift", {})
+                    is_2p_y = shift_y.get("is_2person", False)
+
+                    if is_2p_y:
+                        lw = shift_y.get("3근_근무자", "")
+                        lt = shift_y.get("3근_비고", "")
+                        if lw in year_leaves and lt:
+                            year_leaves[lw].append({"날짜": row[0], "구분": lt})
+
+                    off_w = shift_y.get("휴무_근무자", "")
+                    off_t = shift_y.get("휴무_구분", "")
+                    if off_w in year_leaves and off_t not in ("교대휴무", "주휴휴무", ""):
+                        year_leaves[off_w].append({"날짜": row[0], "구분": off_t})
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
     # 통계 표시
     st.markdown("---")
     st.subheader(f"📊 {year}년 {month}월 직원별 근무 통계")
@@ -1217,6 +1244,7 @@ def page_statistics():
     for name in ALL_MEMBERS:
         s = stats[name]
         total_ot = s["연장근로_대근"] + s["연장근로_잔업"]
+        yr_leaves = year_leaves.get(name, [])
         with st.container(border=True):
             st.markdown(f"### {name}")
             mc1, mc2, mc3, mc4, mc5, mc6 = st.columns(6)
@@ -1225,17 +1253,32 @@ def page_statistics():
             mc3.metric("연장(대근)", f"{s['연장근로_대근']}H")
             mc4.metric("연장(잔업)", f"{s['연장근로_잔업']}H")
             mc5.metric("야간근로", f"{s['야간근로']}H")
-            mc6.metric("휴가", f"{s['휴가일수']}일")
+            mc6.metric("휴가(월)", f"{s['휴가일수']}일")
 
             st.caption(
                 f"대근 {s['대근횟수']}회 | "
                 f"총 연장 {total_ot}H | "
-                f"총 근로 {s['기본근로'] + total_ot}H"
+                f"총 근로 {s['기본근로'] + total_ot}H | "
+                f"올해 휴가 총 {len(yr_leaves)}일"
             )
+
+            # 이번 달 휴가 내역
             if s["휴가내역"]:
-                with st.expander("휴가 내역"):
+                with st.expander(f"📅 {month}월 휴가 내역 ({s['휴가일수']}일)"):
                     for h in s["휴가내역"]:
                         st.write(h)
+
+            # 올해 전체 휴가 내역
+            if yr_leaves:
+                with st.expander(f"📋 {year}년 전체 휴가 내역 ({len(yr_leaves)}일)"):
+                    # 유형별 집계
+                    type_count = {}
+                    for lv in yr_leaves:
+                        type_count[lv["구분"]] = type_count.get(lv["구분"], 0) + 1
+                    summary = " | ".join(f"{k}: {v}일" for k, v in type_count.items())
+                    st.info(summary)
+                    for lv in yr_leaves:
+                        st.write(f"{lv['날짜']} — {lv['구분']}")
 
 
 # ──────────────────────────────────────
