@@ -878,52 +878,35 @@ def page_work_log():
         except Exception:
             st.session_state["leave_loaded"] = True
 
-    # 작업일지 불러오기
-    if f"wl_loaded_{selected_date}" not in st.session_state:
-        st.session_state[f"wl_loaded_{selected_date}"] = None
+    # 작업일지 자동 불러오기 (저장 데이터 있으면 즉시 복원)
+    load_key = f"wl_autoloaded_{selected_date}"
+    if load_key not in st.session_state:
         try:
-            from utils.sheets import has_saved_data
-            if has_saved_data(selected_date):
-                st.session_state[f"wl_ask_load_{selected_date}"] = True
+            from utils.sheets import load_all
+            all_data = load_all(selected_date)
+            work_items = all_data.get("work_items") or {}
+            st.session_state[f"wl_loaded_{selected_date}"] = work_items
+            st.session_state[f"wl_detail_{selected_date}"] = all_data.get("detail")
+
+            if work_items:
+                # 각 입력칸 session_state 강제 복원
+                _item_names = [
+                    "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
+                    "신나 하차 수량", "신나 공급 수량", "논크롬 공급 수량",
+                    "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
+                    "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수"
+                ]
+                _shift_labels = ["1근", "2근", "3근"]
+                _load_keys = ["s1", "s2", "s3"]
+                for idx, nm in enumerate(_item_names):
+                    item = work_items.get(nm, {})
+                    for j, lk in enumerate(_load_keys):
+                        val = item.get(lk, 0)
+                        st.session_state[f"wl_{_shift_labels[j]}_{idx}"] = str(val) if val > 0 else ""
+                st.toast(f"📂 {selected_date.strftime('%Y-%m-%d')} 저장 데이터 자동 불러옴")
         except Exception:
             pass
-
-    if st.session_state.get(f"wl_ask_load_{selected_date}"):
-        st.info(f"📂 {selected_date.strftime('%Y-%m-%d')}에 저장된 작업일지가 있습니다.")
-        lc1, lc2 = st.columns(2)
-        with lc1:
-            if st.button("✅ 불러오기", use_container_width=True, key="load_yes"):
-                try:
-                    from utils.sheets import load_all
-                    all_data = load_all(selected_date)
-                    work_items = all_data.get("work_items") or {}
-                    st.session_state[f"wl_loaded_{selected_date}"] = work_items
-                    st.session_state[f"wl_detail_{selected_date}"] = all_data.get("detail")
-                    if all_data.get("leaves"):
-                        st.session_state["leave_list"] = all_data["leaves"]
-
-                    # 각 입력칸 session_state 강제 복원
-                    _item_names = [
-                        "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
-                        "신나 하차 수량", "신나 공급 수량", "논크롬 공급 수량",
-                        "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
-                        "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수"
-                    ]
-                    _shift_labels = ["1근", "2근", "3근"]
-                    _load_keys = ["s1", "s2", "s3"]
-                    for idx, nm in enumerate(_item_names):
-                        item = work_items.get(nm, {})
-                        for j, lk in enumerate(_load_keys):
-                            val = item.get(lk, 0)
-                            st.session_state[f"wl_{_shift_labels[j]}_{idx}"] = str(val) if val > 0 else ""
-                except Exception:
-                    pass
-                st.session_state[f"wl_ask_load_{selected_date}"] = False
-                st.rerun()
-        with lc2:
-            if st.button("❌ 새로 작성", use_container_width=True, key="load_no"):
-                st.session_state[f"wl_ask_load_{selected_date}"] = False
-                st.rerun()
+        st.session_state[load_key] = True
 
     loaded_data = st.session_state.get(f"wl_loaded_{selected_date}") or {}
     loaded_detail = st.session_state.get(f"wl_detail_{selected_date}") or {}
