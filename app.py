@@ -6,7 +6,9 @@
 import os
 import datetime
 import time
-import secrets
+import hmac
+import hashlib
+import base64
 
 import pandas as pd
 import streamlit as st
@@ -21,25 +23,32 @@ st.set_page_config(
 )
 
 # ──────────────────────────────────────
-# 세션 관리 (새로고침 유지 + 3시간 무활동 자동 로그아웃)
+# 세션 토큰 (HMAC 서명 - 서버 재시작 후에도 유효)
 # ──────────────────────────────────────
-_SESSIONS: dict = {}          # token -> {username, last_active}
-_SESSION_TTL = 3 * 60 * 60   # 3시간 (초)
+_SESSION_TTL = 3 * 60 * 60  # 3시간
 
-def _validate_token(token: str):
-    sess = _SESSIONS.get(token)
-    if not sess:
-        return None
-    if time.time() - sess["last_active"] > _SESSION_TTL:
-        _SESSIONS.pop(token, None)
-        return None
-    sess["last_active"] = time.time()
-    return sess["username"]
+def _get_secret() -> bytes:
+    return st.secrets.get("session_secret", "kg-steel-default-secret-2024").encode()
 
 def _create_token(username: str) -> str:
-    token = secrets.token_urlsafe(32)
-    _SESSIONS[token] = {"username": username, "last_active": time.time()}
-    return token
+    ts = str(int(time.time()))
+    payload = base64.urlsafe_b64encode(f"{username}:{ts}".encode()).decode()
+    sig = hmac.new(_get_secret(), payload.encode(), hashlib.sha256).hexdigest()[:24]
+    return f"{payload}.{sig}"
+
+def _validate_token(token: str):
+    try:
+        payload, sig = token.rsplit(".", 1)
+        expected = hmac.new(_get_secret(), payload.encode(), hashlib.sha256).hexdigest()[:24]
+        if not hmac.compare_digest(sig, expected):
+            return None
+        decoded = base64.urlsafe_b64decode(payload.encode()).decode()
+        username, ts = decoded.rsplit(":", 1)
+        if time.time() - int(ts) > _SESSION_TTL:
+            return None
+        return username
+    except Exception:
+        return None
 
 # ──────────────────────────────────────
 # 로그인 처리
