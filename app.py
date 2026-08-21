@@ -877,6 +877,22 @@ def page_work_log():
     else:
         shift_labels = ["1근", "2근", "3근"]
 
+    def safe_calc(expr):
+        """안전한 수식 계산. '10+10' → 20, '5' → 5, '' → 0"""
+        if not expr or not expr.strip():
+            return 0
+        expr = expr.strip()
+        import re
+        if re.match(r'^[\d\s\+\-\*\.]+$', expr):
+            try:
+                return max(0, int(eval(expr)))
+            except Exception:
+                return 0
+        try:
+            return max(0, int(float(expr)))
+        except (ValueError, TypeError):
+            return 0
+
     work_items_data = []
     col_left, col_right = st.columns(2)
     for i, name in enumerate(item_names):
@@ -886,8 +902,8 @@ def page_work_log():
                 cols = st.columns(len(shift_labels) + 2)
                 vals = []
                 for j, label in enumerate(shift_labels):
-                    v = cols[j].number_input(label, min_value=0, step=1, key=f"wl_{label}_{i}")
-                    vals.append(v)
+                    raw = cols[j].text_input(label, value="", key=f"wl_{label}_{i}", placeholder="0 또는 10+5")
+                    vals.append(safe_calc(raw))
                 # 일합계 실시간 계산
                 daily_sum = sum(vals)
                 cols[len(shift_labels)].metric("일합계", daily_sum)
