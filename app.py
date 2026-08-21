@@ -86,7 +86,7 @@ st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(
     "메뉴 선택",
-    ["🔍 생산계획 vs 입고 교차검증", "📊 캡처 이미지 → 엑셀 변환기", "📋 일일 작업일지 작성"],
+    ["🔍 생산계획 vs 입고 교차검증", "📊 캡처 이미지 → 엑셀 변환기", "📋 일일 작업일지 작성", "📈 근무 통계"],
     label_visibility="collapsed",
 )
 
@@ -811,20 +811,22 @@ def page_work_log():
         with c1:
             st.markdown("**주간** (06:30~18:30)")
             day_name = st.text_input("주간 근무자", value=shift_auto["주간_근무자"])
-            day_note = st.text_input("주간 비고", "연장 4시간")
+            day_ot = st.number_input("추가 연장(시간)", min_value=0.0, step=0.5, value=0.0, key="day_ot")
+            day_note = st.text_input("주간 비고", "대근 연장4H")
         with c2:
             st.markdown("**야간** (18:30~06:30)")
             night_name = st.text_input("야간 근무자", value=shift_auto["야간_근무자"])
-            night_note = st.text_input("야간 비고", "연장 4시간")
+            night_ot = st.number_input("추가 연장(시간)", min_value=0.0, step=0.5, value=0.0, key="night_ot")
+            night_note = st.text_input("야간 비고", "대근 연장4H")
         with c3:
             st.markdown("**휴무**")
             off_name = st.text_input("휴무자", value=shift_auto["휴무_근무자"])
             off_type = st.selectbox("휴무 구분", ["교대휴무","주휴휴무"], index=0 if shift_auto["휴무_구분"]=="교대휴무" else 1)
 
         shift_data_final = {
-            "1근_조": shift_auto["주간_조"], "1근_근무자": day_name, "1근_연장": "4H", "1근_비고": day_note,
-            "2근_조": shift_auto["야간_조"], "2근_근무자": night_name, "2근_연장": "4H", "2근_비고": night_note,
-            "3근_조": "", "3근_근무자": shift_auto["leave_person"], "3근_연장": "", "3근_비고": shift_auto["leave_type"],
+            "1근_조": shift_auto["주간_조"], "1근_근무자": day_name, "1근_연장": 4 + day_ot, "1근_비고": day_note,
+            "2근_조": shift_auto["야간_조"], "2근_근무자": night_name, "2근_연장": 4 + night_ot, "2근_비고": night_note,
+            "3근_조": "", "3근_근무자": shift_auto["leave_person"], "3근_연장": 0, "3근_비고": shift_auto["leave_type"],
             "휴무_조": shift_auto["휴무_조"], "휴무_근무자": off_name, "휴무_구분": off_type,
             "is_2person": True,
         }
@@ -833,14 +835,17 @@ def page_work_log():
         with c1:
             st.markdown("**1근** (06:30~14:30)")
             s1_name = st.text_input("1근 근무자", value=shift_auto["1근_근무자"])
+            s1_ot = st.number_input("연장(시간)", min_value=0.0, step=0.5, value=0.0, key="s1_ot")
             s1_note = st.text_input("1근 비고", "")
         with c2:
             st.markdown("**2근** (14:30~22:30)")
             s2_name = st.text_input("2근 근무자", value=shift_auto["2근_근무자"])
+            s2_ot = st.number_input("연장(시간)", min_value=0.0, step=0.5, value=0.0, key="s2_ot")
             s2_note = st.text_input("2근 비고", "")
         with c3:
             st.markdown("**3근** (22:30~06:30)")
             s3_name = st.text_input("3근 근무자", value=shift_auto["3근_근무자"])
+            s3_ot = st.number_input("연장(시간)", min_value=0.0, step=0.5, value=0.0, key="s3_ot")
             s3_note = st.text_input("3근 비고", "")
         with c4:
             st.markdown("**휴무**")
@@ -849,9 +854,9 @@ def page_work_log():
                                     index=0 if shift_auto["휴무_구분"]=="교대휴무" else 1)
 
         shift_data_final = {
-            "1근_조": shift_auto["1근_조"], "1근_근무자": s1_name, "1근_연장": "", "1근_비고": s1_note,
-            "2근_조": shift_auto["2근_조"], "2근_근무자": s2_name, "2근_연장": "", "2근_비고": s2_note,
-            "3근_조": shift_auto["3근_조"], "3근_근무자": s3_name, "3근_연장": "", "3근_비고": s3_note,
+            "1근_조": shift_auto["1근_조"], "1근_근무자": s1_name, "1근_연장": s1_ot, "1근_비고": s1_note,
+            "2근_조": shift_auto["2근_조"], "2근_근무자": s2_name, "2근_연장": s2_ot, "2근_비고": s2_note,
+            "3근_조": shift_auto["3근_조"], "3근_근무자": s3_name, "3근_연장": s3_ot, "3근_비고": s3_note,
             "휴무_조": shift_auto["휴무_조"], "휴무_근무자": off_name, "휴무_구분": off_type,
             "is_2person": False,
         }
@@ -1079,6 +1084,142 @@ def page_work_log():
         )
 
 
+# ══════════════════════════════════════
+# 메뉴 4: 근무 통계
+# ══════════════════════════════════════
+def page_statistics():
+    import datetime
+    import calendar
+
+    st.title("📈 월별 근무 통계")
+
+    MEMBERS = {'A': '최준일', 'B': '문주영', 'C': '이상석', 'D': '강명모'}
+    ALL_MEMBERS = list(MEMBERS.values())
+
+    # 야간근로 기준시간 (근무 유형별)
+    NIGHT_HOURS = {"1근": 0, "2근": 0.5, "3근": 7.5, "주간": 0, "야간": 7.5}
+
+    today_kst = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
+    col1, col2 = st.columns(2)
+    with col1:
+        year = st.selectbox("연도", range(2026, 2101), index=today_kst.year - 2026)
+    with col2:
+        month = st.selectbox("월", range(1, 13), index=today_kst.month - 1)
+
+    target_month = datetime.date(year, month, 1)
+    days_in_month = calendar.monthrange(year, month)[1]
+
+    # Google Sheets에서 해당 월 데이터 로드
+    try:
+        from utils.sheets import _get_or_create_sheet
+        ws = _get_or_create_sheet("일지상세")
+        all_data = ws.get_all_values()
+
+        import json
+        month_prefix = target_month.strftime("%Y-%m-")
+        daily_details = {}
+        for row in all_data[1:]:
+            if row and row[0].startswith(month_prefix) and len(row) > 1:
+                try:
+                    daily_details[row[0]] = json.loads(row[1])
+                except Exception:
+                    pass
+    except Exception as e:
+        st.error(f"데이터 로드 실패: {e}")
+        return
+
+    if not daily_details:
+        st.warning(f"{year}년 {month}월에 저장된 작업일지가 없습니다.")
+        return
+
+    # 직원별 통계 계산
+    stats = {name: {
+        "근무일수": 0, "기본근로": 0, "연장근로_대근": 0, "연장근로_잔업": 0,
+        "야간근로": 0, "휴가일수": 0, "대근횟수": 0, "휴가내역": []
+    } for name in ALL_MEMBERS}
+
+    for date_str, detail in daily_details.items():
+        shift = detail.get("shift", {})
+        is_2p = shift.get("is_2person", False)
+
+        if is_2p:
+            # 주간 근무자
+            day_worker = shift.get("1근_근무자", "")
+            night_worker = shift.get("2근_근무자", "")
+            leave_worker = shift.get("3근_근무자", "")
+            day_ot = float(shift.get("1근_연장", 0) or 0)
+            night_ot = float(shift.get("2근_연장", 0) or 0)
+
+            if day_worker in stats:
+                stats[day_worker]["근무일수"] += 1
+                stats[day_worker]["기본근로"] += 8
+                stats[day_worker]["연장근로_대근"] += 4  # 대근 연장 4시간
+                extra_ot = max(0, day_ot - 4)
+                stats[day_worker]["연장근로_잔업"] += extra_ot
+                stats[day_worker]["야간근로"] += NIGHT_HOURS.get("주간", 0)
+                stats[day_worker]["대근횟수"] += 1
+
+            if night_worker in stats:
+                stats[night_worker]["근무일수"] += 1
+                stats[night_worker]["기본근로"] += 8
+                stats[night_worker]["연장근로_대근"] += 4
+                extra_ot = max(0, night_ot - 4)
+                stats[night_worker]["연장근로_잔업"] += extra_ot
+                stats[night_worker]["야간근로"] += 8  # 2인 야간: 18:30~06:30 중 22:00~06:00 = 8시간
+                stats[night_worker]["대근횟수"] += 1
+
+            # 휴가자
+            leave_type = shift.get("3근_비고", "")
+            if leave_worker in stats and leave_type:
+                stats[leave_worker]["휴가일수"] += 1
+                stats[leave_worker]["휴가내역"].append(f"{date_str}: {leave_type}")
+        else:
+            # 3인 정상 근무
+            for shift_key, night_key in [("1근_근무자", "1근"), ("2근_근무자", "2근"), ("3근_근무자", "3근")]:
+                worker = shift.get(shift_key, "")
+                ot = float(shift.get(f"{night_key}_연장", 0) or 0)
+                if worker in stats:
+                    stats[worker]["근무일수"] += 1
+                    stats[worker]["기본근로"] += 8
+                    stats[worker]["연장근로_잔업"] += ot
+                    stats[worker]["야간근로"] += NIGHT_HOURS.get(night_key, 0)
+
+        # 교대휴무/주휴휴무자
+        off_worker = shift.get("휴무_근무자", "")
+        off_type = shift.get("휴무_구분", "")
+        if off_worker in stats and off_type not in ("교대휴무", "주휴휴무", ""):
+            stats[off_worker]["휴가일수"] += 1
+            stats[off_worker]["휴가내역"].append(f"{date_str}: {off_type}")
+
+    # 통계 표시
+    st.markdown("---")
+    st.subheader(f"📊 {year}년 {month}월 직원별 근무 통계")
+    st.caption(f"저장된 일지: {len(daily_details)}일분")
+
+    for name in ALL_MEMBERS:
+        s = stats[name]
+        total_ot = s["연장근로_대근"] + s["연장근로_잔업"]
+        with st.container(border=True):
+            st.markdown(f"### {name}")
+            mc1, mc2, mc3, mc4, mc5, mc6 = st.columns(6)
+            mc1.metric("근무일수", f"{s['근무일수']}일")
+            mc2.metric("기본근로", f"{s['기본근로']}H")
+            mc3.metric("연장(대근)", f"{s['연장근로_대근']}H")
+            mc4.metric("연장(잔업)", f"{s['연장근로_잔업']}H")
+            mc5.metric("야간근로", f"{s['야간근로']}H")
+            mc6.metric("휴가", f"{s['휴가일수']}일")
+
+            st.caption(
+                f"대근 {s['대근횟수']}회 | "
+                f"총 연장 {total_ot}H | "
+                f"총 근로 {s['기본근로'] + total_ot}H"
+            )
+            if s["휴가내역"]:
+                with st.expander("휴가 내역"):
+                    for h in s["휴가내역"]:
+                        st.write(h)
+
+
 # ──────────────────────────────────────
 # 메뉴 라우팅
 # ──────────────────────────────────────
@@ -1088,3 +1229,5 @@ elif menu == "📊 캡처 이미지 → 엑셀 변환기":
     page_image_to_excel()
 elif menu == "📋 일일 작업일지 작성":
     page_work_log()
+elif menu == "📈 근무 통계":
+    page_statistics()
