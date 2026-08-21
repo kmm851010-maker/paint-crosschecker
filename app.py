@@ -13,7 +13,7 @@ load_dotenv()
 
 st.set_page_config(
     page_title="KG스틸 업무도우미",
-    page_icon="assets/kg.jpg",
+    page_icon="assets/favicon.png",
     layout="wide",
 )
 
