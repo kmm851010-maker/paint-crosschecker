@@ -1105,9 +1105,11 @@ def page_statistics():
     today_kst = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
     col1, col2 = st.columns(2)
     with col1:
-        year = st.selectbox("연도", range(2026, 2101), index=today_kst.year - 2026)
+        years = list(range(2026, 2101))
+        year_idx = max(0, min(today_kst.year - 2026, len(years) - 1))
+        year = st.selectbox("연도", years, index=year_idx)
     with col2:
-        month = st.selectbox("월", range(1, 13), index=today_kst.month - 1)
+        month = st.selectbox("월", range(1, 13), index=max(0, today_kst.month - 1))
 
     target_month = datetime.date(year, month, 1)
     days_in_month = calendar.monthrange(year, month)[1]
@@ -1145,13 +1147,21 @@ def page_statistics():
         shift = detail.get("shift", {})
         is_2p = shift.get("is_2person", False)
 
+        def _safe_float(val):
+            try:
+                return float(val)
+            except (ValueError, TypeError):
+                import re
+                nums = re.findall(r'[\d.]+', str(val))
+                return float(nums[0]) if nums else 0
+
         if is_2p:
             # 주간 근무자
             day_worker = shift.get("1근_근무자", "")
             night_worker = shift.get("2근_근무자", "")
             leave_worker = shift.get("3근_근무자", "")
-            day_ot = float(shift.get("1근_연장", 0) or 0)
-            night_ot = float(shift.get("2근_연장", 0) or 0)
+            day_ot = _safe_float(shift.get("1근_연장", 0))
+            night_ot = _safe_float(shift.get("2근_연장", 0))
 
             if day_worker in stats:
                 stats[day_worker]["근무일수"] += 1
@@ -1180,7 +1190,7 @@ def page_statistics():
             # 3인 정상 근무
             for shift_key, night_key in [("1근_근무자", "1근"), ("2근_근무자", "2근"), ("3근_근무자", "3근")]:
                 worker = shift.get(shift_key, "")
-                ot = float(shift.get(f"{night_key}_연장", 0) or 0)
+                ot = _safe_float(shift.get(f"{night_key}_연장", 0))
                 ot_type = shift.get(f"{night_key}_연장유형", "")
                 if worker in stats:
                     stats[worker]["근무일수"] += 1
