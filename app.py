@@ -82,8 +82,8 @@ st.markdown("""
 # ──────────────────────────────────────
 st.sidebar.image("assets/kg.jpg", width=160)
 _dept = st.secrets.get("company", {}).get("dept", "")
-_team = st.secrets.get("company", {}).get("team", "업무도우미")
-st.sidebar.caption(f"{_dept}\n{_team} 업무도우미" if _dept else f"KG스틸 {_team} 업무도우미")
+_team = st.secrets.get("company", {}).get("team", "")
+st.sidebar.caption(f"{_dept}\n{_team} 업무도우미" if _dept else "KG스틸 업무도우미")
 st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(
