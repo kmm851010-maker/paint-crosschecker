@@ -30,21 +30,28 @@ def _check_login():
     if st.session_state.get("authenticated"):
         return True
 
-    st.markdown("""
+    import base64
+    try:
+        with open("assets/kg.jpg", "rb") as _f:
+            _logo_b64 = base64.b64encode(_f.read()).decode()
+        _logo_html = f'<img src="data:image/jpeg;base64,{_logo_b64}" style="width:90px;border-radius:12px;margin-bottom:12px;">'
+    except Exception:
+        _logo_html = '<div style="font-size:48px;margin-bottom:8px;">⚙️</div>'
+
+    st.markdown(f"""
     <style>
-        [data-testid="stSidebar"] { display: none; }
-        .block-container { max-width: 420px !important; margin: 60px auto !important; padding: 0 16px !important; }
-        .login-header { background: linear-gradient(135deg, #4B2D8E 0%, #6B3FA0 100%);
+        [data-testid="stSidebar"] {{ display: none; }}
+        .block-container {{ max-width: 420px !important; margin: 60px auto !important; padding: 0 16px !important; }}
+        .login-header {{ background: linear-gradient(135deg, #4B2D8E 0%, #6B3FA0 100%);
                         border-radius: 16px 16px 0 0; padding: 36px 24px 28px;
-                        text-align: center; margin-bottom: 0; }
-        .login-logo { font-size: 48px; margin-bottom: 8px; }
-        .login-title { color: #fff; font-size: 22px; font-weight: 700; margin-bottom: 4px; }
-        .login-sub { color: #D4C5F0; font-size: 13px; }
-        .login-body { background: #fff; border-radius: 0 0 16px 16px;
-                      padding: 28px 24px 24px; box-shadow: 0 8px 32px rgba(75,45,142,0.18); }
+                        text-align: center; margin-bottom: 0; }}
+        .login-title {{ color: #fff; font-size: 22px; font-weight: 700; margin-bottom: 4px; }}
+        .login-sub {{ color: #D4C5F0; font-size: 13px; }}
+        .login-body {{ background: #fff; border-radius: 0 0 16px 16px;
+                      padding: 28px 24px 24px; box-shadow: 0 8px 32px rgba(75,45,142,0.18); }}
     </style>
     <div class="login-header">
-        <div class="login-logo">⚙️</div>
+        {_logo_html}
         <div class="login-title">KG스틸 업무도우미</div>
         <div class="login-sub">당진생산지원팀 전용 시스템</div>
     </div>
