@@ -919,18 +919,20 @@ def page_work_log():
     # 기존 데이터 불러오기
     # 휴가 데이터 Google Sheets에서 로드 (최초 1회)
     if "leave_loaded" not in st.session_state:
+        st.session_state["leave_loaded"] = True
         try:
             from utils.sheets import load_leaves
             saved_leaves = load_leaves()
             if saved_leaves:
                 st.session_state["leave_list"] = saved_leaves
-            st.session_state["leave_loaded"] = True
+                st.rerun()
         except Exception:
-            st.session_state["leave_loaded"] = True
+            pass
 
     # 작업일지 자동 불러오기 (저장 데이터 있으면 즉시 복원)
     load_key = f"wl_autoloaded_{selected_date}"
     if load_key not in st.session_state:
+        st.session_state[load_key] = True
         try:
             from utils.sheets import load_all
             all_data = load_all(selected_date)
@@ -939,7 +941,6 @@ def page_work_log():
             st.session_state[f"wl_detail_{selected_date}"] = all_data.get("detail")
 
             if work_items:
-                # 각 입력칸 session_state 강제 복원
                 _item_names = [
                     "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
                     "신나 하차 수량", "신나 공급 수량", "논크롬 공급 수량",
@@ -954,9 +955,9 @@ def page_work_log():
                         val = item.get(lk, 0)
                         st.session_state[f"wl_{_shift_labels[j]}_{idx}"] = str(val) if val > 0 else ""
                 st.toast(f"📂 {selected_date.strftime('%Y-%m-%d')} 저장 데이터 자동 불러옴")
+                st.rerun()
         except Exception:
             pass
-        st.session_state[load_key] = True
 
     # 새로 작성 버튼
     if st.session_state.get(f"wl_loaded_{selected_date}"):
