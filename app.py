@@ -1187,7 +1187,8 @@ def page_statistics():
 
     # 직원별 통계 계산
     stats = {name: {
-        "근무일수": 0, "기본근로": 0, "연장근로_대근": 0, "연장근로_잔업": 0,
+        "근무일수": 0, "기본근로": 0, "연장근로_대근": 0,
+        "연장근로_주간": 0, "연장근로_야간": 0,
         "야간근로": 0, "휴가일수": 0, "대근횟수": 0, "휴가내역": []
     } for name in ALL_MEMBERS}
 
@@ -1204,19 +1205,19 @@ def page_statistics():
                 return float(nums[0]) if nums else 0
 
         if is_2p:
-            # 주간 근무자
             day_worker = shift.get("1근_근무자", "")
             night_worker = shift.get("2근_근무자", "")
             leave_worker = shift.get("3근_근무자", "")
-            day_ot = _safe_float(shift.get("1근_연장", 0))
-            night_ot = _safe_float(shift.get("2근_연장", 0))
 
             if day_worker in stats:
                 stats[day_worker]["근무일수"] += 1
                 stats[day_worker]["기본근로"] += 8
-                stats[day_worker]["연장근로_대근"] += 4  # 대근 연장 4시간
-                extra_ot = max(0, day_ot - 4)
-                stats[day_worker]["연장근로_잔업"] += extra_ot
+                stats[day_worker]["연장근로_대근"] += 4
+                # 새 형식: _주간연장 = 4 + 추가주간, _야간연장 = 추가야간
+                extra_day = max(0, _safe_float(shift.get("1근_주간연장", 4)) - 4)
+                extra_night = _safe_float(shift.get("1근_야간연장", 0))
+                stats[day_worker]["연장근로_주간"] += extra_day
+                stats[day_worker]["연장근로_야간"] += extra_night
                 stats[day_worker]["야간근로"] += NIGHT_HOURS.get("주간", 0)
                 stats[day_worker]["대근횟수"] += 1
 
@@ -1224,12 +1225,13 @@ def page_statistics():
                 stats[night_worker]["근무일수"] += 1
                 stats[night_worker]["기본근로"] += 8
                 stats[night_worker]["연장근로_대근"] += 4
-                extra_ot = max(0, night_ot - 4)
-                stats[night_worker]["연장근로_잔업"] += extra_ot
-                stats[night_worker]["야간근로"] += 8  # 2인 야간: 18:30~06:30 중 22:00~06:00 = 8시간
+                extra_day = _safe_float(shift.get("2근_주간연장", 0))
+                extra_night = max(0, _safe_float(shift.get("2근_야간연장", 4)) - 4)
+                stats[night_worker]["연장근로_주간"] += extra_day
+                stats[night_worker]["연장근로_야간"] += extra_night
+                stats[night_worker]["야간근로"] += 8
                 stats[night_worker]["대근횟수"] += 1
 
-            # 휴가자
             leave_type = shift.get("3근_비고", "")
             if leave_worker in stats and leave_type:
                 stats[leave_worker]["휴가일수"] += 1
@@ -1242,15 +1244,20 @@ def page_statistics():
                 if worker in stats:
                     stats[worker]["근무일수"] += 1
                     stats[worker]["기본근로"] += 8
-                    stats[worker]["연장근로_잔업"] += ot
                     base_night = NIGHT_HOURS.get(night_key, 0)
-                    # 새 형식: _야간연장 필드 우선 사용, 없으면 구형 _연장유형으로 판단
+                    # 새 형식: _주간연장 / _야간연장 필드 우선 사용
+                    explicit_day = shift.get(f"{night_key}_주간연장")
                     explicit_night = shift.get(f"{night_key}_야간연장")
-                    if explicit_night is not None:
-                        base_night += _safe_float(explicit_night)
+                    if explicit_day is not None or explicit_night is not None:
+                        day_ot = _safe_float(explicit_day or 0)
+                        night_ot = _safe_float(explicit_night or 0)
                     elif shift.get(f"{night_key}_연장유형") == "야간연장":
-                        base_night += ot
-                    stats[worker]["야간근로"] += base_night
+                        day_ot, night_ot = 0, ot
+                    else:
+                        day_ot, night_ot = ot, 0
+                    stats[worker]["연장근로_주간"] += day_ot
+                    stats[worker]["연장근로_야간"] += night_ot
+                    stats[worker]["야간근로"] += base_night + night_ot
 
         # 교대휴무/주휴휴무자
         off_worker = shift.get("휴무_근무자", "")
@@ -1293,21 +1300,22 @@ def page_statistics():
 
     for name in ALL_MEMBERS:
         s = stats[name]
-        total_ot = s["연장근로_대근"] + s["연장근로_잔업"]
+        total_ot = s["연장근로_대근"] + s["연장근로_주간"] + s["연장근로_야간"]
         yr_leaves = year_leaves.get(name, [])
         with st.container(border=True):
             st.markdown(f"### {name}")
-            mc1, mc2, mc3, mc4, mc5, mc6 = st.columns(6)
+            mc1, mc2, mc3, mc4, mc5, mc6, mc7 = st.columns(7)
             mc1.metric("근무일수", f"{s['근무일수']}일")
             mc2.metric("기본근로", f"{s['기본근로']}H")
             mc3.metric("연장(대근)", f"{s['연장근로_대근']}H")
-            mc4.metric("연장(잔업)", f"{s['연장근로_잔업']}H")
-            mc5.metric("야간근로", f"{s['야간근로']}H")
-            mc6.metric("휴가(월)", f"{s['휴가일수']}일")
+            mc4.metric("주간연장", f"{s['연장근로_주간']}H")
+            mc5.metric("야간연장", f"{s['연장근로_야간']}H")
+            mc6.metric("야간근로", f"{s['야간근로']}H")
+            mc7.metric("휴가(월)", f"{s['휴가일수']}일")
 
             st.caption(
                 f"대근 {s['대근횟수']}회 | "
-                f"총 연장 {total_ot}H | "
+                f"총 연장 {total_ot}H (주간 {s['연장근로_주간']}H + 야간 {s['연장근로_야간']}H + 대근 {s['연장근로_대근']}H) | "
                 f"총 근로 {s['기본근로'] + total_ot}H | "
                 f"올해 휴가 총 {len(yr_leaves)}일"
             )
