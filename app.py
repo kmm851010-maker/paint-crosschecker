@@ -12,8 +12,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 st.set_page_config(
-    page_title="스마트 공정·자재 관리",
-    page_icon="🏭",
+    page_title="KG스틸 업무도우미",
+    page_icon="assets/kg.jpg",
     layout="wide",
 )
 
