@@ -960,20 +960,30 @@ def page_work_log():
                     raw = shift_cols[j].text_input(label, value=default_str, key=f"wl_{label}_{i}", placeholder="")
                     vals.append(safe_calc(raw))
 
-                # 합계 행: 일합계 + 기준값 + 월누계
-                sum_cols = st.columns(3)
+                # 합계 행: 일합계 + 월누계
+                sum_cols = st.columns(2)
                 daily_sum = sum(vals)
                 sum_cols[0].metric("일합계", daily_sum)
 
+                # 월누계: 저장된 값 또는 자동계산값, 수정 가능
                 prev_total = month_totals_default[i]
-                base_key = f"wl_base_{i}"
-                if base_key not in st.session_state:
-                    st.session_state[base_key] = prev_total
-                base_val = sum_cols[1].number_input("기준값", value=st.session_state[base_key], min_value=0, step=1, key=f"wl_base_input_{i}")
-                st.session_state[base_key] = base_val
-
-                running_month = base_val + daily_sum
-                sum_cols[2].metric("월누계", running_month)
+                # 불러온 데이터에 월누계가 있으면 사용
+                loaded_month = 0
+                if loaded_item:
+                    loaded_month = loaded_item.get("month_total", 0)
+                auto_month = loaded_month if loaded_month > 0 else prev_total + daily_sum
+                month_key = f"wl_month_val_{i}"
+                if month_key not in st.session_state:
+                    st.session_state[month_key] = auto_month
+                # 일합계 변동분 반영
+                prev_daily_key = f"wl_prev_daily_{i}"
+                prev_daily = st.session_state.get(prev_daily_key, 0)
+                if daily_sum != prev_daily:
+                    st.session_state[month_key] += (daily_sum - prev_daily)
+                    st.session_state[prev_daily_key] = daily_sum
+                running_month = sum_cols[1].number_input("월누계", value=st.session_state[month_key], min_value=0, step=1, key=f"wl_month_input_{i}")
+                st.session_state[month_key] = running_month
+                st.session_state[prev_daily_key] = daily_sum
 
         if is_2person:
             work_items_data.append({

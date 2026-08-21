@@ -78,6 +78,7 @@ def load_work_items(selected_date):
                         "s3": int(float(row[4])) if row[4] else 0,
                         "day": int(float(row[5])) if row[5] else 0,
                         "night": int(float(row[6])) if row[6] else 0,
+                        "month_total": int(float(row[8])) if len(row) > 8 and row[8] else 0,
                     }
                 except (ValueError, IndexError):
                     pass
