@@ -131,15 +131,11 @@ export default function InventoryScreen() {
 
   // ── 스캔 화면 ──
   if (mode === "scanning") {
-    const boxW = 340, boxH = 130;
-    const boxTop = scanViewSize.height > 0 ? (scanViewSize.height - boxH) / 2 : 0;
-    const boxLeft = scanViewSize.width > 0 ? (scanViewSize.width - boxW) / 2 : 0;
+    // CSS의 top:50% left:50% translate(-50%,-50%) 와 동일한 원리
+    const BOX_W = 340, BOX_H = 130;
 
     return (
-      <View
-        style={{ flex: 1, backgroundColor: "#000" }}
-        onLayout={(e) => setScanViewSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
-      >
+      <View style={{ flex: 1, backgroundColor: "#000" }}>
         <Stack.Screen options={{ title: "바코드 스캔", headerShown: false }} />
         <CameraView
           style={StyleSheet.absoluteFillObject}
@@ -147,10 +143,22 @@ export default function InventoryScreen() {
           onBarcodeScanned={handleBarcodeScan}
           barcodeScannerSettings={{ barcodeTypes: ["pdf417", "code128", "code39", "qr", "datamatrix", "aztec", "ean13", "ean8"] }}
         />
-        {/* 스캔 가이드 박스 - 실제 View 크기 측정 후 배치 */}
-        {scanViewSize.height > 0 && (
-          <View style={{ position: "absolute", top: boxTop, left: boxLeft, width: boxW, height: boxH, borderWidth: 2, borderColor: "#fff", borderRadius: 8 }} pointerEvents="none" />
-        )}
+        {/* 스캔 가이드 박스: top/left 50% + 음수 마진으로 정중앙 고정 */}
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            width: BOX_W,
+            height: BOX_H,
+            marginTop: -BOX_H / 2,
+            marginLeft: -BOX_W / 2,
+            borderWidth: 2,
+            borderColor: "#fff",
+            borderRadius: 8,
+          }}
+        />
         {/* 배치 카운터 */}
         <View style={styles.batchBadge}>
           <Text style={styles.batchBadgeText}>스캔됨: {batch.length}드럼</Text>
