@@ -121,38 +121,39 @@ export default function InventoryScreen() {
       <View style={{ flex: 1, backgroundColor: "#000" }}>
         <Stack.Screen options={{ title: "바코드 스캔", headerShown: false }} />
         <CameraView
-          style={{ flex: 1 }}
+          style={StyleSheet.absoluteFillObject}
           facing="back"
           onBarcodeScanned={handleBarcodeScan}
           barcodeScannerSettings={{ barcodeTypes: ["pdf417", "code128", "code39", "qr", "datamatrix", "aztec", "ean13", "ean8"] }}
-        />
-        {/* 스캔 가이드 박스 - 화면 중앙 고정 */}
-        <View style={styles.scanBox} pointerEvents="none" />
-        {/* 배치 카운터 */}
-        <View style={styles.batchBadge}>
-          <Text style={styles.batchBadgeText}>스캔됨: {batch.length}드럼</Text>
-        </View>
-        {/* 최근 스캔 */}
-        {batch.length > 0 && (
-          <View style={styles.lastScannedBox}>
-            <Text style={styles.lastScannedText}>
-              최근: {batch[batch.length - 1].lot} ({batch[batch.length - 1].maker})
-            </Text>
+        >
+          {/* 스캔 가이드 박스 - CameraView 기준 중앙 */}
+          <View style={styles.scanBox} pointerEvents="none" />
+          {/* 배치 카운터 */}
+          <View style={styles.batchBadge}>
+            <Text style={styles.batchBadgeText}>스캔됨: {batch.length}드럼</Text>
           </View>
-        )}
-        {/* 하단 버튼 */}
-        <View style={styles.scanFooter}>
-          <TouchableOpacity style={styles.cancelBtn} onPress={() => setMode("idle")}>
-            <Text style={styles.cancelBtnText}>취소</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.doneBtn, batch.length === 0 && styles.btnDisabled]}
-            onPress={() => { if (batch.length > 0) setMode("sectorPick"); }}
-            disabled={batch.length === 0}
-          >
-            <Text style={styles.doneBtnText}>완료 ({batch.length})</Text>
-          </TouchableOpacity>
-        </View>
+          {/* 최근 스캔 */}
+          {batch.length > 0 && (
+            <View style={styles.lastScannedBox}>
+              <Text style={styles.lastScannedText}>
+                최근: {batch[batch.length - 1].lot} ({batch[batch.length - 1].maker})
+              </Text>
+            </View>
+          )}
+          {/* 하단 버튼 */}
+          <View style={styles.scanFooter}>
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => setMode("idle")}>
+              <Text style={styles.cancelBtnText}>취소</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.doneBtn, batch.length === 0 && styles.btnDisabled]}
+              onPress={() => { if (batch.length > 0) setMode("sectorPick"); }}
+              disabled={batch.length === 0}
+            >
+              <Text style={styles.doneBtnText}>완료 ({batch.length})</Text>
+            </TouchableOpacity>
+          </View>
+        </CameraView>
       </View>
     );
   }
@@ -290,7 +291,7 @@ const styles = StyleSheet.create({
   permText: { fontSize: 16, color: COLORS.textPrimary, marginBottom: 16 },
 
   // 스캔 오버레이
-  scanBox: { position: "absolute", top: SCREEN_HEIGHT * 0.35, left: "10%", right: "10%", height: 130, borderWidth: 2, borderColor: "#fff", borderRadius: 8 },
+  scanBox: { position: "absolute", top: "38%", left: "10%", right: "10%", height: 130, borderWidth: 2, borderColor: "#fff", borderRadius: 8 },
   batchBadge: { position: "absolute", top: 60, alignSelf: "center", backgroundColor: "rgba(0,0,0,0.7)", paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 },
   batchBadgeText: { color: "#fff", fontSize: 15, fontWeight: "700" },
   lastScannedBox: { position: "absolute", bottom: 120, left: 16, right: 16, backgroundColor: "rgba(0,0,0,0.7)", padding: 10, borderRadius: 8 },
