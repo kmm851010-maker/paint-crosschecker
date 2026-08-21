@@ -59,9 +59,9 @@ def _check_login():
     if submitted:
         # users dict 있으면 개인 ID/PW, 없으면 단일 PW
         if users:
-            if users.get(uid) == pw:
+            if users.get(uid.strip().lower()) == pw:
                 st.session_state["authenticated"] = True
-                st.session_state["username"] = uid
+                st.session_state["username"] = uid.strip().lower()
                 st.rerun()
             else:
                 st.error("아이디 또는 비밀번호가 올바르지 않습니다.")
