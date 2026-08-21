@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -27,6 +27,14 @@ type Mode = "idle" | "scanning" | "sectorPick" | "status";
 export default function InventoryScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [mode, setMode] = useState<Mode>("idle");
+
+  // 화면 진입 시 자동으로 카메라 권한 요청
+  useEffect(() => {
+    if (permission && !permission.granted && !permission.canAskAgain) return;
+    if (!permission?.granted) {
+      requestPermission();
+    }
+  }, [permission]);
   const [batch, setBatch] = useState<DrumItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [sectorData, setSectorData] = useState<Record<string, any[]>>({});
@@ -108,16 +116,18 @@ export default function InventoryScreen() {
   if (mode === "scanning") {
     return (
       <View style={{ flex: 1, backgroundColor: "#000" }}>
-        <Stack.Screen options={{ title: "바코드 스캔", headerShown: true }} />
+        <Stack.Screen options={{ title: "바코드 스캔", headerShown: false }} />
         <CameraView
-          style={StyleSheet.absoluteFillObject}
+          style={{ flex: 1 }}
           facing="back"
           onBarcodeScanned={handleBarcodeScan}
-          barcodeScannerSettings={{ barcodeTypes: ["pdf417", "code128", "code39", "qr", "datamatrix", "aztec"] }}
+          barcodeScannerSettings={{ barcodeTypes: ["pdf417", "code128", "code39", "qr", "datamatrix", "aztec", "ean13", "ean8"] }}
         />
         {/* 스캔 가이드 박스 */}
-        <View style={styles.scanOverlay}>
-          <View style={styles.scanBox} />
+        <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+          <View style={styles.scanOverlay}>
+            <View style={styles.scanBox} />
+          </View>
         </View>
         {/* 배치 카운터 */}
         <View style={styles.batchBadge}>
