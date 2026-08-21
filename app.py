@@ -1430,8 +1430,9 @@ def page_statistics():
             mc7.metric("휴가(월)", f"{s['휴가일수']}일")
 
             total_daegeun_h = sum(d["시간"] for d in s["대근내역"])
+            _dgh = int(total_daegeun_h) if total_daegeun_h == int(total_daegeun_h) else total_daegeun_h
             st.caption(
-                f"대근 {s['대근횟수']}회 ({total_daegeun_h}H) | "
+                f"대근 {s['대근횟수']}회 ({_dgh}H) | "
                 f"총 연장 {total_ot}H (주간 {s['연장근로_주간']}H + 야간 {s['연장근로_야간']}H + 대근 {s['연장근로_대근']}H) | "
                 f"총 근로 {s['기본근로'] + total_ot}H | "
                 f"올해 휴가 총 {len(yr_leaves)}일"
@@ -1441,7 +1442,8 @@ def page_statistics():
             if s["대근내역"]:
                 with st.expander(f"🔄 대근 내역 ({s['대근횟수']}회 · 계 {total_daegeun_h}H)"):
                     for d in s["대근내역"]:
-                        st.write(f"{d['날짜']} | {d['구분']} | {d['휴가자']} {d['휴가구분']}으로 대근 | {d['시간']}H")
+                        h = int(d['시간']) if d['시간'] == int(d['시간']) else d['시간']
+                        st.write(f"{d['날짜']} | {d['구분']} | {d['휴가자']} {d['휴가구분']}으로 대근 | {h}H")
 
             # 이번 달 휴가 내역
             if s["휴가내역"]:
