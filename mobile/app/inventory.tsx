@@ -18,6 +18,8 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as FileSystem from "expo-file-system";
 import TextRecognition, { type TextBlock } from "@react-native-ml-kit/text-recognition";
 
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import { COLORS } from "../src/constants/config";
 import { registerDrums, getSectorInventory, type DrumItem } from "../src/services/api";
 
@@ -81,6 +83,7 @@ const CHECKOUT = "라인입고";
 type Mode = "idle" | "scanning" | "sectorPick" | "status";
 
 export default function InventoryScreen() {
+  const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [mode, setMode] = useState<Mode>("idle");
   const [batch, setBatch] = useState<DrumItem[]>([]);
@@ -416,7 +419,7 @@ export default function InventoryScreen() {
           </View>
 
           {/* 목록 */}
-          <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: selectedLots.size > 0 ? 100 : 40 }}>
+          <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: selectedLots.size > 0 ? 100 + insets.bottom : 40 }}>
             {groupKeys.length === 0 ? (
               <Text style={styles.emptyText}>
                 {searchText ? "검색 결과 없음" : "보관 중인 드럼 없음"}
@@ -468,7 +471,7 @@ export default function InventoryScreen() {
 
           {/* 라인입고 버튼 */}
           {selectedLots.size > 0 && (
-            <View style={styles.checkoutBar}>
+            <View style={[styles.checkoutBar, { paddingBottom: 12 + insets.bottom }]}>
               <Text style={styles.checkoutBarText}>{selectedLots.size}드럼 선택됨</Text>
               <TouchableOpacity
                 style={styles.checkoutBarBtn}
