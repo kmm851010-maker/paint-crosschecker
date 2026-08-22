@@ -7,6 +7,8 @@ import json
 import os
 import datetime
 
+import time
+
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -40,6 +42,18 @@ def _get_client():
     return gspread.authorize(creds)
 
 
+def _retry(fn, retries=3, delay=2):
+    """gspread API 일시 오류(503 등) 재시도"""
+    for attempt in range(retries):
+        try:
+            return fn()
+        except gspread.exceptions.APIError as e:
+            if attempt < retries - 1 and "503" in str(e):
+                time.sleep(delay)
+                continue
+            raise
+
+
 def _get_spreadsheet():
     client = _get_client()
     spreadsheet_id = os.getenv("SPREADSHEET_ID", "")
@@ -49,7 +63,7 @@ def _get_spreadsheet():
 
 
 def _get_or_create_sheet(name, headers=None):
-    sp = _get_spreadsheet()
+    sp = _retry(_get_spreadsheet)
     try:
         ws = sp.worksheet(name)
     except gspread.exceptions.WorksheetNotFound:

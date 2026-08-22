@@ -251,14 +251,9 @@ export default function InventoryScreen() {
           )}
         </View>
 
-        {/* 하단: 카메라 + 가이드 박스 */}
+        {/* 하단: 카메라 */}
         <View style={styles.cameraArea}>
           <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back" />
-          {/* 가이드 오버레이 */}
-          <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.guideOverlay]}>
-            <View style={styles.guideBox} />
-            <Text style={styles.guideHint}>품명·LOT 라벨을 박스 안에 맞추세요</Text>
-          </View>
           {/* 인식 성공 플래시 */}
           <Animated.View
             pointerEvents="none"
@@ -461,9 +456,6 @@ const styles = StyleSheet.create({
 
   // 스캔 화면 - 카메라
   cameraArea: { flex: 1 },
-  guideOverlay: { alignItems: "center", justifyContent: "center", gap: 12 },
-  guideBox: { width: 280, height: 160, borderWidth: 2, borderColor: "#fff", borderRadius: 10 },
-  guideHint: { color: "rgba(255,255,255,0.8)", fontSize: 12, textAlign: "center" },
   scanCancelBtn: {
     backgroundColor: "rgba(0,0,0,0.85)", paddingVertical: 16,
     alignItems: "center", borderTopWidth: 1, borderTopColor: "#333",
