@@ -210,69 +210,6 @@ export default function InventoryScreen() {
     );
   }
 
-  // ── 스캔 화면 ──
-  if (mode === "scanning") {
-    return (
-      <View style={{ flex: 1, backgroundColor: "#111" }}>
-        <Stack.Screen options={{ title: "라벨 OCR 스캔", headerShown: true }} />
-
-        {/* 상단: 누적 스캔 리스트 */}
-        <View style={styles.scanListArea}>
-          <View style={styles.scanListHeader}>
-            <Text style={styles.scanListCount}>총 {batch.length}건 스캔됨</Text>
-            <TouchableOpacity
-              style={[styles.doneSmallBtn, batch.length === 0 && styles.btnDisabled]}
-              onPress={() => { if (batch.length > 0) setMode("sectorPick"); }}
-              disabled={batch.length === 0}
-            >
-              <Text style={styles.doneSmallBtnText}>완료 ({batch.length})</Text>
-            </TouchableOpacity>
-          </View>
-          {batch.length === 0 ? (
-            <Text style={styles.scanListEmpty}>라벨을 카메라에 비춰주세요</Text>
-          ) : (
-            <FlatList
-              data={[...batch].reverse()}
-              keyExtractor={(item) => item.lot}
-              renderItem={({ item, index }) => {
-                const realIndex = batch.length - 1 - index;
-                return (
-                  <TouchableOpacity
-                    style={styles.scanListItem}
-                    onPress={() => setEditingItem({ index: realIndex, lot: item.lot, product: item.product })}
-                  >
-                    <Text style={styles.scanListNum}>{batch.length - index}</Text>
-                    <Text style={styles.scanListProduct}>{item.product || "-"}</Text>
-                    <Text style={styles.scanListLot}>{item.lot}</Text>
-                    <TouchableOpacity onPress={() => setBatch(prev => prev.filter(d => d.lot !== item.lot))}>
-                      <Text style={styles.scanListDelete}>✕</Text>
-                    </TouchableOpacity>
-                  </TouchableOpacity>
-                );
-              }}
-            />
-          )}
-        </View>
-
-        {/* 하단: 카메라 */}
-        <View style={styles.cameraArea}>
-          <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back" />
-          {/* 인식 성공 플래시 */}
-          <Animated.View
-            pointerEvents="none"
-            style={[StyleSheet.absoluteFillObject, { backgroundColor: "#4AFF91", opacity: flashAnim }]}
-          />
-        </View>
-
-        {/* 취소 버튼 */}
-        <TouchableOpacity style={styles.scanCancelBtn} onPress={() => setMode("idle")}>
-          <Text style={styles.cancelBtnText}>취소</Text>
-        </TouchableOpacity>
-        <EditModal />
-      </View>
-    );
-  }
-
   // ── 항목 편집 모달 ──
   const EditModal = () => (
     <Modal visible={editingItem !== null} animationType="fade" transparent>
@@ -347,6 +284,69 @@ export default function InventoryScreen() {
       </View>
     </Modal>
   );
+
+  // ── 스캔 화면 ──
+  if (mode === "scanning") {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#111" }}>
+        <Stack.Screen options={{ title: "라벨 OCR 스캔", headerShown: true }} />
+
+        {/* 상단: 누적 스캔 리스트 */}
+        <View style={styles.scanListArea}>
+          <View style={styles.scanListHeader}>
+            <Text style={styles.scanListCount}>총 {batch.length}건 스캔됨</Text>
+            <TouchableOpacity
+              style={[styles.doneSmallBtn, batch.length === 0 && styles.btnDisabled]}
+              onPress={() => { if (batch.length > 0) setMode("sectorPick"); }}
+              disabled={batch.length === 0}
+            >
+              <Text style={styles.doneSmallBtnText}>완료 ({batch.length})</Text>
+            </TouchableOpacity>
+          </View>
+          {batch.length === 0 ? (
+            <Text style={styles.scanListEmpty}>라벨을 카메라에 비춰주세요</Text>
+          ) : (
+            <FlatList
+              data={[...batch].reverse()}
+              keyExtractor={(item) => item.lot}
+              renderItem={({ item, index }) => {
+                const realIndex = batch.length - 1 - index;
+                return (
+                  <TouchableOpacity
+                    style={styles.scanListItem}
+                    onPress={() => setEditingItem({ index: realIndex, lot: item.lot, product: item.product })}
+                  >
+                    <Text style={styles.scanListNum}>{batch.length - index}</Text>
+                    <Text style={styles.scanListProduct}>{item.product || "-"}</Text>
+                    <Text style={styles.scanListLot}>{item.lot}</Text>
+                    <TouchableOpacity onPress={() => setBatch(prev => prev.filter(d => d.lot !== item.lot))}>
+                      <Text style={styles.scanListDelete}>✕</Text>
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          )}
+        </View>
+
+        {/* 하단: 카메라 */}
+        <View style={styles.cameraArea}>
+          <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back" />
+          {/* 인식 성공 플래시 */}
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFillObject, { backgroundColor: "#4AFF91", opacity: flashAnim }]}
+          />
+        </View>
+
+        {/* 취소 버튼 */}
+        <TouchableOpacity style={styles.scanCancelBtn} onPress={() => setMode("idle")}>
+          <Text style={styles.cancelBtnText}>취소</Text>
+        </TouchableOpacity>
+        <EditModal />
+      </View>
+    );
+  }
 
   // ── 재고 현황 화면 ──
   if (mode === "status") {
