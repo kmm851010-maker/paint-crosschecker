@@ -110,9 +110,9 @@ export default function InventoryScreen() {
     if (!permission?.granted) requestPermission();
   }, [permission]);
 
-  // 스캔 모드 진입/종료 시 OCR 루프 시작/정지
+  // 스캔 모드 진입/종료 + 저장 중 OCR 루프 시작/정지
   useEffect(() => {
-    if (mode === "scanning") {
+    if (mode === "scanning" && !loading) {
       intervalRef.current = setInterval(runOcr, 900);
     } else {
       if (intervalRef.current) {
@@ -126,7 +126,7 @@ export default function InventoryScreen() {
         intervalRef.current = null;
       }
     };
-  }, [mode]);
+  }, [mode, loading]);
 
   const triggerFeedback = () => {
     Vibration.vibrate([0, 80, 60, 80]);
@@ -346,6 +346,15 @@ export default function InventoryScreen() {
         <TouchableOpacity style={styles.scanCancelBtn} onPress={() => setMode("idle")}>
           <Text style={styles.cancelBtnText}>취소</Text>
         </TouchableOpacity>
+
+        {/* 저장 중 오버레이 */}
+        {loading && (
+          <View style={styles.savingOverlay}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={styles.savingText}>저장 중...</Text>
+          </View>
+        )}
+
         <EditModal />
       </View>
     );
@@ -671,4 +680,12 @@ const styles = StyleSheet.create({
   checkoutBarText: { color: "#fff", fontSize: 14, fontWeight: "600" },
   checkoutBarBtn: { backgroundColor: "#E53935", paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
   checkoutBarBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  savingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 16,
+  },
+  savingText: { color: "#fff", fontSize: 16, fontWeight: "600" },
 });
