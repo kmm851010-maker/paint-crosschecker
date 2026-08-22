@@ -1953,10 +1953,12 @@ init();
         st.components.v1.html(scanner_html, height=700, scrolling=False)
 
     with tab_status:
-        col_refresh, col_search, col_sort = st.columns([1, 3, 2])
+        col_refresh, _, col_sort = st.columns([1, 3, 2])
         with col_refresh:
             if st.button("🔄 새로고침", key="inv_refresh"):
                 st.rerun()
+        with col_sort:
+            sort_mode = st.radio("정렬", ["섹터별", "제조사별", "품목별"], horizontal=True, key="inv_sort", label_visibility="collapsed")
 
         try:
             resp = _req.get(f"{BACKEND}/api/inventory/sectors", timeout=10)
@@ -1980,12 +1982,11 @@ init();
 
         df_all = _pd.DataFrame(all_drums)
         total = len(df_all)
-        st.caption(f"전체 **{total}드럼** 보관 중")
 
-        with col_search:
-            search = st.text_input("🔍 품명 또는 LOT 검색", placeholder="일부 글자 입력...", key="inv_search", label_visibility="collapsed")
-        with col_sort:
-            sort_mode = st.radio("정렬", ["섹터별", "제조사별", "품목별"], horizontal=True, key="inv_sort", label_visibility="collapsed")
+        col_lbl, col_inp, col_cap = st.columns([0.6, 3, 1.5])
+        col_lbl.markdown("**검색**")
+        search = col_inp.text_input("검색", placeholder="품명 또는 LOT 일부 입력...", key="inv_search", label_visibility="collapsed")
+        col_cap.caption(f"전체 **{total}드럼**")
 
         # 검색 필터
         if search.strip():
