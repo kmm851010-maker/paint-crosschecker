@@ -431,8 +431,8 @@ export default function InventoryScreen() {
                   {/* 테이블 헤더 */}
                   <View style={styles.tableHeader}>
                     <View style={{ width: 28 }} />
+                    <Text style={[styles.thCell, { flex: 1.5 }]}>품명</Text>
                     <Text style={[styles.thCell, { flex: 2 }]}>LOT</Text>
-                    <Text style={[styles.thCell, { flex: 1.2 }]}>품명</Text>
                     <Text style={[styles.thCell, { flex: 1.5 }]}>제조사</Text>
                     {sortMode !== "sector" && <Text style={[styles.thCell, { flex: 1.2 }]}>섹터</Text>}
                     <Text style={[styles.thCell, { flex: 1.8 }]}>등록시간</Text>
@@ -451,8 +451,8 @@ export default function InventoryScreen() {
                         })}
                       >
                         <Text style={styles.checkBox}>{isSelected ? "☑" : "☐"}</Text>
-                        <Text style={[styles.drumLot, { flex: 2 }]}>{drum.lot}</Text>
-                        <Text style={[styles.drumProduct, { flex: 1.2 }]}>{drum.product}</Text>
+                        <Text style={styles.statusProduct}>{drum.product}</Text>
+                        <Text style={styles.statusLot}>{drum.lot}</Text>
                         <Text style={[styles.drumMaker, { flex: 1.5 }]}>{drum.maker}</Text>
                         {sortMode !== "sector" && (
                           <Text style={[styles.drumMaker, { flex: 1.2, color: COLORS.primary }]}>{drum.sector}</Text>
@@ -654,6 +654,8 @@ const styles = StyleSheet.create({
   tableHeader: { flexDirection: "row", alignItems: "center", paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 2 },
   thCell: { fontSize: 11, color: COLORS.textSecondary, fontWeight: "700" },
   statusDrumRow: { flexDirection: "row", alignItems: "center", paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: 4 },
+  statusProduct: { flex: 1.5, fontSize: 14, fontWeight: "700", color: COLORS.textPrimary },
+  statusLot: { flex: 2, fontSize: 11, color: COLORS.textSecondary },
   drumRowAlt: { backgroundColor: "rgba(0,0,0,0.02)" },
   drumRowSelected: { backgroundColor: "#EDE7F6" },
   checkBox: { width: 24, fontSize: 16, textAlign: "center", color: COLORS.primary },
