@@ -1634,15 +1634,14 @@ def page_statistics():
 def page_inventory():
     import json
     import requests as _req
+    import pandas as _pd
 
     BACKEND = "https://kgcounter.up.railway.app"
-    SECTORS_JSON = json.dumps(
-        ["신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리",
-         "8번자리", "9번자리", "반품자리", "CW2", "CP5", "창고뒤"],
-        ensure_ascii=False
-    )
+    SECTORS = ["신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리",
+               "8번자리", "9번자리", "반품자리", "CW2", "CP5", "창고뒤"]
+    SECTORS_JSON = json.dumps(SECTORS, ensure_ascii=False)
 
-    tab_status, tab_scan = st.tabs(["📊 재고 현황", "📷 바코드 스캔"])
+    tab_status, tab_scan = st.tabs(["📊 재고 현황", "📷 OCR 스캔"])
 
     with tab_scan:
         scanner_html = f"""<!DOCTYPE html>
@@ -1651,257 +1650,250 @@ def page_inventory():
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ background:#000; font-family:-apple-system,sans-serif; overflow:hidden; }}
+body {{ background:#111; font-family:-apple-system,sans-serif; display:flex; flex-direction:column; height:100vh; overflow:hidden; }}
 button {{ -webkit-tap-highlight-color:transparent; }}
 
-/* 모바일 전체 화면 강제 오버레이 */
-.qr-modal-container {{
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  width: 100vw !important;
-  height: 100dvh !important;
-  background-color: #000 !important;
-  z-index: 99999 !important;
-  overflow: hidden !important;
-  margin: 0 !important;
-  padding: 0 !important;
+/* 상단 리스트 영역 */
+#listArea {{
+  height: 200px; background:#1a1a1a; border-bottom:1px solid #333;
+  display:flex; flex-direction:column; flex-shrink:0;
+}}
+#listHeader {{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:8px 12px; border-bottom:1px solid #333;
+}}
+#listHeader span {{ color:#fff; font-size:13px; font-weight:700; }}
+#doneBtn {{
+  background:#6B3FA0; color:#fff; border:none; padding:6px 14px;
+  border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; opacity:0.5;
+}}
+#doneBtn:not(:disabled) {{ opacity:1; }}
+#listEmpty {{ color:#888; font-size:13px; text-align:center; padding:20px; }}
+#drumList {{ overflow-y:auto; flex:1; }}
+.drum-item {{
+  display:flex; align-items:center; padding:8px 12px;
+  border-bottom:1px solid #2a2a2a; gap:8px;
+}}
+.drum-num {{ width:22px; color:#888; font-size:12px; text-align:center; }}
+.drum-product {{ flex:1.2; color:#4AFF91; font-size:13px; font-weight:700; }}
+.drum-lot {{ flex:1.5; color:#ccc; font-size:12px; }}
+.drum-del {{ color:#ff5555; font-size:16px; padding:0 4px; background:none; border:none; cursor:pointer; }}
+
+/* 카메라 영역 */
+#cameraWrap {{ flex:1; position:relative; overflow:hidden; }}
+#camVideo {{
+  width:100%; height:100%; object-fit:cover; display:block;
+}}
+#flashOverlay {{
+  position:absolute; inset:0; background:#4AFF91;
+  opacity:0; pointer-events:none; transition:opacity 0.08s;
+}}
+#statusBar {{
+  position:absolute; top:12px; left:50%; transform:translateX(-50%);
+  background:rgba(0,0,0,0.75); color:#fff; padding:6px 16px;
+  border-radius:20px; font-size:13px; white-space:nowrap; z-index:10;
 }}
 
-/* 카메라 비디오 레이어 */
-.qr-video-feed {{
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: cover !important;
-  z-index: 1 !important;
+/* 취소 버튼 */
+#cancelBar {{
+  background:rgba(0,0,0,0.85); padding:14px; text-align:center;
+  border-top:1px solid #333; cursor:pointer; color:#fff;
+  font-size:15px; font-weight:600; flex-shrink:0;
 }}
 
-/* 정중앙 스캔 가이드 사각형 (화면 정중앙 강제 고정) */
-.qr-target-box {{
-  position: absolute !important;
-  top: 50% !important;
-  left: 50% !important;
-  transform: translate(-50%, -50%) !important;
-  width: 260px !important;
-  height: 260px !important;
-  border: 3px solid #00ff88 !important;
-  border-radius: 16px !important;
-  box-shadow: 0 0 0 4000px rgba(0,0,0,0.55) !important;
-  z-index: 10 !important;
-  pointer-events: none !important;
+/* 섹터 선택 패널 */
+#sectorPanel {{
+  display:none; position:fixed; inset:0; z-index:30;
+  background:rgba(0,0,0,0.5); align-items:flex-end;
 }}
-
-/* 상단 상태 뱃지 */
-.qr-top-bar {{
-  position: absolute !important;
-  top: max(24px, env(safe-area-inset-top)) !important;
-  left: 50% !important;
-  transform: translateX(-50%) !important;
-  background: rgba(0,0,0,0.8) !important;
-  color: #fff !important;
-  padding: 8px 20px !important;
-  border-radius: 30px !important;
-  font-size: 15px !important;
-  font-weight: bold !important;
-  z-index: 20 !important;
-  white-space: nowrap !important;
+#sectorInner {{
+  background:#fff; width:100%; border-radius:20px 20px 0 0;
+  padding:20px; max-height:80vh; overflow-y:auto;
 }}
-
-/* 최근 스캔 */
-#lastScanned {{
-  display: none;
-  position: absolute !important;
-  bottom: 130px !important;
-  left: 16px !important;
-  right: 16px !important;
-  z-index: 20 !important;
-  background: rgba(0,0,0,0.7) !important;
-  padding: 10px !important;
-  border-radius: 8px !important;
-  color: #4AFF91 !important;
-  font-size: 13px !important;
-  text-align: center !important;
+#sectorTitle {{ font-size:18px; font-weight:700; text-align:center; margin-bottom:16px; color:#1a1a2e; }}
+.sector-btn {{
+  display:block; width:100%; padding:14px; margin-bottom:8px;
+  background:#f5f5f5; border:1px solid #ddd; border-radius:10px;
+  font-size:15px; font-weight:600; cursor:pointer;
 }}
-
-/* 하단 버튼 영역 */
-.qr-bottom-bar {{
-  position: absolute !important;
-  bottom: max(30px, env(safe-area-inset-bottom)) !important;
-  left: 0 !important;
-  right: 0 !important;
-  display: flex !important;
-  justify-content: center !important;
-  gap: 20px !important;
-  z-index: 20 !important;
-  padding: 0 20px !important;
+.sector-checkout {{
+  background:#E53935; border:none; color:#fff;
 }}
+#sectorBack {{ width:100%; padding:14px; margin-top:8px; background:none; border:none; color:#666; font-size:15px; cursor:pointer; }}
 
-.qr-btn {{
-  flex: 1 !important;
-  max-width: 140px !important;
-  height: 48px !important;
-  border-radius: 12px !important;
-  border: none !important;
-  font-size: 16px !important;
-  font-weight: bold !important;
-  color: #fff !important;
-  cursor: pointer !important;
+/* 결과 메시지 */
+#resultMsg {{
+  display:none; position:fixed; inset:0; z-index:40;
+  background:rgba(0,0,0,0.85); align-items:center;
+  justify-content:center; flex-direction:column; gap:16px;
 }}
-
-.qr-btn-cancel {{ background: rgba(255,255,255,0.25) !important; }}
-.qr-btn-confirm {{ background: #007bff !important; opacity: 0.5; }}
-.qr-btn-confirm:not(:disabled) {{ opacity: 1 !important; }}
+#resultText {{ color:#4AFF91; font-size:18px; font-weight:700; text-align:center; padding:0 32px; }}
+#resultContinue {{
+  padding:14px 32px; background:#6B3FA0; color:#fff; border:none;
+  border-radius:12px; font-size:16px; font-weight:700; cursor:pointer;
+}}
 </style>
 </head>
 <body>
 
-<div class="qr-modal-container">
-  <!-- 카메라 영상 -->
-  <video id="qr-video" class="qr-video-feed" autoplay playsinline muted></video>
-
-  <!-- 스캔 가이드 박스 (정중앙 고정) -->
-  <div class="qr-target-box"></div>
-
-  <!-- 상단 안내 -->
-  <div class="qr-top-bar">
-    스캔됨: <span id="scan-count-text">0</span>드럼
+<!-- 상단 스캔 리스트 -->
+<div id="listArea">
+  <div id="listHeader">
+    <span>총 <span id="scanCount">0</span>건 스캔됨</span>
+    <button id="doneBtn" disabled onclick="finishScan()">완료 (0)</button>
   </div>
+  <div id="listEmpty">라벨을 카메라에 비춰주세요</div>
+  <div id="drumList"></div>
+</div>
 
-  <!-- 최근 스캔 -->
-  <div id="lastScanned"></div>
+<!-- 카메라 -->
+<div id="cameraWrap">
+  <video id="camVideo" autoplay playsinline muted></video>
+  <div id="flashOverlay"></div>
+  <div id="statusBar">초기화 중...</div>
+</div>
 
-  <!-- 하단 액션 -->
-  <div class="qr-bottom-bar">
-    <button type="button" class="qr-btn qr-btn-cancel" onclick="closeScanner()">취소</button>
-    <button type="button" id="confirmBtn" class="qr-btn qr-btn-confirm" onclick="finishScan()" disabled>완료 (0)</button>
-  </div>
+<!-- 취소 -->
+<div id="cancelBar" onclick="stopCamera()">■ 카메라 정지</div>
 
-  <!-- 섹터 선택 패널 -->
-  <div id="sectorPanel"
-    style="display:none;position:absolute;inset:0;z-index:30;
-           background:rgba(0,0,0,0.5);align-items:flex-end;justify-content:center;">
-    <div style="background:#fff;width:100%;border-radius:20px 20px 0 0;
-                padding:20px;max-height:80%;overflow-y:auto;">
-      <p id="sectorTitle"
-        style="font-size:18px;font-weight:700;text-align:center;
-               margin-bottom:16px;color:#1a1a2e;"></p>
-      <div id="sectorBtns"></div>
-      <button onclick="closeSectorPanel()"
-        style="width:100%;padding:14px;margin-top:8px;background:none;
-               border:none;color:#666;font-size:15px;cursor:pointer;">돌아가기</button>
-    </div>
-  </div>
-
-  <!-- 결과 메시지 -->
-  <div id="resultMsg"
-    style="display:none;position:absolute;inset:0;z-index:40;
-           background:rgba(0,0,0,0.85);align-items:center;justify-content:center;
-           flex-direction:column;gap:16px;">
-    <div id="resultText"
-      style="color:#4AFF91;font-size:18px;font-weight:700;
-             text-align:center;padding:0 32px;"></div>
-    <button onclick="resetScanner()"
-      style="padding:14px 32px;background:#007bff;color:#fff;border:none;
-             border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;">
-      계속 스캔
-    </button>
+<!-- 섹터 패널 -->
+<div id="sectorPanel" style="display:none;position:fixed;inset:0;z-index:30;background:rgba(0,0,0,0.5);align-items:flex-end;">
+  <div id="sectorInner">
+    <p id="sectorTitle"></p>
+    <div id="sectorBtns"></div>
+    <button id="sectorBack" onclick="closeSectorPanel()">돌아가기</button>
   </div>
 </div>
 
+<!-- 결과 -->
+<div id="resultMsg" style="display:none;position:fixed;inset:0;z-index:40;background:rgba(0,0,0,0.85);align-items:center;justify-content:center;flex-direction:column;gap:16px;">
+  <div id="resultText"></div>
+  <button id="resultContinue" onclick="resumeScan()">계속 스캔</button>
+</div>
+
+<canvas id="snapCanvas" style="display:none"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
 const BACKEND = "{BACKEND}";
 const SECTORS = {SECTORS_JSON};
 const CHECKOUT = "라인입고";
+const LOT_RE = /[A-Z][0-9]{{2}}[A-Z][0-9]{{5}}/;
+const ITEM_RE = /[A-Z][0-9][A-Z][A-Z0-9]{{3}}[A-Z]/;
+const MAKER_MAP = {{G:"고려(KCC)",D:"대한(노루)",K:"건설(제비)",S:"삼화",Y:"애경",P:"동주(PPG)"}};
 
 let batch = [];
-let lastData = "";
+let ocrWorker = null;
+let scanInterval = null;
+let processing = false;
 let cooldown = false;
-let animId = null;
-let detector = null;
+let cameraActive = false;
 
 async function init() {{
-  if ('BarcodeDetector' in window) {{
-    try {{
-      // QR 코드만 인식
-      detector = new BarcodeDetector({{ formats: ['qr_code'] }});
-    }} catch(e) {{ detector = null; }}
-  }}
+  setStatus("OCR 초기화 중...");
+  ocrWorker = await Tesseract.createWorker('eng', 1, {{
+    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js',
+    logger: () => {{}}
+  }});
+  await ocrWorker.setParameters({{
+    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-. ',
+  }});
+  setStatus("카메라 시작 중...");
   await startCamera();
 }}
 
 async function startCamera() {{
   try {{
     const stream = await navigator.mediaDevices.getUserMedia({{
-      video: {{ facingMode: 'environment', width: {{ideal:1280}}, height: {{ideal:720}} }}
+      video: {{ facingMode:'environment', width:{{ideal:1280}}, height:{{ideal:720}} }}
     }});
-    const video = document.getElementById('qr-video');
-    video.srcObject = stream;
-    await video.play();
-    requestAnimationFrame(scanLoop);
+    const v = document.getElementById('camVideo');
+    v.srcObject = stream;
+    await v.play();
+    cameraActive = true;
+    document.getElementById('cancelBar').textContent = '■ 카메라 정지';
+    setStatus("라벨을 비춰주세요");
+    scanInterval = setInterval(runOcr, 1000);
   }} catch(e) {{
-    document.querySelector('.qr-top-bar').textContent = '카메라 오류: ' + e.message;
+    setStatus("카메라 오류: " + e.message);
   }}
 }}
 
-function getGuideRect() {{
-  return document.querySelector('.qr-target-box').getBoundingClientRect();
+function stopCamera() {{
+  if (!cameraActive) {{ init(); return; }}
+  clearInterval(scanInterval); scanInterval = null;
+  const v = document.getElementById('camVideo');
+  if (v.srcObject) v.srcObject.getTracks().forEach(t => t.stop());
+  cameraActive = false;
+  setStatus("정지됨");
+  document.getElementById('cancelBar').textContent = '▶ 카메라 재시작';
 }}
 
-async function scanLoop() {{
-  animId = requestAnimationFrame(scanLoop);
-  if (!detector) return;
-  const video = document.getElementById('qr-video');
-  if (video.readyState < 2) return;
+async function runOcr() {{
+  if (processing || cooldown) return;
+  const v = document.getElementById('camVideo');
+  if (!v || v.readyState < 2) return;
+  processing = true;
   try {{
-    const barcodes = await detector.detect(video);
-    for (const bc of barcodes) {{
-      const cx = (bc.boundingBox.left + bc.boundingBox.right) / 2;
-      const cy = (bc.boundingBox.top + bc.boundingBox.bottom) / 2;
-      const g = getGuideRect();
-      if (cx < g.left || cx > g.right || cy < g.top || cy > g.bottom) continue;
-      const data = bc.rawValue;
-      if (data === lastData && cooldown) continue;
-      cooldown = true; lastData = data;
-      setTimeout(() => {{ cooldown = false; }}, 2000);
-      await processBarcode(data);
-      break;
-    }}
-  }} catch(e) {{}}
+    const c = document.getElementById('snapCanvas');
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext('2d').drawImage(v, 0, 0);
+    const dataUrl = c.toDataURL('image/jpeg', 0.7);
+    const {{ data }} = await ocrWorker.recognize(dataUrl);
+    const text = data.text || '';
+    const flat = text.replace(/[-\\s]/g,'').toUpperCase();
+    const lotM = flat.match(LOT_RE);
+    if (!lotM) return;
+    const lot = lotM[0];
+    if (batch.some(d => d.lot === lot)) return;
+    const itemM = flat.match(ITEM_RE);
+    const product = itemM ? itemM[0] : '';
+    const maker = MAKER_MAP[lot[0]] || lot[0];
+    cooldown = true;
+    setTimeout(() => {{ cooldown = false; }}, 1500);
+    batch.push({{ lot, product, maker }});
+    triggerFlash();
+    renderList();
+  }} catch(e) {{}} finally {{
+    processing = false;
+  }}
 }}
 
-async function processBarcode(data) {{
-  try {{
-    const res = await fetch(BACKEND + '/api/inventory/parse-barcode', {{
-      method:'POST', headers:{{'Content-Type':'application/json'}},
-      body: JSON.stringify({{raw_text: data}})
-    }});
-    if (!res.ok) throw new Error(await res.text());
-    const drum = await res.json();
-    if (batch.some(d => d.lot === drum.lot)) {{
-      flash('이미 스캔됨: ' + drum.lot, false); return;
-    }}
-    batch.push(drum);
-    updateUI();
-    flash(drum.lot + ' (' + drum.maker + ')', true);
-  }} catch(e) {{ flash('오류: ' + e.message, false); }}
+function triggerFlash() {{
+  const f = document.getElementById('flashOverlay');
+  f.style.opacity = '0.4';
+  setTimeout(() => {{ f.style.opacity = '0'; }}, 250);
+  if (navigator.vibrate) navigator.vibrate([80, 60, 80]);
 }}
 
-function updateUI() {{
+function renderList() {{
   const n = batch.length;
-  document.getElementById('scan-count-text').textContent = n;
-  const btn = document.getElementById('confirmBtn');
-  btn.textContent = '완료 (' + n + ')';
-  btn.disabled = n === 0;
+  document.getElementById('scanCount').textContent = n;
+  document.getElementById('doneBtn').textContent = '완료 (' + n + ')';
+  document.getElementById('doneBtn').disabled = n === 0;
+  const empty = document.getElementById('listEmpty');
+  const list = document.getElementById('drumList');
+  if (n === 0) {{ empty.style.display='block'; list.innerHTML=''; return; }}
+  empty.style.display = 'none';
+  list.innerHTML = [...batch].reverse().map((d, i) => {{
+    const realIdx = n - 1 - i;
+    return `<div class="drum-item">
+      <span class="drum-num">${{n - i}}</span>
+      <span class="drum-product">${{d.product || '-'}}</span>
+      <span class="drum-lot">${{d.lot}}</span>
+      <button class="drum-del" onclick="removeDrum(${{realIdx}})">✕</button>
+    </div>`;
+  }}).join('');
 }}
 
-function flash(text, ok) {{
-  const el = document.getElementById('lastScanned');
-  el.style.color = ok ? '#4AFF91' : '#FF6B6B';
-  el.textContent = (ok ? '최근: ' : '') + text;
-  el.style.display = 'block';
+function removeDrum(idx) {{
+  batch.splice(idx, 1);
+  renderList();
+}}
+
+function setStatus(msg) {{
+  document.getElementById('statusBar').textContent = msg;
 }}
 
 function finishScan() {{
@@ -1911,14 +1903,14 @@ function finishScan() {{
   el.innerHTML = '';
   SECTORS.forEach(s => {{
     const b = document.createElement('button');
+    b.className = 'sector-btn';
     b.textContent = s;
-    b.style.cssText = 'display:block;width:100%;padding:14px;margin-bottom:8px;background:#f5f5f5;border:1px solid #ddd;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;';
     b.onclick = () => selectSector(s);
     el.appendChild(b);
   }});
   const co = document.createElement('button');
+  co.className = 'sector-btn sector-checkout';
   co.textContent = CHECKOUT;
-  co.style.cssText = 'display:block;width:100%;padding:14px;background:#E53935;border:none;border-radius:10px;font-size:16px;font-weight:600;color:#fff;cursor:pointer;';
   co.onclick = () => selectSector(CHECKOUT);
   el.appendChild(co);
   document.getElementById('sectorPanel').style.display = 'flex';
@@ -1930,72 +1922,124 @@ function closeSectorPanel() {{
 
 async function selectSector(sector) {{
   document.getElementById('sectorPanel').style.display = 'none';
-  if (animId) cancelAnimationFrame(animId);
   try {{
     const res = await fetch(BACKEND + '/api/inventory/register', {{
       method:'POST', headers:{{'Content-Type':'application/json'}},
-      body: JSON.stringify({{drums: batch, sector: sector}})
+      body: JSON.stringify({{drums: batch, sector}})
     }});
     if (!res.ok) throw new Error(await res.text());
     const count = batch.length;
-    batch = []; lastData = ''; updateUI();
+    batch = []; renderList();
     const msg = sector === CHECKOUT
       ? count + '드럼 라인입고 처리 완료 ✓'
-      : count + '드럼 → ' + sector + ' 등록 완료 ✓';
-    showResult(msg, true);
+      : count + '드럼 → ' + sector + ' 등록 완료 ✓\n계속 스캔할 수 있습니다.';
+    document.getElementById('resultText').textContent = msg;
+    document.getElementById('resultText').style.color = '#4AFF91';
+    document.getElementById('resultMsg').style.display = 'flex';
   }} catch(e) {{
-    showResult('저장 실패: ' + e.message, false);
-    animId = requestAnimationFrame(scanLoop);
+    alert('저장 실패: ' + e.message);
   }}
 }}
 
-function showResult(msg, ok) {{
-  const el = document.getElementById('resultMsg');
-  document.getElementById('resultText').textContent = msg;
-  document.getElementById('resultText').style.color = ok ? '#4AFF91' : '#FF6B6B';
-  el.style.display = 'flex';
-}}
-
-function resetScanner() {{
+function resumeScan() {{
   document.getElementById('resultMsg').style.display = 'none';
-  document.getElementById('lastScanned').style.display = 'none';
-  animId = requestAnimationFrame(scanLoop);
-}}
-
-function closeScanner() {{
-  if (animId) cancelAnimationFrame(animId);
-  const v = document.getElementById('qr-video');
-  if (v.srcObject) v.srcObject.getTracks().forEach(t => t.stop());
-  document.querySelector('.qr-top-bar').innerHTML = '스캔됨: <span id="scan-count-text">0</span>드럼';
+  setStatus("라벨을 비춰주세요");
 }}
 
 init();
 </script>
 </body>
 </html>"""
-        st.components.v1.html(scanner_html, height=800, scrolling=False)
+        st.components.v1.html(scanner_html, height=700, scrolling=False)
 
     with tab_status:
-        if st.button("🔄 새로고침", key="inv_refresh"):
-            st.rerun()
+        col_refresh, col_search, col_sort = st.columns([1, 3, 2])
+        with col_refresh:
+            if st.button("🔄 새로고침", key="inv_refresh"):
+                st.rerun()
+
         try:
             resp = _req.get(f"{BACKEND}/api/inventory/sectors", timeout=10)
-            if resp.ok:
-                data = resp.json().get("sectors", {})
-                if not data:
-                    st.info("보관 중인 드럼 없음")
-                else:
-                    import pandas as _pd
-                    for sector, drums in data.items():
-                        with st.expander(f"**{sector}** — {len(drums)}드럼", expanded=True):
-                            if drums:
-                                df = _pd.DataFrame(drums)[["lot", "product", "maker"]]
-                                df.columns = ["LOT", "품명", "제조사"]
-                                st.dataframe(df, use_container_width=True, hide_index=True)
-            else:
+            if not resp.ok:
                 st.error(f"조회 실패: {resp.status_code}")
+                return
+            sectors_raw = resp.json().get("sectors", {})
         except Exception as e:
             st.error(f"연결 오류: {e}")
+            return
+
+        # 전체 드럼 목록 (sector 컬럼 추가)
+        all_drums = []
+        for sector, drums in sectors_raw.items():
+            for d in drums:
+                all_drums.append({**d, "sector": sector})
+
+        if not all_drums:
+            st.info("보관 중인 드럼 없음")
+            return
+
+        df_all = _pd.DataFrame(all_drums)
+        total = len(df_all)
+        st.caption(f"전체 **{total}드럼** 보관 중")
+
+        with col_search:
+            search = st.text_input("🔍 품명 또는 LOT 검색", placeholder="일부 글자 입력...", key="inv_search", label_visibility="collapsed")
+        with col_sort:
+            sort_mode = st.radio("정렬", ["섹터별", "제조사별", "품목별"], horizontal=True, key="inv_sort", label_visibility="collapsed")
+
+        # 검색 필터
+        if search.strip():
+            s = search.strip().upper()
+            mask = df_all["lot"].str.upper().str.contains(s, na=False) | df_all["product"].str.upper().str.contains(s, na=False)
+            df_filtered = df_all[mask]
+        else:
+            df_filtered = df_all
+
+        # 그룹 키
+        group_col = {"섹터별": "sector", "제조사별": "maker", "품목별": "product"}[sort_mode]
+
+        st.markdown("---")
+
+        # 드럼별 체크박스 선택 (라인입고용)
+        selected_lots = set()
+        for group_key, group_df in df_filtered.groupby(group_col, sort=True):
+            cnt = len(group_df)
+            with st.expander(f"**{group_key}** — {cnt}드럼", expanded=True):
+                # 헤더
+                h1, h2, h3, h4, h5, h6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+                h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
+                h4.markdown("**제조사**")
+                if sort_mode != "섹터별": h5.markdown("**섹터**")
+                h6.markdown("**등록시간**")
+                # 행
+                for _, row in group_df.iterrows():
+                    c1, c2, c3, c4, c5, c6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+                    checked = c1.checkbox("", key=f"chk_{row['lot']}", label_visibility="collapsed")
+                    if checked:
+                        selected_lots.add(row["lot"])
+                    c2.markdown(f"**{row.get('product','')}**")
+                    c3.text(row.get("lot", ""))
+                    c4.text(row.get("maker", ""))
+                    if sort_mode != "섹터별":
+                        c5.text(row.get("sector", ""))
+                    c6.text(row.get("registered", ""))
+
+        # 라인입고 버튼
+        if selected_lots:
+            st.markdown("---")
+            st.warning(f"**{len(selected_lots)}드럼** 선택됨")
+            if st.button(f"🚚 라인입고 처리 ({len(selected_lots)}드럼)", type="primary", key="checkout_btn"):
+                drums_to_checkout = [d for d in all_drums if d["lot"] in selected_lots]
+                try:
+                    res = _req.post(f"{BACKEND}/api/inventory/register",
+                                    json={"drums": drums_to_checkout, "sector": "라인입고"}, timeout=15)
+                    if res.ok:
+                        st.success(f"{len(drums_to_checkout)}드럼 라인입고 처리 완료!")
+                        st.rerun()
+                    else:
+                        st.error(f"실패: {res.text}")
+                except Exception as e:
+                    st.error(f"오류: {e}")
 
 
 # ──────────────────────────────────────
