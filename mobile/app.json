@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "scheme": "kg-paint-checker",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "backgroundColor": "#4B2D8E"
     },
@@ -24,7 +24,9 @@
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.RECORD_AUDIO"
       ]
     },
@@ -51,6 +53,12 @@
       "eas": {
         "projectId": "d5eafbc7-6a18-4e72-b118-34b7d801d7f9"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/d5eafbc7-6a18-4e72-b118-34b7d801d7f9"
     }
   }
 }

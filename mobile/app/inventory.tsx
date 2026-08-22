@@ -15,7 +15,7 @@ import {
 import { Stack } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as FileSystem from "expo-file-system";
-import TextRecognition from "@react-native-ml-kit/text-recognition";
+import TextRecognition, { type TextBlock } from "@react-native-ml-kit/text-recognition";
 
 import { COLORS } from "../src/constants/config";
 import { registerDrums, getSectorInventory, type DrumItem } from "../src/services/api";
@@ -33,9 +33,9 @@ const LOT_RE = /[A-Z][0-9]{2}[A-Z][0-9]{5}/;
 const ITEM_RE = /[A-Z][0-9][A-Z][0-9]{3}[A-Z]/;
 const LOT_KEYWORDS = ["DRUM LOT", "LOT.NO", "DRUM NO", "LOT NO", "LOT", "롯트번호"];
 
-function parseOcrBlocks(blocks: any[]): DrumItem | null {
+function parseOcrBlocks(blocks: TextBlock[]): DrumItem | null {
   if (!blocks?.length) return null;
-  const allText = blocks.map((b: any) => b.text ?? "").join("\n");
+  const allText = blocks.map(b => b.text).join("\n");
   // 공백·하이픈 제거 + 대문자 통일
   const flat = allText.replace(/[-\s]/g, "").toUpperCase();
 
@@ -57,15 +57,15 @@ function parseOcrBlocks(blocks: any[]): DrumItem | null {
   }
   if (!lot) return null;
 
-  // 2. 품명 추출 — 패턴 우선, 실패 시 가장 큰 블록
+  // 2. 품명 추출 — 패턴 우선, 실패 시 가장 큰 바운딩 박스 블록
   let product = "";
   const itemMatch = flat.match(ITEM_RE);
   if (itemMatch) {
     product = itemMatch[0];
   } else {
     const sorted = [...blocks]
-      .filter((b: any) => b.frame?.width && b.frame?.height)
-      .sort((a: any, b_: any) => (b_.frame.width * b_.frame.height) - (a.frame.width * a.frame.height));
+      .filter(b => b.frame?.width && b.frame?.height)
+      .sort((a, b_) => (b_.frame!.width * b_.frame!.height) - (a.frame!.width * a.frame!.height));
     if (sorted.length > 0) product = sorted[0].text.replace(/[-\s]/g, "").toUpperCase();
   }
 
@@ -142,7 +142,7 @@ export default function InventoryScreen() {
       if (!uri) return;
 
       const result = await TextRecognition.recognize(uri);
-      const parsed = parseOcrBlocks((result as any).blocks ?? []);
+      const parsed = parseOcrBlocks(result.blocks ?? []);
 
       if (parsed && !batchRef.current.some(d => d.lot === parsed.lot)) {
         triggerFeedback();
