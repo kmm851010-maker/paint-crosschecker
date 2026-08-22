@@ -87,6 +87,9 @@ export default function InventoryScreen() {
   const [loading, setLoading] = useState(false);
   const [sectorData, setSectorData] = useState<Record<string, any[]>>({});
   const [editingItem, setEditingItem] = useState<{ index: number; lot: string; product: string } | null>(null);
+  const [searchText, setSearchText] = useState("");
+  const [sortMode, setSortMode] = useState<"sector" | "maker" | "product">("sector");
+  const [selectedLots, setSelectedLots] = useState<Set<string>>(new Set());
 
   const cameraRef = useRef<CameraView>(null);
   const batchRef = useRef<DrumItem[]>([]);
@@ -347,35 +350,150 @@ export default function InventoryScreen() {
 
   // ── 재고 현황 화면 ──
   if (mode === "status") {
-    const sectorKeys = Object.keys(sectorData);
+    // 전체 드럼 목록 (sector 필드 추가)
+    const allDrums = Object.entries(sectorData).flatMap(([sector, drums]) =>
+      drums.map((d: any) => ({ ...d, sector }))
+    );
+    const totalCount = allDrums.length;
+
+    // 검색 필터
+    const filtered = searchText.trim()
+      ? allDrums.filter(d =>
+          d.lot.toLowerCase().includes(searchText.toLowerCase()) ||
+          d.product.toLowerCase().includes(searchText.toLowerCase())
+        )
+      : allDrums;
+
+    // 그룹화
+    const grouped: Record<string, typeof filtered> = {};
+    for (const drum of filtered) {
+      const key = sortMode === "sector" ? drum.sector
+        : sortMode === "maker" ? (drum.maker || "미상")
+        : drum.product || "미상";
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(drum);
+    }
+    const groupKeys = Object.keys(grouped).sort();
+
     return (
       <>
         <Stack.Screen options={{ title: "재고 현황" }} />
-        <ScrollView style={styles.container} contentContainerStyle={{ padding: 16 }}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => setMode("idle")}>
-            <Text style={styles.backBtnText}>← 뒤로</Text>
-          </TouchableOpacity>
-          {sectorKeys.length === 0 ? (
-            <Text style={styles.emptyText}>보관 중인 드럼 없음</Text>
-          ) : (
-            sectorKeys.map((sector) => (
-              <View key={sector} style={styles.sectorCard}>
-                <View style={styles.sectorHeader}>
-                  <Text style={styles.sectorName}>{sector}</Text>
-                  <Text style={styles.sectorCount}>{sectorData[sector].length}드럼</Text>
-                </View>
-                {sectorData[sector].map((drum: any, i: number) => (
-                  <View key={i} style={styles.drumRow}>
-                    <Text style={styles.drumLot}>{drum.lot}</Text>
-                    <Text style={styles.drumProduct}>{drum.product}</Text>
-                    <Text style={styles.drumMaker}>{drum.maker}</Text>
+        <View style={styles.container}>
+          {/* 헤더 */}
+          <View style={styles.statusHeader}>
+            <TouchableOpacity onPress={() => setMode("idle")}>
+              <Text style={styles.backBtnText}>← 뒤로</Text>
+            </TouchableOpacity>
+            <Text style={styles.totalCount}>전체 {totalCount}드럼</Text>
+          </View>
+
+          {/* 검색창 */}
+          <View style={styles.searchRow}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="품명 또는 LOT 검색..."
+              placeholderTextColor="#aaa"
+              value={searchText}
+              onChangeText={setSearchText}
+              autoCapitalize="characters"
+              clearButtonMode="while-editing"
+            />
+          </View>
+
+          {/* 정렬 탭 */}
+          <View style={styles.sortRow}>
+            {(["sector", "maker", "product"] as const).map((m) => (
+              <TouchableOpacity
+                key={m}
+                style={[styles.sortTab, sortMode === m && styles.sortTabActive]}
+                onPress={() => setSortMode(m)}
+              >
+                <Text style={[styles.sortTabText, sortMode === m && styles.sortTabTextActive]}>
+                  {m === "sector" ? "섹터별" : m === "maker" ? "제조사별" : "품목별"}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* 목록 */}
+          <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: selectedLots.size > 0 ? 100 : 40 }}>
+            {groupKeys.length === 0 ? (
+              <Text style={styles.emptyText}>
+                {searchText ? "검색 결과 없음" : "보관 중인 드럼 없음"}
+              </Text>
+            ) : (
+              groupKeys.map((key) => (
+                <View key={key} style={styles.sectorCard}>
+                  <View style={styles.sectorHeader}>
+                    <Text style={styles.sectorName}>{key}</Text>
+                    <Text style={styles.sectorCount}>{grouped[key].length}드럼</Text>
                   </View>
-                ))}
-              </View>
-            ))
+                  {/* 테이블 헤더 */}
+                  <View style={styles.tableHeader}>
+                    <View style={{ width: 28 }} />
+                    <Text style={[styles.thCell, { flex: 2 }]}>LOT</Text>
+                    <Text style={[styles.thCell, { flex: 1.2 }]}>품명</Text>
+                    <Text style={[styles.thCell, { flex: 1.5 }]}>제조사</Text>
+                    {sortMode !== "sector" && <Text style={[styles.thCell, { flex: 1.2 }]}>섹터</Text>}
+                    <Text style={[styles.thCell, { flex: 1.8 }]}>등록시간</Text>
+                  </View>
+                  {grouped[key].map((drum: any, i: number) => {
+                    const isSelected = selectedLots.has(drum.lot);
+                    return (
+                      <TouchableOpacity
+                        key={i}
+                        style={[styles.statusDrumRow, i % 2 === 1 && styles.drumRowAlt, isSelected && styles.drumRowSelected]}
+                        onPress={() => setSelectedLots(prev => {
+                          const next = new Set(prev);
+                          if (next.has(drum.lot)) next.delete(drum.lot);
+                          else next.add(drum.lot);
+                          return next;
+                        })}
+                      >
+                        <Text style={styles.checkBox}>{isSelected ? "☑" : "☐"}</Text>
+                        <Text style={[styles.drumLot, { flex: 2 }]}>{drum.lot}</Text>
+                        <Text style={[styles.drumProduct, { flex: 1.2 }]}>{drum.product}</Text>
+                        <Text style={[styles.drumMaker, { flex: 1.5 }]}>{drum.maker}</Text>
+                        {sortMode !== "sector" && (
+                          <Text style={[styles.drumMaker, { flex: 1.2, color: COLORS.primary }]}>{drum.sector}</Text>
+                        )}
+                        <Text style={[styles.drumMaker, { flex: 1.8, fontSize: 10 }]}>{drum.registered}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))
+            )}
+          </ScrollView>
+
+          {/* 라인입고 버튼 */}
+          {selectedLots.size > 0 && (
+            <View style={styles.checkoutBar}>
+              <Text style={styles.checkoutBarText}>{selectedLots.size}드럼 선택됨</Text>
+              <TouchableOpacity
+                style={styles.checkoutBarBtn}
+                onPress={async () => {
+                  const drums = allDrums.filter(d => selectedLots.has(d.lot));
+                  setLoading(true);
+                  try {
+                    await registerDrums(drums, CHECKOUT);
+                    setSelectedLots(new Set());
+                    const data = await getSectorInventory();
+                    setSectorData(data);
+                    Alert.alert("완료", `${drums.length}드럼 라인입고 처리`);
+                  } catch (e: any) {
+                    Alert.alert("실패", e.message);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                disabled={loading}
+              >
+                {loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.checkoutBarBtnText}>라인입고</Text>}
+              </TouchableOpacity>
+            </View>
           )}
-          <View style={{ height: 40 }} />
-        </ScrollView>
+        </View>
       </>
     );
   }
@@ -510,11 +628,42 @@ const styles = StyleSheet.create({
   statusBtn: { backgroundColor: "#1565C0" },
 
   // 재고 현황
-  backBtn: { marginBottom: 16 },
+  statusHeader: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
   backBtnText: { fontSize: 15, color: COLORS.primary, fontWeight: "600" },
+  totalCount: { fontSize: 13, color: COLORS.textSecondary, fontWeight: "600" },
+  searchRow: { paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  searchInput: {
+    backgroundColor: COLORS.surface, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, color: COLORS.textPrimary,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  sortRow: { flexDirection: "row", paddingHorizontal: 12, paddingVertical: 8, gap: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  sortTab: { flex: 1, paddingVertical: 7, borderRadius: 8, backgroundColor: COLORS.surface, alignItems: "center", borderWidth: 1, borderColor: COLORS.border },
+  sortTabActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  sortTabText: { fontSize: 13, fontWeight: "600", color: COLORS.textSecondary },
+  sortTabTextActive: { color: "#fff" },
   emptyText: { fontSize: 15, color: COLORS.textSecondary, textAlign: "center", marginTop: 40 },
-  sectorCard: { backgroundColor: COLORS.surface, borderRadius: 12, padding: 14, marginBottom: 12, elevation: 2 },
-  sectorHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-  sectorName: { fontSize: 16, fontWeight: "700", color: COLORS.textPrimary },
-  sectorCount: { fontSize: 14, fontWeight: "600", color: COLORS.primary },
+  sectorCard: { backgroundColor: COLORS.surface, borderRadius: 12, padding: 12, marginBottom: 12, elevation: 2 },
+  sectorHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
+  sectorName: { fontSize: 15, fontWeight: "700", color: COLORS.textPrimary },
+  sectorCount: { fontSize: 13, fontWeight: "600", color: COLORS.primary, backgroundColor: "#EDE7F6", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+  tableHeader: { flexDirection: "row", alignItems: "center", paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 2 },
+  thCell: { fontSize: 11, color: COLORS.textSecondary, fontWeight: "700" },
+  statusDrumRow: { flexDirection: "row", alignItems: "center", paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: 4 },
+  drumRowAlt: { backgroundColor: "rgba(0,0,0,0.02)" },
+  drumRowSelected: { backgroundColor: "#EDE7F6" },
+  checkBox: { width: 24, fontSize: 16, textAlign: "center", color: COLORS.primary },
+  checkoutBar: {
+    position: "absolute", bottom: 0, left: 0, right: 0,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    backgroundColor: "#1a1a1a", paddingHorizontal: 16, paddingVertical: 12,
+    borderTopWidth: 1, borderTopColor: "#333",
+  },
+  checkoutBarText: { color: "#fff", fontSize: 14, fontWeight: "600" },
+  checkoutBarBtn: { backgroundColor: "#E53935", paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
+  checkoutBarBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
 });

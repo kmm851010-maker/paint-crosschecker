@@ -98,9 +98,13 @@ def _load_status_map(ws):
     return lot_map
 
 
+def _kst_now() -> str:
+    return (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")
+
+
 def save_drums_to_sector(drums: list, sector: str):
     """드럼 목록을 지정 섹터에 보관 등록 또는 이동"""
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    now = _kst_now()
 
     ws_status = _get_or_create_sheet(
         "재고현황",
@@ -137,7 +141,7 @@ def save_drums_to_sector(drums: list, sector: str):
 
 def checkout_drums(drums: list):
     """라인입고 처리 - 재고에서 제거하고 이력 기록"""
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    now = _kst_now()
 
     ws_status = _get_or_create_sheet("재고현황")
     ws_history = _get_or_create_sheet("재고이력")
