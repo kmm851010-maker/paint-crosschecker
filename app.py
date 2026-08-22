@@ -226,7 +226,7 @@ if st.sidebar.button("🚪 로그아웃", use_container_width=True):
 st.sidebar.markdown("---")
 st.sidebar.markdown("📱 **모바일 앱**")
 st.sidebar.markdown(
-    '<a href="https://expo.dev/artifacts/eas/A32sa7buRDVnVNP5siqbVJcMsLyUGKyPB6aq8HO3zwU.apk" '
+    '<a href="https://expo.dev/artifacts/eas/hMfgIhQMAb1oNshFWr0IMTv_DQ7-MNOxW3eMxWOZTII.apk" '
     'style="display:block;text-align:center;padding:10px;background:#F5A623;color:#1A1A2E;'
     'border-radius:8px;font-weight:700;text-decoration:none;">⬇️ KG Counter 설치</a>',
     unsafe_allow_html=True,
