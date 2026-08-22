@@ -60,13 +60,7 @@ def save_work_items(selected_date, work_items):
     ws = _get_or_create_sheet("업무현황", ["날짜", "항목", "1근", "2근", "3근", "주간", "야간", "합계", "월누계"])
     date_str = selected_date.strftime("%Y-%m-%d")
 
-    # 해당 날짜 행 범위 한 번에 삭제
-    all_data = ws.get_all_values()
-    rows_del = [i + 1 for i, row in enumerate(all_data) if i > 0 and row and row[0] == date_str]
-    if rows_del:
-        _retry(lambda: ws.delete_rows(rows_del[0], rows_del[-1]))
-
-    # 배치 저장 (append_rows = write 1회)
+    # 삭제 + 배치 저장을 하나의 retry 단위로 (중복 방지)
     rows = []
     for item in work_items:
         s1 = item.get("s1") or 0
@@ -76,8 +70,15 @@ def save_work_items(selected_date, work_items):
         night = item.get("night") or 0
         total = s1 + s2 + s3 + day + night
         rows.append([date_str, item["name"], s1, s2, s3, day, night, total, item.get("month_total", 0)])
-    if rows:
-        _retry(lambda: ws.append_rows(rows, value_input_option="RAW"))
+
+    def _write():
+        all_data = ws.get_all_values()
+        rows_del = [i + 1 for i, row in enumerate(all_data) if i > 0 and row and row[0] == date_str]
+        if rows_del:
+            ws.delete_rows(rows_del[0], rows_del[-1])
+        if rows:
+            ws.append_rows(rows, value_input_option="RAW")
+    _retry(_write)
 
 
 def load_work_items(selected_date):
@@ -138,11 +139,13 @@ def has_saved_data(selected_date):
 
 def save_leaves(leave_list):
     ws = _get_or_create_sheet("휴가등록", ["이름", "구분", "시작일", "종료일", "대근자"])
-    _retry(ws.clear)
     rows = [["이름", "구분", "시작일", "종료일", "대근자"]]
     for lv in leave_list:
         rows.append([lv["name"], lv["type"], lv["start"], lv["end"], lv.get("sub", "")])
-    _retry(lambda: ws.append_rows(rows, value_input_option="RAW"))
+    def _write():
+        ws.clear()
+        ws.append_rows(rows, value_input_option="RAW")
+    _retry(_write)
 
 
 def load_leaves():
