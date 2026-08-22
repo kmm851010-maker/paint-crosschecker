@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   Vibration,
   View,
@@ -29,8 +30,8 @@ const MAKER_MAP: Record<string, string> = {
 // ── OCR 추출 패턴 ──
 // LOT: 영문1 + 숫자2 + 영문1 + 숫자5 = 9자  예) P26D03917
 const LOT_RE = /[A-Z][0-9]{2}[A-Z][0-9]{5}/;
-// 품명: 영문1 + 숫자1 + 영문1 + 숫자3 + 영문1 = 7자  예) P7M122B
-const ITEM_RE = /[A-Z][0-9][A-Z][0-9]{3}[A-Z]/;
+// 품명: 영문1 + 숫자1 + 영문1 + (숫자또는영문){3} + 영문1 = 7자  예) P7M122B, P7YA83B
+const ITEM_RE = /[A-Z][0-9][A-Z][A-Z0-9]{3}[A-Z]/;
 const LOT_KEYWORDS = ["DRUM LOT", "LOT.NO", "DRUM NO", "LOT NO", "LOT", "롯트번호"];
 
 function parseOcrBlocks(blocks: TextBlock[]): DrumItem | null {
@@ -69,7 +70,7 @@ function parseOcrBlocks(blocks: TextBlock[]): DrumItem | null {
     if (sorted.length > 0) product = sorted[0].text.replace(/[-\s]/g, "").toUpperCase();
   }
 
-  return { lot, product, maker: MAKER_MAP[lot[0]] ?? lot[0] };
+  return { lot, product: product.replace(/[-\s]/g, ""), maker: MAKER_MAP[lot[0]] ?? lot[0] };
 }
 
 const SECTORS = [
@@ -85,6 +86,7 @@ export default function InventoryScreen() {
   const [batch, setBatch] = useState<DrumItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [sectorData, setSectorData] = useState<Record<string, any[]>>({});
+  const [editingItem, setEditingItem] = useState<{ index: number; lot: string; product: string } | null>(null);
 
   const cameraRef = useRef<CameraView>(null);
   const batchRef = useRef<DrumItem[]>([]);
@@ -229,16 +231,22 @@ export default function InventoryScreen() {
             <FlatList
               data={[...batch].reverse()}
               keyExtractor={(item) => item.lot}
-              renderItem={({ item, index }) => (
-                <View style={styles.scanListItem}>
-                  <Text style={styles.scanListNum}>{batch.length - index}</Text>
-                  <Text style={styles.scanListProduct}>{item.product || "-"}</Text>
-                  <Text style={styles.scanListLot}>{item.lot}</Text>
-                  <TouchableOpacity onPress={() => setBatch(prev => prev.filter(d => d.lot !== item.lot))}>
-                    <Text style={styles.scanListDelete}>✕</Text>
+              renderItem={({ item, index }) => {
+                const realIndex = batch.length - 1 - index;
+                return (
+                  <TouchableOpacity
+                    style={styles.scanListItem}
+                    onPress={() => setEditingItem({ index: realIndex, lot: item.lot, product: item.product })}
+                  >
+                    <Text style={styles.scanListNum}>{batch.length - index}</Text>
+                    <Text style={styles.scanListProduct}>{item.product || "-"}</Text>
+                    <Text style={styles.scanListLot}>{item.lot}</Text>
+                    <TouchableOpacity onPress={() => setBatch(prev => prev.filter(d => d.lot !== item.lot))}>
+                      <Text style={styles.scanListDelete}>✕</Text>
+                    </TouchableOpacity>
                   </TouchableOpacity>
-                </View>
-              )}
+                );
+              }}
             />
           )}
         </View>
@@ -262,9 +270,61 @@ export default function InventoryScreen() {
         <TouchableOpacity style={styles.scanCancelBtn} onPress={() => setMode("idle")}>
           <Text style={styles.cancelBtnText}>취소</Text>
         </TouchableOpacity>
+        <EditModal />
       </View>
     );
   }
+
+  // ── 항목 편집 모달 ──
+  const EditModal = () => (
+    <Modal visible={editingItem !== null} animationType="fade" transparent>
+      <View style={styles.modalOverlay}>
+        <View style={styles.editCard}>
+          <Text style={styles.editTitle}>항목 수정</Text>
+          <Text style={styles.editLabel}>품명</Text>
+          <TextInput
+            style={styles.editInput}
+            value={editingItem?.product ?? ""}
+            onChangeText={v => setEditingItem(prev => prev ? { ...prev, product: v.replace(/[-\s]/g, "").toUpperCase() } : prev)}
+            autoCapitalize="characters"
+            placeholder="예) P7Y751Y"
+          />
+          <Text style={styles.editLabel}>LOT번호</Text>
+          <TextInput
+            style={styles.editInput}
+            value={editingItem?.lot ?? ""}
+            onChangeText={v => setEditingItem(prev => prev ? { ...prev, lot: v.replace(/[-\s]/g, "").toUpperCase() } : prev)}
+            autoCapitalize="characters"
+            placeholder="예) P26D03917"
+          />
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
+            <TouchableOpacity style={[styles.editBtn, { backgroundColor: "#888" }]} onPress={() => setEditingItem(null)}>
+              <Text style={styles.editBtnText}>취소</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.editBtn, { flex: 2, backgroundColor: COLORS.primary }]}
+              onPress={() => {
+                if (!editingItem) return;
+                setBatch(prev => {
+                  const next = [...prev];
+                  next[editingItem.index] = {
+                    ...next[editingItem.index],
+                    lot: editingItem.lot,
+                    product: editingItem.product,
+                    maker: MAKER_MAP[editingItem.lot[0]] ?? next[editingItem.index].maker,
+                  };
+                  return next;
+                });
+                setEditingItem(null);
+              }}
+            >
+              <Text style={styles.editBtnText}>저장</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
 
   // ── 섹터 선택 모달 ──
   const SectorModal = () => (
@@ -330,6 +390,7 @@ export default function InventoryScreen() {
     <>
       <Stack.Screen options={{ title: "재고 관리" }} />
       <SectorModal />
+      <EditModal />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         {batch.length > 0 && (
           <View style={styles.batchCard}>
@@ -340,14 +401,14 @@ export default function InventoryScreen() {
               </TouchableOpacity>
             </View>
             {batch.map((drum, i) => (
-              <View key={i} style={styles.drumRow}>
+              <TouchableOpacity key={i} style={styles.drumRow} onPress={() => setEditingItem({ index: i, lot: drum.lot, product: drum.product })}>
                 <Text style={styles.drumLot}>{drum.lot}</Text>
                 <Text style={styles.drumProduct}>{drum.product}</Text>
                 <Text style={styles.drumMaker}>{drum.maker}</Text>
                 <TouchableOpacity onPress={() => setBatch(prev => prev.filter((_, idx) => idx !== i))}>
                   <Text style={styles.removeText}>삭제</Text>
                 </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}
@@ -408,6 +469,18 @@ const styles = StyleSheet.create({
     alignItems: "center", borderTopWidth: 1, borderTopColor: "#333",
   },
   cancelBtnText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+
+  // 편집 모달
+  editCard: { backgroundColor: "#fff", borderRadius: 16, padding: 20, margin: 24 },
+  editTitle: { fontSize: 17, fontWeight: "700", color: COLORS.textPrimary, marginBottom: 16, textAlign: "center" },
+  editLabel: { fontSize: 13, color: COLORS.textSecondary, marginBottom: 4 },
+  editInput: {
+    borderWidth: 1, borderColor: COLORS.border, borderRadius: 8,
+    paddingHorizontal: 12, paddingVertical: 10, fontSize: 15,
+    color: COLORS.textPrimary, marginBottom: 12,
+  },
+  editBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: "center" },
+  editBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 
   // 섹터 모달
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
