@@ -1328,16 +1328,24 @@ def page_work_log():
     # Google Sheets 저장 + 엑셀 다운로드
     col_save, col_dl = st.columns(2)
     with col_save:
-        if st.button("💾 전체 저장 (Google Sheets)", use_container_width=True, type="primary"):
+        import time as _time
+        _last_save = st.session_state.get("_last_save_ts", 0)
+        _cooldown = 20  # 초
+        _elapsed = _time.time() - _last_save
+        _can_save = _elapsed >= _cooldown
+        if st.button("💾 전체 저장 (Google Sheets)", use_container_width=True, type="primary", disabled=not _can_save):
             try:
                 from utils.sheets import save_all
                 save_all(
                     selected_date, work_items_data, shift_data_final,
                     safety_items_data, note_text, st.session_state.get("leave_list", [])
                 )
+                st.session_state["_last_save_ts"] = _time.time()
                 st.success("✅ 전체 저장 완료! (업무현황 + 인원 + 안전 + 특이사항 + 휴가)")
             except Exception as e:
                 st.error(f"저장 실패: {type(e).__name__}: {e}")
+        if not _can_save:
+            st.caption(f"⏳ {int(_cooldown - _elapsed)}초 후 재저장 가능")
 
     with col_dl:
         excel_bytes = generate_work_log_excel(selected_date, shift_data_final, work_items_data, safety_items_data, note_text)
