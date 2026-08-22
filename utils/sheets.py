@@ -77,7 +77,7 @@ def save_work_items(selected_date, work_items):
         total = s1 + s2 + s3 + day + night
         rows.append([date_str, item["name"], s1, s2, s3, day, night, total, item.get("month_total", 0)])
     if rows:
-        _retry(lambda: ws.append_rows(rows, value_input_option="USER_ENTERED"))
+        _retry(lambda: ws.append_rows(rows, value_input_option="RAW"))
 
 
 def load_work_items(selected_date):
@@ -142,7 +142,7 @@ def save_leaves(leave_list):
     rows = [["이름", "구분", "시작일", "종료일", "대근자"]]
     for lv in leave_list:
         rows.append([lv["name"], lv["type"], lv["start"], lv["end"], lv.get("sub", "")])
-    _retry(lambda: ws.append_rows(rows, value_input_option="USER_ENTERED"))
+    _retry(lambda: ws.append_rows(rows, value_input_option="RAW"))
 
 
 def load_leaves():

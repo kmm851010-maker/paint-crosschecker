@@ -872,8 +872,11 @@ def page_work_log():
         result["leave_type"] = ""
 
         for leave in st.session_state["leave_list"]:
-            start = datetime.date.fromisoformat(leave["start"])
-            end = datetime.date.fromisoformat(leave["end"])
+            try:
+                start = datetime.date.fromisoformat(leave["start"])
+                end = datetime.date.fromisoformat(leave["end"])
+            except Exception:
+                continue  # 날짜 형식 오류 항목 무시
             if start <= target_date <= end:
                 absent = leave["name"]
                 ltype = leave["type"]
