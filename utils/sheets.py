@@ -164,6 +164,43 @@ def save_daily_detail(selected_date, shift_data, safety_items, note_text):
     ws.append_row([date_str, detail])
 
 
+def delete_daily_details_for_leave(leave):
+    """휴가 삭제 시 해당 날짜 범위의 저장 일지를 초기화 (is_2person 데이터 제거)."""
+    import datetime as _dt
+    try:
+        ws = _get_or_create_sheet("일지상세")
+        all_data = ws.get_all_values()
+        start = _dt.date.fromisoformat(leave["start"])
+        end = _dt.date.fromisoformat(leave["end"])
+        person = leave["name"]
+
+        # 해당 날짜 범위 + 휴가자 이름이 3근_근무자로 저장된 행 찾기
+        rows_to_delete = []
+        for i, row in enumerate(all_data):
+            if i == 0 or not row or len(row) < 2:
+                continue
+            try:
+                row_date = _dt.date.fromisoformat(row[0])
+            except Exception:
+                continue
+            if not (start <= row_date <= end):
+                continue
+            try:
+                detail = json.loads(row[1])
+                shift = detail.get("shift", {})
+                if shift.get("is_2person") and shift.get("3근_근무자") == person:
+                    rows_to_delete.append(i + 1)  # 1-indexed
+            except Exception:
+                continue
+
+        for idx in reversed(rows_to_delete):
+            ws.delete_rows(idx)
+
+        return len(rows_to_delete)
+    except Exception:
+        return 0
+
+
 def load_daily_detail(selected_date):
     try:
         ws = _get_or_create_sheet("일지상세")

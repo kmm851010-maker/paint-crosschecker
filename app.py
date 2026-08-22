@@ -963,10 +963,13 @@ def page_work_log():
                     st.write(f"{lv['name']} | {lv['type']} | {lv['start']} ~ {lv['end']} | 대근: {lv.get('sub','없음')}")
                 with col_d:
                     if st.button("삭제", key=f"del_leave_{i}"):
-                        st.session_state["leave_list"].pop(i)
+                        deleted_lv = st.session_state["leave_list"].pop(i)
                         try:
-                            from utils.sheets import save_leaves
+                            from utils.sheets import save_leaves, delete_daily_details_for_leave
                             save_leaves(st.session_state["leave_list"])
+                            reset_cnt = delete_daily_details_for_leave(deleted_lv)
+                            if reset_cnt > 0:
+                                st.toast(f"휴가 삭제 완료 — 관련 저장 일지 {reset_cnt}일 초기화 (통계 자동 재계산)", icon="♻️")
                         except Exception:
                             pass
                         st.rerun()
