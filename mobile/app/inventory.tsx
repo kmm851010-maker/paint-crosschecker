@@ -19,6 +19,7 @@ import * as FileSystem from "expo-file-system";
 import TextRecognition, { type TextBlock } from "@react-native-ml-kit/text-recognition";
 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LightSensor } from "expo-sensors";
 
 import { COLORS } from "../src/constants/config";
 import { registerDrums, getSectorInventory, type DrumItem } from "../src/services/api";
@@ -93,6 +94,9 @@ export default function InventoryScreen() {
   const [searchText, setSearchText] = useState("");
   const [sortMode, setSortMode] = useState<"sector" | "maker" | "product">("sector");
   const [selectedLots, setSelectedLots] = useState<Set<string>>(new Set());
+  // 토치: "off" | "auto" | "on"
+  const [torchMode, setTorchMode] = useState<"off" | "auto" | "on">("off");
+  const [autoTorchActive, setAutoTorchActive] = useState(false);
 
   const cameraRef = useRef<CameraView>(null);
   const batchRef = useRef<DrumItem[]>([]);
@@ -100,6 +104,27 @@ export default function InventoryScreen() {
   const cooldownRef = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const flashAnim = useRef(new Animated.Value(0)).current;
+  const torchModeRef = useRef<"off" | "auto" | "on">("off");
+
+  // torchModeRef를 torchMode와 동기화
+  useEffect(() => { torchModeRef.current = torchMode; }, [torchMode]);
+
+  // 오토 모드: LightSensor (Android) 조도 구독
+  useEffect(() => {
+    if (torchMode !== "auto" || mode !== "scanning") {
+      setAutoTorchActive(false);
+      return;
+    }
+    let sub: ReturnType<typeof LightSensor.addListener> | null = null;
+    LightSensor.isAvailableAsync().then(available => {
+      if (!available) return; // iOS: EXIF fallback (runOcr에서 처리)
+      LightSensor.setUpdateInterval(800);
+      sub = LightSensor.addListener(({ illuminance }) => {
+        setAutoTorchActive(illuminance < 50); // 50 lux 이하 → 토치 ON
+      });
+    });
+    return () => { sub?.remove(); };
+  }, [torchMode, mode]);
 
   // batchRef를 batch와 동기화 (클로저 stale 방지)
   useEffect(() => { batchRef.current = batch; }, [batch]);
@@ -141,13 +166,22 @@ export default function InventoryScreen() {
     processingRef.current = true;
     let uri: string | undefined;
     try {
+      const isAuto = torchModeRef.current === "auto";
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.7,
-        skipMetadata: true,
+        skipMetadata: !isAuto, // auto 모드에서는 EXIF 필요 (iOS fallback)
         shutterSound: false,
       });
       uri = photo?.uri;
       if (!uri) return;
+
+      // iOS EXIF fallback: LightSensor 없을 때 EXIF BrightnessValue로 판단
+      if (isAuto && photo.exif) {
+        const bv: number | undefined = (photo.exif as any).BrightnessValue;
+        if (bv !== undefined) {
+          setAutoTorchActive(bv < 2.0); // 2.0 EV 이하 → 어두움
+        }
+      }
 
       const result = await TextRecognition.recognize(uri);
       const parsed = parseOcrBlocks(result.blocks ?? []);
@@ -334,12 +368,29 @@ export default function InventoryScreen() {
 
         {/* 하단: 카메라 */}
         <View style={styles.cameraArea}>
-          <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back" />
+          <CameraView
+            ref={cameraRef}
+            style={{ flex: 1 }}
+            facing="back"
+            enableTorch={torchMode === "on" || (torchMode === "auto" && autoTorchActive)}
+          />
           {/* 인식 성공 플래시 */}
           <Animated.View
             pointerEvents="none"
             style={[StyleSheet.absoluteFillObject, { backgroundColor: "#4AFF91", opacity: flashAnim }]}
           />
+          {/* 토치 버튼 */}
+          <TouchableOpacity
+            style={styles.torchBtn}
+            onPress={() => setTorchMode(m => m === "off" ? "auto" : m === "auto" ? "on" : "off")}
+          >
+            <Text style={styles.torchIcon}>
+              {torchMode === "on" ? "🔦" : torchMode === "auto" ? "🔆" : "🔦"}
+            </Text>
+            <Text style={[styles.torchLabel, torchMode !== "off" && styles.torchLabelActive]}>
+              {torchMode === "on" ? "ON" : torchMode === "auto" ? `AUTO${autoTorchActive ? "🟡" : "⚪"}` : "OFF"}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* 취소 버튼 */}
@@ -688,4 +739,12 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   savingText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  torchBtn: {
+    position: "absolute", bottom: 12, right: 12,
+    alignItems: "center", backgroundColor: "rgba(0,0,0,0.5)",
+    borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6,
+  },
+  torchIcon: { fontSize: 22 },
+  torchLabel: { color: "#aaa", fontSize: 11, fontWeight: "700", marginTop: 2 },
+  torchLabelActive: { color: "#FFD600" },
 });
