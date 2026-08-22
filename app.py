@@ -226,7 +226,7 @@ if st.sidebar.button("🚪 로그아웃", use_container_width=True):
 st.sidebar.markdown("---")
 st.sidebar.markdown("📱 **모바일 앱**")
 st.sidebar.markdown(
-    '<a href="https://expo.dev/accounts/sergekang/projects/kg-steel-paint-checker/builds/7ff421c2-4829-4a57-9a73-36b46a3aba34" '
+    '<a href="https://expo.dev/artifacts/eas/A32sa7buRDVnVNP5siqbVJcMsLyUGKyPB6aq8HO3zwU.apk" '
     'style="display:block;text-align:center;padding:10px;background:#F5A623;color:#1A1A2E;'
     'border-radius:8px;font-weight:700;text-decoration:none;">⬇️ KG Counter 설치</a>',
     unsafe_allow_html=True,
