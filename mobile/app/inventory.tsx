@@ -166,7 +166,7 @@ export default function InventoryScreen() {
   // ── 섹터 선택 후 저장 ──
   const handleSectorSelect = async (sector: string) => {
     if (batch.length === 0) return;
-    setMode("idle");
+    setMode("scanning");
     setLoading(true);
     try {
       await registerDrums(batch, sector);
@@ -174,7 +174,7 @@ export default function InventoryScreen() {
       setBatch([]);
       Alert.alert(
         "저장 완료",
-        sector === CHECKOUT ? `${count}드럼 라인입고 처리 완료` : `${count}드럼 → ${sector} 등록 완료`
+        sector === CHECKOUT ? `${count}드럼 라인입고 처리 완료` : `${count}드럼 → ${sector} 등록 완료\n계속 스캔할 수 있습니다.`
       );
     } catch (e: any) {
       Alert.alert("저장 실패", e.message);
