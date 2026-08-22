@@ -29,8 +29,22 @@ def _get_spreadsheet():
     return client.open_by_key(spreadsheet_id)
 
 
+def _retry(fn, retries=4, delay=15):
+    """429/503 에러 시 재시도 (지수 백오프)."""
+    import time
+    for attempt in range(retries):
+        try:
+            return fn()
+        except Exception as e:
+            msg = str(e)
+            if attempt < retries - 1 and ("429" in msg or "503" in msg or "quota" in msg.lower()):
+                time.sleep(delay * (attempt + 1))
+            else:
+                raise
+
+
 def _get_or_create_sheet(name, headers=None):
-    sp = _get_spreadsheet()
+    sp = _retry(_get_spreadsheet)
     try:
         ws = sp.worksheet(name)
     except gspread.exceptions.WorksheetNotFound:
@@ -153,7 +167,7 @@ def save_daily_detail(selected_date, shift_data, safety_items, note_text):
     all_data = ws.get_all_values()
     rows_del = [i + 1 for i, row in enumerate(all_data) if i > 0 and row and row[0] == date_str]
     for idx in reversed(rows_del):
-        ws.delete_rows(idx)
+        _retry(lambda i=idx: ws.delete_rows(i))
 
     detail = json.dumps({
         "shift": shift_data,
@@ -161,11 +175,11 @@ def save_daily_detail(selected_date, shift_data, safety_items, note_text):
         "note": note_text,
     }, ensure_ascii=False)
 
-    ws.append_row([date_str, detail])
+    _retry(lambda: ws.append_row([date_str, detail]))
 
 
 def delete_daily_details_for_leave(leave):
-    """휴가 삭제 시 해당 날짜 범위의 저장 일지를 초기화 (is_2person 데이터 제거)."""
+    """휴가 삭제 시 오늘 이후 날짜의 저장 일지만 초기화 (과거 확정 일지는 보존)."""
     import datetime as _dt
     try:
         ws = _get_or_create_sheet("일지상세")
@@ -173,8 +187,9 @@ def delete_daily_details_for_leave(leave):
         start = _dt.date.fromisoformat(leave["start"])
         end = _dt.date.fromisoformat(leave["end"])
         person = leave["name"]
+        today = (_dt.datetime.utcnow() + _dt.timedelta(hours=9)).date()
 
-        # 해당 날짜 범위 + 휴가자 이름이 3근_근무자로 저장된 행 찾기
+        # 오늘 이후 날짜 + 휴가자 이름이 3근_근무자로 저장된 행만 삭제
         rows_to_delete = []
         for i, row in enumerate(all_data):
             if i == 0 or not row or len(row) < 2:
@@ -184,6 +199,8 @@ def delete_daily_details_for_leave(leave):
             except Exception:
                 continue
             if not (start <= row_date <= end):
+                continue
+            if row_date < today:  # 과거 날짜는 건드리지 않음
                 continue
             try:
                 detail = json.loads(row[1])
