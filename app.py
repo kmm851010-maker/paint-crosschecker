@@ -1845,47 +1845,100 @@ def page_my_schedule():
 
     # 범례
     st.markdown("""
-<div class="legend-box">
-  <div class="legend-item"><div class="legend-dot" style="background:#1D4ED8"></div> 1근</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#15803D"></div> 2근</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#B91C1C"></div> 3근</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#374151"></div> 휴무</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#92400E"></div> 휴가</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#6D28D9"></div> 대근</div>
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#0c1a38;border:1px solid #3b82f6;border-radius:20px;padding:3px 10px;font-size:12px;color:#93c5fd;font-weight:600;">🌅 1근</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#0b1a10;border:1px solid #22c55e;border-radius:20px;padding:3px 10px;font-size:12px;color:#86efac;font-weight:600;">☀️ 2근</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#1a100a;border:1px solid #f97316;border-radius:20px;padding:3px 10px;font-size:12px;color:#fdba74;font-weight:600;">🌙 3근</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#1a1a2e;border:1px solid #475569;border-radius:20px;padding:3px 10px;font-size:12px;color:#94a3b8;font-weight:600;">💤 휴무</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#201800;border:1px solid #f59e0b;border-radius:20px;padding:3px 10px;font-size:12px;color:#fde68a;font-weight:600;">🏖️ 휴가</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#1c1035;border:1px solid #a855f7;border-radius:20px;padding:3px 10px;font-size:12px;color:#d8b4fe;font-weight:600;">🔄 대근</span>
 </div>
 """, unsafe_allow_html=True)
 
-    # 달력 버튼 CSS — 선택/오늘 강조는 마커 div 활용
+    # ── 달력 CSS (Deputy/7shifts 스타일 벤치마킹) ──
     st.markdown("""<style>
-div[data-testid="stMarkdownContainer"]:has(.cal-sel) + div[data-testid="stButton"] > button {
-    background: #2A1040 !important; border: 2px solid #CBA6F7 !important; color: #EDE9FE !important;
-}
-div[data-testid="stMarkdownContainer"]:has(.cal-today) + div[data-testid="stButton"] > button {
-    border: 2px solid #89B4FA !important;
-}
-div[data-testid="stMarkdownContainer"]:has(.cal-sel.cal-today) + div[data-testid="stButton"] > button {
-    background: #2A1040 !important; border: 2px solid #CBA6F7 !important;
-}
+/* 기본 셀 */
 div[data-testid="column"] div[data-testid="stButton"] > button {
-    min-height: 58px !important; font-size: 11px !important; font-weight: 600 !important;
-    padding: 3px 2px !important; white-space: pre-line !important; line-height: 1.4 !important;
-    border-radius: 6px !important; background: #1E1E2E !important;
-    border: 1px solid #313244 !important; color: #BAC2DE !important;
+    min-height: 76px !important;
+    font-size: 12px !important; font-weight: 700 !important;
+    padding: 6px 4px !important; white-space: pre-line !important;
+    line-height: 1.6 !important; border-radius: 14px !important;
+    background: #16172b !important; border: 1.5px solid #252640 !important;
+    color: #c8cfe8 !important; transition: all 0.18s ease !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.35) !important;
+    width: 100% !important;
+}
+div[data-testid="column"] div[data-testid="stButton"] > button:hover {
+    border-color: #7c5cbf !important;
+    box-shadow: 0 4px 16px rgba(124,92,191,0.35) !important;
+    transform: translateY(-2px) !important;
+    color: #e2e8f8 !important;
+}
+/* 1근 – 파랑 */
+div[data-testid="stMarkdownContainer"]:has(.cs1) + div[data-testid="stButton"] > button {
+    border-left: 4px solid #3b82f6 !important;
+    background: linear-gradient(160deg,#0f172a,#0c1a38) !important;
+}
+/* 2근 – 초록 */
+div[data-testid="stMarkdownContainer"]:has(.cs2) + div[data-testid="stButton"] > button {
+    border-left: 4px solid #22c55e !important;
+    background: linear-gradient(160deg,#0b1a10,#0d2218) !important;
+}
+/* 3근 – 주황·붉은 */
+div[data-testid="stMarkdownContainer"]:has(.cs3) + div[data-testid="stButton"] > button {
+    border-left: 4px solid #f97316 !important;
+    background: linear-gradient(160deg,#1a100a,#22100a) !important;
+}
+/* 휴무 – 회색 */
+div[data-testid="stMarkdownContainer"]:has(.csoff) + div[data-testid="stButton"] > button {
+    border-left: 4px solid #475569 !important;
+    opacity: 0.75 !important;
+}
+/* 휴가 – 앰버 */
+div[data-testid="stMarkdownContainer"]:has(.csleave) + div[data-testid="stButton"] > button {
+    border-left: 4px solid #f59e0b !important;
+    background: linear-gradient(160deg,#1a1400,#201800) !important;
+    color: #fde68a !important;
+}
+/* 대근 – 보라 */
+div[data-testid="stMarkdownContainer"]:has(.cssub) + div[data-testid="stButton"] > button {
+    border-left: 4px solid #a855f7 !important;
+    background: linear-gradient(160deg,#150e28,#1c1035) !important;
+    color: #e9d5ff !important;
+}
+/* 오늘 */
+div[data-testid="stMarkdownContainer"]:has(.ctoday) + div[data-testid="stButton"] > button {
+    box-shadow: 0 0 0 2px #60a5fa, 0 4px 14px rgba(96,165,250,0.3) !important;
+}
+/* 선택됨 */
+div[data-testid="stMarkdownContainer"]:has(.csel) + div[data-testid="stButton"] > button {
+    background: linear-gradient(160deg,#2d1b5e,#1e1246) !important;
+    box-shadow: 0 0 0 2px #a855f7, 0 4px 20px rgba(168,85,247,0.45) !important;
+    color: #ede9fe !important; border-left-width: 4px !important;
+    transform: translateY(-1px) !important;
 }
 </style>""", unsafe_allow_html=True)
 
-    # 요일 헤더
-    WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"]
-    HDR_CLR = ["#F38BA8", "#9399B2", "#9399B2", "#9399B2", "#9399B2", "#9399B2", "#89B4FA"]
-    hcols = st.columns(7)
-    for i, (wd, hc) in enumerate(zip(WEEKDAYS, HDR_CLR)):
-        hcols[i].markdown(
-            f'<div style="text-align:center;padding:6px 0;font-size:13px;font-weight:700;'
-            f'color:{hc};background:#181825;border:1px solid #313244;border-bottom:2px solid #45475A;">{wd}</div>',
-            unsafe_allow_html=True
+    # ── 요일 헤더 ──
+    WD_STYLES = [
+        ("일", "#fca5a5", "#7f1d1d"),
+        ("월", "#94a3b8", "#1e293b"),
+        ("화", "#94a3b8", "#1e293b"),
+        ("수", "#94a3b8", "#1e293b"),
+        ("목", "#94a3b8", "#1e293b"),
+        ("금", "#94a3b8", "#1e293b"),
+        ("토", "#93c5fd", "#1e3a5f"),
+    ]
+    hdr_html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px;">'
+    for wd, fg, bg in WD_STYLES:
+        hdr_html += (
+            f'<div style="text-align:center;padding:8px 0;font-size:13px;font-weight:800;'
+            f'color:{fg};background:{bg};border-radius:10px;letter-spacing:1px;">{wd}</div>'
         )
+    hdr_html += '</div>'
+    st.markdown(hdr_html, unsafe_allow_html=True)
 
-    # 주(week) 목록 구성
+    # ── 주(week) 목록 구성 ──
     weeks = []
     week = [None] * start_col
     for dn in range(1, last_day.day + 1):
@@ -1896,38 +1949,55 @@ div[data-testid="column"] div[data-testid="stButton"] > button {
     if week:
         weeks.append(week + [None] * (7 - len(week)))
 
-    # 달력 렌더링 (버튼 그리드)
-    SHIFT_EMOJI = {"1근": "🔵 1근", "2근": "🟢 2근", "3근": "🔴 3근", "휴무": "⚫ 휴무"}
+    # ── 달력 렌더링 ──
+    SHIFT_LABEL = {
+        "1근":  "🌅 1근\n06:30~14:30",
+        "2근":  "☀️ 2근\n14:30~22:30",
+        "3근":  "🌙 3근\n22:30~06:30",
+        "휴무": "💤 휴무",
+    }
+    SHIFT_MCLS = {"1근": "cs1", "2근": "cs2", "3근": "cs3", "휴무": "csoff"}
+
     for wk in weeks:
-        wcols = st.columns(7)
+        wcols = st.columns(7, gap="small")
         for ci, dn in enumerate(wk):
             with wcols[ci]:
                 if dn is None:
-                    st.markdown('<div style="min-height:72px;background:#181825;border:1px solid #2A2A3E;border-radius:6px;"></div>', unsafe_allow_html=True)
+                    st.markdown(
+                        '<div style="min-height:76px;background:#0d0e1a;border-radius:14px;'
+                        'border:1.5px solid #181828;"></div>',
+                        unsafe_allow_html=True
+                    )
                 else:
                     d = datetime.date(selected_year, selected_month, dn)
                     info = _get_day_info(d)
                     is_today = (d == today)
                     is_sel = (sel_day_num == dn)
-                    wi = (d.weekday() + 1) % 7
-                    nc = "#F38BA8" if wi == 0 else ("#89B4FA" if wi == 6 else "#CDD6F4")
+                    wi = (d.weekday() + 1) % 7  # 0=일,6=토
 
-                    # 버튼 라벨: 날짜 + 근무
+                    # 버튼 라벨
+                    day_prefix = "●" if is_today else str(dn)
                     if info["is_leave"]:
-                        shift_line = f"🟠 {info['leave_type'] or '휴가'}"
+                        shift_txt = f"🏖️ {info['leave_type'] or '휴가'}"
+                        mcls = "csleave"
                     elif info["sub_for"]:
-                        shift_line = f"🟣 {info['sub_role']}"
+                        shift_txt = f"🔄 {info['sub_role']}"
+                        mcls = "cssub"
                     else:
-                        shift_line = SHIFT_EMOJI.get(info["shift"], info["shift"])
+                        shift_txt = SHIFT_LABEL.get(info["shift"], info["shift"])
+                        mcls = SHIFT_MCLS.get(info["shift"], "")
 
-                    today_mark = " ◀" if is_today else ""
-                    btn_label = f"{dn}{today_mark}\n{shift_line}"
+                    today_num = f"[{dn}]" if is_today else str(dn)
+                    btn_label = f"{today_num}\n{shift_txt}"
 
-                    # CSS 마커 (선택/오늘 강조용)
-                    marker_cls = "cal-marker"
-                    if is_sel: marker_cls += " cal-sel"
-                    if is_today: marker_cls += " cal-today"
-                    st.markdown(f'<div class="{marker_cls}" style="height:0;overflow:hidden;"></div>', unsafe_allow_html=True)
+                    # CSS 마커
+                    marker_cls = f"cmark {mcls}"
+                    if is_sel:   marker_cls += " csel"
+                    if is_today: marker_cls += " ctoday"
+                    st.markdown(
+                        f'<div class="{marker_cls}" style="height:0;overflow:hidden;"></div>',
+                        unsafe_allow_html=True
+                    )
 
                     if st.button(btn_label, key=f"cd_{selected_year}_{selected_month}_{dn}", use_container_width=True):
                         st.session_state[_skey] = dn
