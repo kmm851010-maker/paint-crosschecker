@@ -27,7 +27,7 @@ def parse_excel(file_bytes: bytes, file_name: str) -> pd.DataFrame:
     """엑셀 또는 CSV 파일을 파싱하여 DataFrame으로 반환합니다."""
     ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
     is_ole = file_bytes[:8] == bytes.fromhex("d0cf11e0a1b011ae") if len(file_bytes) >= 8 else False
-    is_zip = file_bytes[:4] == b"PK" if len(file_bytes) >= 4 else False
+    is_zip = file_bytes[:4] == b"PK\x03\x04" if len(file_bytes) >= 4 else False
 
     if ext == "csv":
         for encoding in ["utf-8", "cp949", "euc-kr", "latin-1"]:
@@ -166,9 +166,9 @@ def process_erp_file(
     ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
 
     # 실제 파일 내용(magic bytes)으로 타입 판별 — 확장자보다 우선
-    is_zip = file_bytes[:4] == b"PK" if file_bytes else False
+    is_zip = file_bytes[:4] == b"PK\x03\x04" if file_bytes else False
     is_ole = file_bytes[:8] == bytes.fromhex("d0cf11e0a1b011ae") if len(file_bytes) >= 8 else False
-    is_image = (file_bytes[:3] in (b"���", b"�PN") or file_bytes[:4] == b"RIFF") if file_bytes else False
+    is_image = (file_bytes[:3] in (b"\xff\xd8\xff", b"\x89PN") or file_bytes[:4] == b"RIFF") if file_bytes else False
     is_pdf = file_bytes[:5] == b"%PDF-" if file_bytes else False
 
     # 1. ZIP 기반 파일 (xlsx, docx 등) → 엑셀 파싱

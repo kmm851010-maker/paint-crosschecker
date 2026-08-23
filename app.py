@@ -211,8 +211,7 @@ st.markdown("""
 st.sidebar.image("assets/kg.jpg", width=160)
 _dept = st.secrets.get("company", {}).get("dept", "")
 _team = st.secrets.get("company", {}).get("team", "")
-st.sidebar.caption(f"{_dept}
-{_team} 업무도우미" if _dept else "KG스틸 업무도우미")
+st.sidebar.caption(f"{_dept}\n{_team} 업무도우미" if _dept else "KG스틸 업무도우미")
 st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(
@@ -1002,9 +1001,7 @@ def page_work_log():
             f"2인 근무 체계 (주간/야간 12시간) 자동 전환"
         )
         st.success(
-            f"📅 **{selected_date.strftime('%Y년 %m월 %d일')}** 2인 근무
-
-"
+            f"📅 **{selected_date.strftime('%Y년 %m월 %d일')}** 2인 근무\n\n"
             f"주간(06:30-18:30): **{shift_auto['주간_조']}조 {shift_auto['주간_근무자']}** | "
             f"야간(18:30-06:30): **{shift_auto['야간_조']}조 {shift_auto['야간_근무자']}** | "
             f"휴가: **{shift_auto['leave_person']}** | "
@@ -1012,9 +1009,7 @@ def page_work_log():
         )
     else:
         st.success(
-            f"📅 **{selected_date.strftime('%Y년 %m월 %d일')}** 근무 매칭 완료
-
-"
+            f"📅 **{selected_date.strftime('%Y년 %m월 %d일')}** 근무 매칭 완료\n\n"
             f"1근: **{shift_auto['1근_조']}조 {shift_auto['1근_근무자']}** | "
             f"2근: **{shift_auto['2근_조']}조 {shift_auto['2근_근무자']}** | "
             f"3근: **{shift_auto['3근_조']}조 {shift_auto['3근_근무자']}** | "
