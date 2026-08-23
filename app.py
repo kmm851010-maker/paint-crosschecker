@@ -2087,8 +2087,78 @@ div[data-testid="stMarkdownContainer"]:has(.ctoday) + div[data-testid="stButton"
     <span style="color:#C4B5FD;font-weight:600;">{info["sub_for"]} 휴가로 인한 대근</span>
   </div>'''
 
-    detail_html += f'''
-  <div style="margin-top:14px;font-size:12px;color:#6C7086;font-weight:600;letter-spacing:1px;">전체 근무 배치</div>
+    # 전체 근무 배치 — 휴가자 있으면 대근 체제로 표시
+    _vacationers_today = []
+    for lv in leave_list:
+        try:
+            _ls = datetime.date.fromisoformat(lv["start"])
+            _le = datetime.date.fromisoformat(lv["end"])
+        except Exception:
+            continue
+        if _ls <= sel_date <= _le:
+            _vacationers_today.append(lv)
+
+    detail_html += '<div style="margin-top:14px;font-size:12px;color:#6C7086;font-weight:600;letter-spacing:1px;">전체 근무 배치</div>'
+
+    if _vacationers_today:
+        # 휴가자의 원래 근무 파악 → 나머지 2명을 주간/야간으로 배치
+        absent_names = {lv["name"] for lv in _vacationers_today}
+        # 3명 근무자 중 휴가자 제외
+        workers = []  # (근무자명, 조, 원래근무)
+        for shift_key, team_key, label in [
+            ("1근_근무자", "1근_조", "1근"),
+            ("2근_근무자", "2근_조", "2근"),
+            ("3근_근무자", "3근_조", "3근"),
+        ]:
+            name = raw[shift_key]
+            if name not in absent_names:
+                workers.append((name, raw[team_key], label))
+
+        # 주간/야간 결정: 3근 결근이면 1근=주간,2근=야간 / 그 외 3근이면 야간
+        absent_shifts = set()
+        for lv in _vacationers_today:
+            nm = lv["name"]
+            if raw["1근_근무자"] == nm: absent_shifts.add("1근")
+            elif raw["2근_근무자"] == nm: absent_shifts.add("2근")
+            elif raw["3근_근무자"] == nm: absent_shifts.add("3근")
+
+        def _role(orig_shift):
+            if "3근" in absent_shifts:
+                return "주간" if orig_shift == "1근" else "야간"
+            return "야간" if orig_shift == "3근" else "주간"
+
+        ROLE_COLOR = {"주간": "#1D6FA4", "야간": "#7C3AED"}
+        ROLE_TIME  = {"주간": "06:30~22:30", "야간": "22:30~06:30"}
+
+        for name, team, orig in workers:
+            role = _role(orig)
+            clr  = ROLE_COLOR[role]
+            t    = ROLE_TIME[role]
+            detail_html += f'''
+  <div class="detail-row">
+    <span style="background:{clr};color:#fff;padding:2px 10px;border-radius:8px;font-size:12px;font-weight:700;">{role}</span>
+    <span style="color:#CDD6F4;">{name} ({team}조)</span>
+    <span style="color:#6C7086;font-size:12px;">{t}</span>
+  </div>'''
+
+        # 휴가자 표시
+        for lv in _vacationers_today:
+            detail_html += f'''
+  <div class="detail-row">
+    <span style="background:#92400E;color:#FEF3C7;padding:2px 10px;border-radius:8px;font-size:12px;font-weight:700;">🌴 {lv["type"]}</span>
+    <span style="color:#9399B2;">{lv["name"]} — 휴가</span>
+  </div>'''
+
+        # 휴무자
+        detail_html += f'''
+  <div class="detail-row">
+    <span style="background:#374151;color:#D1D5DB;padding:2px 10px;border-radius:8px;font-size:12px;font-weight:700;">휴무</span>
+    <span style="color:#CDD6F4;">{raw["휴무_근무자"]} ({raw["휴무_조"]}조)</span>
+    <span style="color:#6C7086;font-size:12px;">{raw["휴무_구분"]}</span>
+  </div>'''
+    else:
+        # 휴가자 없음 — 정상 3교대 배치
+        detail_html += f'''
   <div class="detail-row">
     <span style="background:#1D4ED8;color:#fff;padding:2px 10px;border-radius:8px;font-size:12px;font-weight:700;">1근</span>
     <span style="color:#CDD6F4;">{raw["1근_근무자"]} ({raw["1근_조"]}조)</span>
@@ -2108,27 +2178,6 @@ div[data-testid="stMarkdownContainer"]:has(.ctoday) + div[data-testid="stButton"
     <span style="background:#374151;color:#D1D5DB;padding:2px 10px;border-radius:8px;font-size:12px;font-weight:700;">휴무</span>
     <span style="color:#CDD6F4;">{raw["휴무_근무자"]} ({raw["휴무_조"]}조)</span>
     <span style="color:#6C7086;font-size:12px;">{raw["휴무_구분"]}</span>
-  </div>'''
-
-    vacationers = []
-    for lv in leave_list:
-        try:
-            ls = datetime.date.fromisoformat(lv["start"])
-            le = datetime.date.fromisoformat(lv["end"])
-        except Exception:
-            continue
-        if ls <= sel_date <= le:
-            vacationers.append(lv)
-
-    if vacationers:
-        detail_html += '<div style="margin-top:14px;font-size:12px;color:#6C7086;font-weight:600;letter-spacing:1px;">휴가자</div>'
-        for lv in vacationers:
-            sub_txt = f" → 대근: {lv['sub']}" if lv.get("sub") else ""
-            detail_html += f'''
-  <div class="detail-row">
-    <span style="background:#92400E;color:#FEF3C7;padding:2px 10px;border-radius:8px;font-size:12px;font-weight:700;">🌴 {lv["type"]}</span>
-    <span style="color:#CDD6F4;">{lv["name"]}</span>
-    <span style="color:#9399B2;font-size:12px;">{lv["start"]} ~ {lv["end"]}{sub_txt}</span>
   </div>'''
 
     detail_html += "</div>"
