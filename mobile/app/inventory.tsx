@@ -564,7 +564,7 @@ export default function InventoryScreen() {
   // ── 메인(idle) 화면 ──
   return (
     <>
-      <Stack.Screen options={{ title: "재고 관리" }} />
+      <Stack.Screen options={{ title: "KG OPS — 재고 관리" }} />
       <SectorModal />
       <EditModal />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
