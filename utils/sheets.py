@@ -243,10 +243,28 @@ def load_daily_detail(selected_date):
         return None
 
 
-# ── 근무 메모 (근무 일정표 특이사항) ──
+# ── 근무 메모 (근무 일정표 특이사항 — 별도 스프레드시트) ──
+
+def _get_note_sheet(headers=None):
+    """근무메모 전용 스프레드시트 연결."""
+    client = _retry(_get_client)
+    note_id = st.secrets.get("SCHEDULE_NOTE_SPREADSHEET_ID", "")
+    if not note_id:
+        # fallback: 기존 스프레드시트에 근무메모 탭 사용
+        sp = _retry(_get_spreadsheet)
+    else:
+        sp = client.open_by_key(note_id)
+    try:
+        ws = sp.worksheet("근무메모")
+    except Exception:
+        ws = sp.add_worksheet(title="근무메모", rows=2000, cols=5)
+        if headers:
+            ws.append_row(headers)
+    return ws
+
 
 def save_schedule_note(name, selected_date, note_text):
-    ws = _get_or_create_sheet("근무메모", ["이름", "날짜", "메모"])
+    ws = _retry(lambda: _get_note_sheet(["이름", "날짜", "메모"]))
     date_str = selected_date.strftime("%Y-%m-%d")
 
     def _write():
@@ -264,7 +282,7 @@ def save_schedule_note(name, selected_date, note_text):
 
 def load_schedule_note(name, selected_date):
     try:
-        ws = _get_or_create_sheet("근무메모")
+        ws = _get_note_sheet()
         date_str = selected_date.strftime("%Y-%m-%d")
         all_data = ws.get_all_values()
         for row in all_data[1:]:
