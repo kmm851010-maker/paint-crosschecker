@@ -243,6 +243,38 @@ def load_daily_detail(selected_date):
         return None
 
 
+# ── 근무 메모 (근무 일정표 특이사항) ──
+
+def save_schedule_note(name, selected_date, note_text):
+    ws = _get_or_create_sheet("근무메모", ["이름", "날짜", "메모"])
+    date_str = selected_date.strftime("%Y-%m-%d")
+
+    def _write():
+        all_data = ws.get_all_values()
+        rows_del = [
+            i + 1 for i, row in enumerate(all_data)
+            if i > 0 and row and row[0] == name and row[1] == date_str
+        ]
+        for idx in reversed(rows_del):
+            ws.delete_rows(idx)
+        if note_text.strip():
+            ws.append_row([name, date_str, note_text.strip()], value_input_option="RAW")
+    _retry(_write)
+
+
+def load_schedule_note(name, selected_date):
+    try:
+        ws = _get_or_create_sheet("근무메모")
+        date_str = selected_date.strftime("%Y-%m-%d")
+        all_data = ws.get_all_values()
+        for row in all_data[1:]:
+            if row and len(row) >= 3 and row[0] == name and row[1] == date_str:
+                return row[2]
+        return ""
+    except Exception:
+        return ""
+
+
 # ── 통합 저장/불러오기 ──
 
 def save_all(selected_date, work_items, shift_data, safety_items, note_text, leave_list):

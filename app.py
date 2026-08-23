@@ -2040,6 +2040,37 @@ div[data-testid="column"] div[data-testid="stButton"] > button {
     detail_html += "</div>"
     st.markdown(detail_html, unsafe_allow_html=True)
 
+    # ── 특이사항 입력 ──
+    from utils.sheets import save_schedule_note as _save_note, load_schedule_note as _load_note
+    _note_key = f"sched_note_{selected_name}_{sel_date}"
+    if _note_key not in st.session_state:
+        try:
+            st.session_state[_note_key] = _load_note(selected_name, sel_date)
+        except Exception:
+            st.session_state[_note_key] = ""
+
+    def _on_note_submit():
+        val = st.session_state.get(f"note_input_{selected_name}_{sel_date}", "")
+        try:
+            _save_note(selected_name, sel_date, val)
+            st.session_state[_note_key] = val
+        except Exception as e:
+            st.error(f"저장 실패: {e}")
+
+    st.markdown("""<div style="background:#1E1E2E;border:1px solid #313244;border-radius:12px;padding:16px 20px;margin-top:10px;">
+<div style="font-size:13px;color:#6C7086;font-weight:600;margin-bottom:8px;">📝 특이사항 메모</div>""", unsafe_allow_html=True)
+    st.text_input(
+        "특이사항 (엔터로 저장)",
+        value=st.session_state[_note_key],
+        key=f"note_input_{selected_name}_{sel_date}",
+        placeholder="이 날짜에 대한 메모를 입력하세요...",
+        on_change=_on_note_submit,
+        label_visibility="collapsed",
+    )
+    if st.session_state[_note_key]:
+        st.caption(f"✅ 저장됨: {st.session_state[_note_key]}")
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 # ──────────────────────────────────────
 # 재고 관리 페이지
