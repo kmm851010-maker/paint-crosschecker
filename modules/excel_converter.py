@@ -1,3 +1,8 @@
+# =====================================================================
+# Project: paint-crosschecker
+# Copyright (c) 2026 kmm851010-maker. All rights reserved.
+# Unauthorized copying, modification, or distribution is strictly prohibited.
+# =====================================================================
 """
 서식 적용 엑셀 변환 모듈
 추출된 테이블 데이터를 실무에 바로 사용 가능한

@@ -1,3 +1,8 @@
+# =====================================================================
+# Project: paint-crosschecker
+# Copyright (c) 2026 kmm851010-maker. All rights reserved.
+# Unauthorized copying, modification, or distribution is strictly prohibited.
+# =====================================================================
 """
 서식 엑셀 리포트 자동 생성기
 OpenPyXL을 활용하여 조건부 서식이 적용된 엑셀 보고서를 생성합니다.

@@ -1,3 +1,8 @@
+# =====================================================================
+# Project: paint-crosschecker
+# Copyright (c) 2026 kmm851010-maker. All rights reserved.
+# Unauthorized copying, modification, or distribution is strictly prohibited.
+# =====================================================================
 """
 Google Sheets 연동 모듈
 작업일지 전체 데이터 저장/조회 + 월누계 자동 계산

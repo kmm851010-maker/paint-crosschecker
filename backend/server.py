@@ -1,3 +1,8 @@
+# =====================================================================
+# Project: paint-crosschecker
+# Copyright (c) 2026 kmm851010-maker. All rights reserved.
+# Unauthorized copying, modification, or distribution is strictly prohibited.
+# =====================================================================
 """
 페인트 입고 교차검증 시스템 - FastAPI Backend
 모바일 앱을 위한 REST API 서버
@@ -204,6 +209,7 @@ async def generate_incoming_excel_endpoint(req: IncomingPlanRequest):
 
 class ParseBarcodeRequest(BaseModel):
     raw_text: str
+
 
 
 class DrumItem(BaseModel):

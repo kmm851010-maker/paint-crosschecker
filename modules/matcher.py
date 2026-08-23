@@ -1,3 +1,8 @@
+# =====================================================================
+# Project: paint-crosschecker
+# Copyright (c) 2026 kmm851010-maker. All rights reserved.
+# Unauthorized copying, modification, or distribution is strictly prohibited.
+# =====================================================================
 """
 1:1 수량 자동 교차검증 엔진
 생산계획서의 [신규] 요청 수량과 ERP 입고명세서의 [실제 입고 DRUM 수량]을 대조합니다.

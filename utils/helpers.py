@@ -1,3 +1,8 @@
+# =====================================================================
+# Project: paint-crosschecker
+# Copyright (c) 2026 kmm851010-maker. All rights reserved.
+# Unauthorized copying, modification, or distribution is strictly prohibited.
+# =====================================================================
 """
 공용 유틸리티: 정규식 파서, 코드 정규화, Base64 인코더
 """
@@ -71,7 +76,7 @@ def auto_correct_code(code: str) -> str:
 def is_document_file(file_name: str, file_bytes: bytes = b"") -> bool:
     ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
     if file_bytes:
-        if file_bytes[:4] == b"PK\x03\x04" and ext in ("xlsx", ""):
+        if file_bytes[:4] == b"PK" and ext in ("xlsx", ""):
             return True
         if len(file_bytes) >= 8 and file_bytes[:8] == bytes.fromhex("d0cf11e0a1b011ae"):
             return True

@@ -1,3 +1,8 @@
+# =====================================================================
+# Project: paint-crosschecker
+# Copyright (c) 2026 kmm851010-maker. All rights reserved.
+# Unauthorized copying, modification, or distribution is strictly prohibited.
+# =====================================================================
 """
 재고 관리 - Google Sheets 연동
 드럼 바코드 파싱 / 섹터 등록 / 이동 / 라인입고(출고) / 현황 조회

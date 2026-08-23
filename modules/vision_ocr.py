@@ -1,3 +1,8 @@
+# =====================================================================
+# Project: paint-crosschecker
+# Copyright (c) 2026 kmm851010-maker. All rights reserved.
+# Unauthorized copying, modification, or distribution is strictly prohibited.
+# =====================================================================
 """
 생산계획서 복합 표(17열) 초정밀 추출 모듈
 Anthropic Tool Use(tool_choice) 강제 적용으로 JSON 스키마 100% 보장.
