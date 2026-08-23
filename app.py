@@ -1738,7 +1738,7 @@ def page_my_schedule():
     with col_name:
         selected_name = st.selectbox("이름", ALL_MEMBERS, key="sched_name")
     with col_yr:
-        selected_year = st.selectbox("년도", list(range(today.year - 1, today.year + 3)), index=1, key="sched_yr")
+        selected_year = st.selectbox("년도", list(range(2020, today.year + 6)), index=list(range(2020, today.year + 6)).index(today.year), key="sched_yr")
     with col_mo:
         selected_month = st.selectbox("월", list(range(1, 13)), index=today.month - 1, key="sched_mo")
 
@@ -1913,8 +1913,6 @@ def page_my_schedule():
     sel_date = st.date_input(
         "날짜를 선택하세요",
         value=_default_day,
-        min_value=first_day,
-        max_value=last_day,
         key="sched_day",
         format="YYYY-MM-DD",
     )
