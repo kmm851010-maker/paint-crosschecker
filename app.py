@@ -1787,6 +1787,7 @@ def page_my_schedule():
 
         # 대근 필요 체크 (다른 사람 휴가인데 내가 근무 중이면 대근)
         sub_for = ""
+        sub_for_shift = ""  # 결근자의 원래 근무
         if not is_my_leave and my_shift != "휴무":
             for lv in leave_list:
                 if lv["name"] == selected_name:
@@ -1798,13 +1799,33 @@ def page_my_schedule():
                     continue
                 if ls <= d <= le:
                     sub_for = lv["name"]
+                    # 결근자가 원래 어떤 근무였는지 파악
+                    absent_name = lv["name"]
+                    if shift["1근_근무자"] == absent_name:
+                        sub_for_shift = "1근"
+                    elif shift["2근_근무자"] == absent_name:
+                        sub_for_shift = "2근"
+                    elif shift["3근_근무자"] == absent_name:
+                        sub_for_shift = "3근"
                     break
+
+        # 주간/야간 대근 판별
+        # 3근 결근 시: 1근→주간, 2근→야간
+        # 1근 또는 2근 결근 시: 3근→야간, 나머지→주간
+        sub_role = ""
+        if sub_for:
+            if sub_for_shift == "3근":
+                sub_role = "주간 대근" if my_shift == "1근" else "야간 대근"
+            else:
+                sub_role = "야간 대근" if my_shift == "3근" else "주간 대근"
 
         return {
             "shift": my_shift,
             "is_leave": is_my_leave,
             "leave_type": leave_type_my,
             "sub_for": sub_for,
+            "sub_for_shift": sub_for_shift,
+            "sub_role": sub_role,
             "raw": shift,
         }
 
@@ -1817,7 +1838,7 @@ def page_my_schedule():
         s = info["shift"]
         cls = {"1근": "badge-1", "2근": "badge-2", "3근": "badge-3", "휴무": "badge-off"}.get(s, "badge-off")
         if info["sub_for"]:
-            label = "야간 대근" if s == "3근" else "주간 대근"
+            label = info["sub_role"]
         else:
             label = s
         return f'<span class="badge {cls}">{label}</span>'
@@ -1929,7 +1950,7 @@ def page_my_schedule():
         my_label = f"🌴 {info['leave_type'] or '휴가'}"
         my_color = "#D97706"
     elif info["sub_for"]:
-        my_label = "야간 대근" if info["shift"] == "3근" else "주간 대근"
+        my_label = info["sub_role"]
         my_color = "#6D28D9"
     else:
         my_label = info["shift"]
