@@ -1785,21 +1785,19 @@ def page_my_schedule():
                 leave_type_my = lv["type"]
                 break
 
-        # 대근 필요 체크 (다른 사람 휴가인데 내가 근무 중)
+        # 대근 필요 체크 (다른 사람 휴가인데 내가 근무 중이면 대근)
         sub_for = ""
-        for lv in leave_list:
-            if lv["name"] == selected_name:
-                continue
-            try:
-                ls = datetime.date.fromisoformat(lv["start"])
-                le = datetime.date.fromisoformat(lv["end"])
-            except Exception:
-                continue
-            if ls <= d <= le:
-                absent = lv["name"]
-                sub = lv.get("sub", "")
-                if sub == selected_name:
-                    sub_for = absent
+        if not is_my_leave and my_shift != "휴무":
+            for lv in leave_list:
+                if lv["name"] == selected_name:
+                    continue
+                try:
+                    ls = datetime.date.fromisoformat(lv["start"])
+                    le = datetime.date.fromisoformat(lv["end"])
+                except Exception:
+                    continue
+                if ls <= d <= le:
+                    sub_for = lv["name"]
                     break
 
         return {
@@ -1818,10 +1816,8 @@ def page_my_schedule():
             return f'<span class="badge badge-leave">🌴 {info["leave_type"] or "휴가"}</span>'
         s = info["shift"]
         cls = {"1근": "badge-1", "2근": "badge-2", "3근": "badge-3", "휴무": "badge-off"}.get(s, "badge-off")
-        html = f'<span class="badge {cls}">{s}</span>'
-        if info["sub_for"]:
-            html += f'<span class="badge badge-sub">대근</span>'
-        return html
+        label = f"{s} 대근" if info["sub_for"] else s
+        return f'<span class="badge {cls}">{label}</span>'
 
     # 달력 그리드 생성
     first_day = datetime.date(selected_year, selected_month, 1)
@@ -1910,12 +1906,18 @@ def page_my_schedule():
     summary_html += "</div>"
     st.markdown(summary_html, unsafe_allow_html=True)
 
-    # ── 날짜 선택 → 세부내역 ──
+    # ── 날짜 클릭 → 세부내역 ──
     st.markdown("---")
-    st.markdown("#### 날짜별 세부 조회")
-    sel_day = st.number_input("날짜 선택", min_value=1, max_value=last_day.day, value=today.day if (today.year == selected_year and today.month == selected_month) else 1, step=1, key="sched_day")
-
-    sel_date = datetime.date(selected_year, selected_month, int(sel_day))
+    st.markdown("#### 날짜 선택 → 세부 조회")
+    _default_day = today if (today.year == selected_year and today.month == selected_month) else first_day
+    sel_date = st.date_input(
+        "날짜를 선택하세요",
+        value=_default_day,
+        min_value=first_day,
+        max_value=last_day,
+        key="sched_day",
+        format="YYYY-MM-DD",
+    )
     info = _get_day_info(sel_date)
     raw = info["raw"]
     wd_names = ["월", "화", "수", "목", "금", "토", "일"]
