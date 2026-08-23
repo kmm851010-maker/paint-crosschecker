@@ -1832,83 +1832,111 @@ def page_my_schedule():
     SHIFT_TIME = {"1근": "06:30~14:30", "2근": "14:30~22:30", "3근": "22:30~06:30", "휴무": ""}
     SHIFT_COLOR = {"1근": "#1D4ED8", "2근": "#15803D", "3근": "#B91C1C", "휴무": "#374151"}
 
-    def _badge_html(info):
-        if info["is_leave"]:
-            return f'<span class="badge badge-leave">🌴 {info["leave_type"] or "휴가"}</span>'
-        s = info["shift"]
-        cls = {"1근": "badge-1", "2근": "badge-2", "3근": "badge-3", "휴무": "badge-off"}.get(s, "badge-off")
-        if info["sub_for"]:
-            label = info["sub_role"]
-        else:
-            label = s
-        return f'<span class="badge {cls}">{label}</span>'
-
-    # 달력 그리드 생성
+    # ── 달력 설정 ──
     first_day = datetime.date(selected_year, selected_month, 1)
     last_day = datetime.date(selected_year, selected_month, _cal.monthrange(selected_year, selected_month)[1])
+    start_col = (first_day.weekday() + 1) % 7  # 일요일=0
 
-    # 달력 시작: 해당 월 1일의 요일 (월=0, 일=6)
-    start_weekday = first_day.weekday()  # 월=0
-    # 일요일부터 시작하도록 조정 (일=0, 월=1, ..., 토=6)
-    start_col = (start_weekday + 1) % 7
+    # 선택 날짜 상태관리
+    _skey = f"sched_sel_{selected_year}_{selected_month}"
+    if _skey not in st.session_state:
+        st.session_state[_skey] = today.day if (today.year == selected_year and today.month == selected_month) else 1
+    sel_day_num = st.session_state[_skey]
 
     # 범례
     st.markdown("""
 <div class="legend-box">
-  <div class="legend-item"><div class="legend-dot" style="background:#1D4ED8"></div> 1근 (06:30~14:30)</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#15803D"></div> 2근 (14:30~22:30)</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#B91C1C"></div> 3근 (22:30~06:30)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#1D4ED8"></div> 1근</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#15803D"></div> 2근</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#B91C1C"></div> 3근</div>
   <div class="legend-item"><div class="legend-dot" style="background:#374151"></div> 휴무</div>
   <div class="legend-item"><div class="legend-dot" style="background:#92400E"></div> 휴가</div>
   <div class="legend-item"><div class="legend-dot" style="background:#6D28D9"></div> 대근</div>
 </div>
 """, unsafe_allow_html=True)
 
-    # 달력 HTML 생성
+    # 달력 버튼 CSS — 선택/오늘 강조는 마커 div 활용
+    st.markdown("""<style>
+div[data-testid="stMarkdownContainer"]:has(.cal-sel) + div[data-testid="stButton"] > button {
+    background: #2A1040 !important; border: 2px solid #CBA6F7 !important; color: #EDE9FE !important;
+}
+div[data-testid="stMarkdownContainer"]:has(.cal-today) + div[data-testid="stButton"] > button {
+    border: 2px solid #89B4FA !important;
+}
+div[data-testid="stMarkdownContainer"]:has(.cal-sel.cal-today) + div[data-testid="stButton"] > button {
+    background: #2A1040 !important; border: 2px solid #CBA6F7 !important;
+}
+div[data-testid="column"] div[data-testid="stButton"] > button {
+    min-height: 58px !important; font-size: 11px !important; font-weight: 600 !important;
+    padding: 3px 2px !important; white-space: pre-line !important; line-height: 1.4 !important;
+    border-radius: 6px !important; background: #1E1E2E !important;
+    border: 1px solid #313244 !important; color: #BAC2DE !important;
+}
+</style>""", unsafe_allow_html=True)
+
+    # 요일 헤더
     WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"]
-    html = '<table class="cal-table"><thead><tr>'
-    for i, wd in enumerate(WEEKDAYS):
-        color = "#F38BA8" if i == 0 else ("#89B4FA" if i == 6 else "#CDD6F4")
-        html += f'<th style="color:{color}">{wd}</th>'
-    html += "</tr></thead><tbody><tr>"
+    HDR_CLR = ["#F38BA8", "#9399B2", "#9399B2", "#9399B2", "#9399B2", "#9399B2", "#89B4FA"]
+    hcols = st.columns(7)
+    for i, (wd, hc) in enumerate(zip(WEEKDAYS, HDR_CLR)):
+        hcols[i].markdown(
+            f'<div style="text-align:center;padding:6px 0;font-size:13px;font-weight:700;'
+            f'color:{hc};background:#181825;border:1px solid #313244;border-bottom:2px solid #45475A;">{wd}</div>',
+            unsafe_allow_html=True
+        )
 
-    cur_col = 0
-    # 앞 빈칸
-    for _ in range(start_col):
-        html += '<td class="othermonth"></td>'
-        cur_col += 1
+    # 주(week) 목록 구성
+    weeks = []
+    week = [None] * start_col
+    for dn in range(1, last_day.day + 1):
+        week.append(dn)
+        if len(week) == 7:
+            weeks.append(week)
+            week = []
+    if week:
+        weeks.append(week + [None] * (7 - len(week)))
 
-    for day_num in range(1, last_day.day + 1):
-        d = datetime.date(selected_year, selected_month, day_num)
-        info = _get_day_info(d)
-        weekday_idx = (d.weekday() + 1) % 7  # 0=일,6=토
-        is_today = (d == today)
+    # 달력 렌더링 (버튼 그리드)
+    SHIFT_EMOJI = {"1근": "🔵 1근", "2근": "🟢 2근", "3근": "🔴 3근", "휴무": "⚫ 휴무"}
+    for wk in weeks:
+        wcols = st.columns(7)
+        for ci, dn in enumerate(wk):
+            with wcols[ci]:
+                if dn is None:
+                    st.markdown('<div style="min-height:72px;background:#181825;border:1px solid #2A2A3E;border-radius:6px;"></div>', unsafe_allow_html=True)
+                else:
+                    d = datetime.date(selected_year, selected_month, dn)
+                    info = _get_day_info(d)
+                    is_today = (d == today)
+                    is_sel = (sel_day_num == dn)
+                    wi = (d.weekday() + 1) % 7
+                    nc = "#F38BA8" if wi == 0 else ("#89B4FA" if wi == 6 else "#CDD6F4")
 
-        td_class = "today" if is_today else ""
-        num_class = "today-num" if is_today else ("sun" if weekday_idx == 0 else ("sat" if weekday_idx == 6 else ""))
+                    # 버튼 라벨: 날짜 + 근무
+                    if info["is_leave"]:
+                        shift_line = f"🟠 {info['leave_type'] or '휴가'}"
+                    elif info["sub_for"]:
+                        shift_line = f"🟣 {info['sub_role']}"
+                    else:
+                        shift_line = SHIFT_EMOJI.get(info["shift"], info["shift"])
 
-        html += f'<td class="{td_class}">'
-        html += f'<div class="day-num {num_class}">{day_num}</div>'
-        html += _badge_html(info)
-        html += "</td>"
-        cur_col += 1
+                    today_mark = " ◀" if is_today else ""
+                    btn_label = f"{dn}{today_mark}\n{shift_line}"
 
-        if cur_col % 7 == 0 and day_num < last_day.day:
-            html += "</tr><tr>"
+                    # CSS 마커 (선택/오늘 강조용)
+                    marker_cls = "cal-marker"
+                    if is_sel: marker_cls += " cal-sel"
+                    if is_today: marker_cls += " cal-today"
+                    st.markdown(f'<div class="{marker_cls}" style="height:0;overflow:hidden;"></div>', unsafe_allow_html=True)
 
-    # 뒤 빈칸
-    remaining = 7 - (cur_col % 7)
-    if remaining < 7:
-        for _ in range(remaining):
-            html += '<td class="othermonth"></td>'
-    html += "</tr></tbody></table>"
-
-    st.markdown(html, unsafe_allow_html=True)
+                    if st.button(btn_label, key=f"cd_{selected_year}_{selected_month}_{dn}", use_container_width=True):
+                        st.session_state[_skey] = dn
+                        st.rerun()
 
     # ── 월간 요약 ──
     counts = {"1근": 0, "2근": 0, "3근": 0, "휴무": 0, "휴가": 0, "대근": 0}
-    for day_num in range(1, last_day.day + 1):
-        d = datetime.date(selected_year, selected_month, day_num)
+    for dn in range(1, last_day.day + 1):
+        d = datetime.date(selected_year, selected_month, dn)
         info = _get_day_info(d)
         if info["is_leave"]:
             counts["휴가"] += 1
@@ -1922,30 +1950,18 @@ def page_my_schedule():
     color_map = {"1근": "#1D4ED8", "2근": "#15803D", "3근": "#B91C1C", "휴무": "#6B7280", "휴가": "#D97706", "대근": "#7C3AED"}
     summary_html = '<div class="summary-grid">'
     for label, cnt in counts.items():
-        summary_html += f'''
-<div class="summary-card">
-  <div class="sc-num" style="color:{color_map[label]}">{cnt}</div>
-  <div class="sc-label">{label}</div>
-</div>'''
+        summary_html += f'<div class="summary-card"><div class="sc-num" style="color:{color_map[label]}">{cnt}</div><div class="sc-label">{label}</div></div>'
     summary_html += "</div>"
     st.markdown(summary_html, unsafe_allow_html=True)
 
-    # ── 날짜 클릭 → 세부내역 ──
+    # ── 선택 날짜 세부내역 ──
     st.markdown("---")
-    st.markdown("#### 날짜 선택 → 세부 조회")
-    _default_day = today if (today.year == selected_year and today.month == selected_month) else first_day
-    sel_date = st.date_input(
-        "날짜를 선택하세요",
-        value=_default_day,
-        key="sched_day",
-        format="YYYY-MM-DD",
-    )
+    sel_date = datetime.date(selected_year, selected_month, sel_day_num)
     info = _get_day_info(sel_date)
     raw = info["raw"]
     wd_names = ["월", "화", "수", "목", "금", "토", "일"]
     wd_str = wd_names[sel_date.weekday()]
 
-    shift_color = SHIFT_COLOR.get(info["shift"], "#374151")
     if info["is_leave"]:
         my_label = f"🌴 {info['leave_type'] or '휴가'}"
         my_color = "#D97706"
@@ -1954,14 +1970,14 @@ def page_my_schedule():
         my_color = "#6D28D9"
     else:
         my_label = info["shift"]
-        my_color = shift_color
+        my_color = SHIFT_COLOR.get(info["shift"], "#374151")
 
     time_str = SHIFT_TIME.get(info["shift"], "") if not info["is_leave"] else ""
 
     detail_html = f'''
 <div class="detail-card">
   <div style="font-size:18px;font-weight:700;color:#CDD6F4;margin-bottom:14px;">
-    {selected_year}년 {selected_month}월 {sel_day}일 ({wd_str})
+    {selected_year}년 {selected_month}월 {sel_day_num}일 ({wd_str})
   </div>
   <div class="detail-row">
     <span style="color:#BAC2DE;width:80px;font-size:13px;">내 근무</span>
@@ -1977,7 +1993,6 @@ def page_my_schedule():
     <span style="color:#C4B5FD;font-weight:600;">{info["sub_for"]} 휴가로 인한 대근</span>
   </div>'''
 
-    # 전체 근무 배치
     detail_html += f'''
   <div style="margin-top:14px;font-size:12px;color:#6C7086;font-weight:600;letter-spacing:1px;">전체 근무 배치</div>
   <div class="detail-row">
@@ -2001,7 +2016,6 @@ def page_my_schedule():
     <span style="color:#6C7086;font-size:12px;">{raw["휴무_구분"]}</span>
   </div>'''
 
-    # 해당 날짜 휴가자 목록
     vacationers = []
     for lv in leave_list:
         try:
