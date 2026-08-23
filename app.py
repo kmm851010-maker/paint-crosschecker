@@ -1947,10 +1947,12 @@ div[data-testid="stMarkdownContainer"]:has(.ctoday) + div[data-testid="stButton"
     if week:
         weeks.append(week + [None] * (7 - len(week)))
 
-    # 근무별 상단 헤더 색상 (날짜 숫자 표시 영역)
-    SHIFT_TOP_BG  = {"1근": "#0f172a", "2근": "#0a1f0e", "3근": "#1c0e06", "휴무": "#111827"}
-    SHIFT_TOP_BDR = {"1근": "#1e3a5f", "2근": "#14532d", "3근": "#7c2d12", "휴무": "#1f2937"}
-    SHIFT_NUM_CLR = {"1근": "#60a5fa", "2근": "#4ade80", "3근": "#fb923c", "휴무": "#4b5563"}
+    # 상단 날짜 영역 — 공통 연한 보라 그라디언트
+    _TOP_BG  = "linear-gradient(160deg, #3b2d6e, #2a1f52)"
+    _TOP_BDR = "#5b4397"
+    SHIFT_TOP_BG  = {"1근": _TOP_BG, "2근": _TOP_BG, "3근": _TOP_BG, "휴무": _TOP_BG}
+    SHIFT_TOP_BDR = {"1근": _TOP_BDR, "2근": _TOP_BDR, "3근": _TOP_BDR, "휴무": "#3d3560"}
+    SHIFT_NUM_CLR = {"1근": "#c4b5fd", "2근": "#c4b5fd", "3근": "#c4b5fd", "휴무": "#7c6fa0"}
     SHIFT_LABEL   = {"1근": "🌅 1근  06:30~14:30", "2근": "☀️ 2근  14:30~22:30",
                      "3근": "🌙 3근  22:30~06:30", "휴무": "💤 휴무"}
     SHIFT_MCLS    = {"1근": "cs1", "2근": "cs2", "3근": "cs3", "휴무": "csoff"}
@@ -1972,13 +1974,13 @@ div[data-testid="stMarkdownContainer"]:has(.ctoday) + div[data-testid="stButton"
                     # 근무 분류
                     if info["is_leave"]:
                         mcls = "csleave"
-                        top_bg, top_bdr = "#1a1400", "#78350f"
-                        num_clr = "#fbbf24"
+                        top_bg, top_bdr = _TOP_BG, "#78350f"
+                        num_clr = "#c4b5fd"
                         btn_txt = f"🏖️ {info['leave_type'] or '휴가'}"
                     elif info["sub_for"]:
                         mcls = "cssub"
-                        top_bg, top_bdr = "#170d2e", "#581c87"
-                        num_clr = "#c084fc"
+                        top_bg, top_bdr = _TOP_BG, _TOP_BDR
+                        num_clr = "#c4b5fd"
                         btn_txt = f"🔄 {info['sub_role']}"
                     else:
                         s = info["shift"]
