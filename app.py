@@ -1816,7 +1816,10 @@ def page_my_schedule():
             return f'<span class="badge badge-leave">🌴 {info["leave_type"] or "휴가"}</span>'
         s = info["shift"]
         cls = {"1근": "badge-1", "2근": "badge-2", "3근": "badge-3", "휴무": "badge-off"}.get(s, "badge-off")
-        label = f"{s} 대근" if info["sub_for"] else s
+        if info["sub_for"]:
+            label = "야간 대근" if s == "3근" else "주간 대근"
+        else:
+            label = s
         return f'<span class="badge {cls}">{label}</span>'
 
     # 달력 그리드 생성
@@ -1925,6 +1928,9 @@ def page_my_schedule():
     if info["is_leave"]:
         my_label = f"🌴 {info['leave_type'] or '휴가'}"
         my_color = "#D97706"
+    elif info["sub_for"]:
+        my_label = "야간 대근" if info["shift"] == "3근" else "주간 대근"
+        my_color = "#6D28D9"
     else:
         my_label = info["shift"]
         my_color = shift_color
