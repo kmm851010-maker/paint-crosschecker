@@ -216,7 +216,7 @@ st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(
     "메뉴 선택",
-    ["🔍 생산계획 vs 입고 교차검증", "📊 캡처 이미지 → 엑셀 변환기", "📋 일일 작업일지 작성", "📈 근무 통계", "📦 재고 관리"],
+    ["🔍 생산계획 vs 입고 교차검증", "📊 캡처 이미지 → 엑셀 변환기", "📋 일일 작업일지 작성", "📈 근무 통계", "📅 근무 일정표", "📦 재고 관리"],
     label_visibility="collapsed",
 )
 
@@ -1647,6 +1647,359 @@ def page_statistics():
                         st.write(f"{lv['날짜']} — {lv['구분']}")
 
 
+# ══════════════════════════════════════
+# 메뉴 5: 근무 일정표
+# ══════════════════════════════════════
+def page_my_schedule():
+    import calendar as _cal
+
+    st.markdown("""
+<style>
+.sched-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 6px;
+}
+.cal-table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+.cal-table th {
+    background: #1E1E2E; color: #CDD6F4;
+    text-align: center; padding: 8px 0; font-size: 13px;
+    border: 1px solid #313244;
+}
+.cal-table td {
+    border: 1px solid #313244; vertical-align: top;
+    padding: 6px 5px; min-height: 64px; min-width: 48px;
+    background: #1E1E2E; cursor: default;
+}
+.cal-table td.today { background: #2A2A3E; border: 2px solid #89B4FA !important; }
+.cal-table td.othermonth { background: #181825; }
+.day-num {
+    font-size: 12px; font-weight: 600; color: #BAC2DE; margin-bottom: 4px;
+}
+.day-num.sun { color: #F38BA8; }
+.day-num.sat { color: #89B4FA; }
+.day-num.today-num {
+    background: #89B4FA; color: #1E1E2E; border-radius: 50%;
+    width: 22px; height: 22px; display: inline-flex;
+    align-items: center; justify-content: center;
+}
+.badge {
+    display: inline-block; padding: 2px 7px; border-radius: 10px;
+    font-size: 11px; font-weight: 700; margin-top: 2px; width: 100%;
+    text-align: center; box-sizing: border-box;
+}
+.badge-1 { background: #1D4ED8; color: #EFF6FF; }
+.badge-2 { background: #15803D; color: #F0FDF4; }
+.badge-3 { background: #B91C1C; color: #FEF2F2; }
+.badge-off { background: #374151; color: #D1D5DB; }
+.badge-leave { background: #92400E; color: #FEF3C7; }
+.badge-sub { background: #6D28D9; color: #EDE9FE; font-size: 10px; }
+.detail-card {
+    background: #1E1E2E; border: 1px solid #313244; border-radius: 12px;
+    padding: 20px 24px; margin-top: 12px;
+}
+.detail-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0; border-bottom: 1px solid #313244;
+}
+.detail-row:last-child { border-bottom: none; }
+.shift-pill {
+    padding: 4px 14px; border-radius: 20px; font-weight: 700; font-size: 14px;
+}
+.legend-box {
+    display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.legend-item {
+    display: flex; align-items: center; gap: 5px; font-size: 12px; color: #BAC2DE;
+}
+.legend-dot {
+    width: 12px; height: 12px; border-radius: 3px;
+}
+.summary-grid {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;
+    margin-top: 12px; margin-bottom: 4px;
+}
+.summary-card {
+    background: #1E1E2E; border: 1px solid #313244; border-radius: 8px;
+    padding: 10px; text-align: center;
+}
+.summary-card .sc-num { font-size: 22px; font-weight: 700; }
+.summary-card .sc-label { font-size: 11px; color: #BAC2DE; margin-top: 2px; }
+</style>
+""", unsafe_allow_html=True)
+
+    st.markdown("## 📅 근무 일정표")
+
+    MEMBERS = dict(st.secrets.get("members", {'A': '직원A', 'B': '직원B', 'C': '직원C', 'D': '직원D'}))
+    ALL_MEMBERS = list(MEMBERS.values())
+
+    today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
+
+    col_name, col_yr, col_mo = st.columns([2, 1, 1])
+    with col_name:
+        selected_name = st.selectbox("이름", ALL_MEMBERS, key="sched_name")
+    with col_yr:
+        selected_year = st.selectbox("년도", list(range(today.year - 1, today.year + 3)), index=1, key="sched_yr")
+    with col_mo:
+        selected_month = st.selectbox("월", list(range(1, 13)), index=today.month - 1, key="sched_mo")
+
+    # 이름 → 조 매핑
+    name_to_team = {v: k for k, v in MEMBERS.items()}
+    my_team = name_to_team.get(selected_name, "")
+
+    # 휴가 목록 로드
+    from utils.sheets import load_leaves as _load_leaves
+    leave_list = []
+    try:
+        leave_list = _load_leaves()
+    except Exception:
+        pass
+
+    def _get_day_info(d):
+        """특정 날짜의 근무 정보 반환"""
+        shift = _shift_for_date(d, MEMBERS)
+        s1, s2, s3, off = shift["1근_근무자"], shift["2근_근무자"], shift["3근_근무자"], shift["휴무_근무자"]
+
+        # 본인 기본 근무
+        if s1 == selected_name:
+            my_shift = "1근"
+        elif s2 == selected_name:
+            my_shift = "2근"
+        elif s3 == selected_name:
+            my_shift = "3근"
+        elif off == selected_name:
+            my_shift = "휴무"
+        else:
+            my_shift = "?"
+
+        # 휴가 적용 (본인)
+        is_my_leave = False
+        leave_type_my = ""
+        for lv in leave_list:
+            try:
+                ls = datetime.date.fromisoformat(lv["start"])
+                le = datetime.date.fromisoformat(lv["end"])
+            except Exception:
+                continue
+            if lv["name"] == selected_name and ls <= d <= le:
+                is_my_leave = True
+                leave_type_my = lv["type"]
+                break
+
+        # 대근 필요 체크 (다른 사람 휴가인데 내가 근무 중)
+        sub_for = ""
+        for lv in leave_list:
+            if lv["name"] == selected_name:
+                continue
+            try:
+                ls = datetime.date.fromisoformat(lv["start"])
+                le = datetime.date.fromisoformat(lv["end"])
+            except Exception:
+                continue
+            if ls <= d <= le:
+                absent = lv["name"]
+                sub = lv.get("sub", "")
+                if sub == selected_name:
+                    sub_for = absent
+                    break
+
+        return {
+            "shift": my_shift,
+            "is_leave": is_my_leave,
+            "leave_type": leave_type_my,
+            "sub_for": sub_for,
+            "raw": shift,
+        }
+
+    SHIFT_TIME = {"1근": "06:30~14:30", "2근": "14:30~22:30", "3근": "22:30~06:30", "휴무": ""}
+    SHIFT_COLOR = {"1근": "#1D4ED8", "2근": "#15803D", "3근": "#B91C1C", "휴무": "#374151"}
+
+    def _badge_html(info):
+        if info["is_leave"]:
+            return f'<span class="badge badge-leave">🌴 {info["leave_type"] or "휴가"}</span>'
+        s = info["shift"]
+        cls = {"1근": "badge-1", "2근": "badge-2", "3근": "badge-3", "휴무": "badge-off"}.get(s, "badge-off")
+        html = f'<span class="badge {cls}">{s}</span>'
+        if info["sub_for"]:
+            html += f'<span class="badge badge-sub">대근</span>'
+        return html
+
+    # 달력 그리드 생성
+    first_day = datetime.date(selected_year, selected_month, 1)
+    last_day = datetime.date(selected_year, selected_month, _cal.monthrange(selected_year, selected_month)[1])
+
+    # 달력 시작: 해당 월 1일의 요일 (월=0, 일=6)
+    start_weekday = first_day.weekday()  # 월=0
+    # 일요일부터 시작하도록 조정 (일=0, 월=1, ..., 토=6)
+    start_col = (start_weekday + 1) % 7
+
+    # 범례
+    st.markdown("""
+<div class="legend-box">
+  <div class="legend-item"><div class="legend-dot" style="background:#1D4ED8"></div> 1근 (06:30~14:30)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#15803D"></div> 2근 (14:30~22:30)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#B91C1C"></div> 3근 (22:30~06:30)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#374151"></div> 휴무</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#92400E"></div> 휴가</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#6D28D9"></div> 대근</div>
+</div>
+""", unsafe_allow_html=True)
+
+    # 달력 HTML 생성
+    WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"]
+    html = '<table class="cal-table"><thead><tr>'
+    for i, wd in enumerate(WEEKDAYS):
+        color = "#F38BA8" if i == 0 else ("#89B4FA" if i == 6 else "#CDD6F4")
+        html += f'<th style="color:{color}">{wd}</th>'
+    html += "</tr></thead><tbody><tr>"
+
+    cur_col = 0
+    # 앞 빈칸
+    for _ in range(start_col):
+        html += '<td class="othermonth"></td>'
+        cur_col += 1
+
+    for day_num in range(1, last_day.day + 1):
+        d = datetime.date(selected_year, selected_month, day_num)
+        info = _get_day_info(d)
+        weekday_idx = (d.weekday() + 1) % 7  # 0=일,6=토
+        is_today = (d == today)
+
+        td_class = "today" if is_today else ""
+        num_class = "today-num" if is_today else ("sun" if weekday_idx == 0 else ("sat" if weekday_idx == 6 else ""))
+
+        html += f'<td class="{td_class}">'
+        html += f'<div class="day-num {num_class}">{day_num}</div>'
+        html += _badge_html(info)
+        html += "</td>"
+        cur_col += 1
+
+        if cur_col % 7 == 0 and day_num < last_day.day:
+            html += "</tr><tr>"
+
+    # 뒤 빈칸
+    remaining = 7 - (cur_col % 7)
+    if remaining < 7:
+        for _ in range(remaining):
+            html += '<td class="othermonth"></td>'
+    html += "</tr></tbody></table>"
+
+    st.markdown(html, unsafe_allow_html=True)
+
+    # ── 월간 요약 ──
+    counts = {"1근": 0, "2근": 0, "3근": 0, "휴무": 0, "휴가": 0, "대근": 0}
+    for day_num in range(1, last_day.day + 1):
+        d = datetime.date(selected_year, selected_month, day_num)
+        info = _get_day_info(d)
+        if info["is_leave"]:
+            counts["휴가"] += 1
+        else:
+            s = info["shift"]
+            if s in counts:
+                counts[s] += 1
+        if info["sub_for"]:
+            counts["대근"] += 1
+
+    color_map = {"1근": "#1D4ED8", "2근": "#15803D", "3근": "#B91C1C", "휴무": "#6B7280", "휴가": "#D97706", "대근": "#7C3AED"}
+    summary_html = '<div class="summary-grid">'
+    for label, cnt in counts.items():
+        summary_html += f'''
+<div class="summary-card">
+  <div class="sc-num" style="color:{color_map[label]}">{cnt}</div>
+  <div class="sc-label">{label}</div>
+</div>'''
+    summary_html += "</div>"
+    st.markdown(summary_html, unsafe_allow_html=True)
+
+    # ── 날짜 선택 → 세부내역 ──
+    st.markdown("---")
+    st.markdown("#### 날짜별 세부 조회")
+    sel_day = st.number_input("날짜 선택", min_value=1, max_value=last_day.day, value=today.day if (today.year == selected_year and today.month == selected_month) else 1, step=1, key="sched_day")
+
+    sel_date = datetime.date(selected_year, selected_month, int(sel_day))
+    info = _get_day_info(sel_date)
+    raw = info["raw"]
+    wd_names = ["월", "화", "수", "목", "금", "토", "일"]
+    wd_str = wd_names[sel_date.weekday()]
+
+    shift_color = SHIFT_COLOR.get(info["shift"], "#374151")
+    if info["is_leave"]:
+        my_label = f"🌴 {info['leave_type'] or '휴가'}"
+        my_color = "#D97706"
+    else:
+        my_label = info["shift"]
+        my_color = shift_color
+
+    time_str = SHIFT_TIME.get(info["shift"], "") if not info["is_leave"] else ""
+
+    detail_html = f'''
+<div class="detail-card">
+  <div style="font-size:18px;font-weight:700;color:#CDD6F4;margin-bottom:14px;">
+    {selected_year}년 {selected_month}월 {sel_day}일 ({wd_str})
+  </div>
+  <div class="detail-row">
+    <span style="color:#BAC2DE;width:80px;font-size:13px;">내 근무</span>
+    <span class="shift-pill" style="background:{my_color};color:#fff;">{my_label}</span>
+    <span style="color:#9399B2;font-size:13px;">{time_str}</span>
+    {"<span style='background:#6D28D9;color:#EDE9FE;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;'>🔄 대근</span>" if info["sub_for"] else ""}
+  </div>'''
+
+    if info["sub_for"]:
+        detail_html += f'''
+  <div class="detail-row">
+    <span style="color:#BAC2DE;width:80px;font-size:13px;">대근 대상</span>
+    <span style="color:#C4B5FD;font-weight:600;">{info["sub_for"]} 휴가로 인한 대근</span>
+  </div>'''
+
+    # 전체 근무 배치
+    detail_html += f'''
+  <div style="margin-top:14px;font-size:12px;color:#6C7086;font-weight:600;letter-spacing:1px;">전체 근무 배치</div>
+  <div class="detail-row">
+    <span style="background:#1D4ED8;color:#fff;padding:2px 10px;border-radius:8px;font-size:12px;font-weight:700;">1근</span>
+    <span style="color:#CDD6F4;">{raw["1근_근무자"]} ({raw["1근_조"]}조)</span>
+    <span style="color:#6C7086;font-size:12px;">06:30~14:30</span>
+  </div>
+  <div class="detail-row">
+    <span style="background:#15803D;color:#fff;padding:2px 10px;border-radius:8px;font-size:12px;font-weight:700;">2근</span>
+    <span style="color:#CDD6F4;">{raw["2근_근무자"]} ({raw["2근_조"]}조)</span>
+    <span style="color:#6C7086;font-size:12px;">14:30~22:30</span>
+  </div>
+  <div class="detail-row">
+    <span style="background:#B91C1C;color:#fff;padding:2px 10px;border-radius:8px;font-size:12px;font-weight:700;">3근</span>
+    <span style="color:#CDD6F4;">{raw["3근_근무자"]} ({raw["3근_조"]}조)</span>
+    <span style="color:#6C7086;font-size:12px;">22:30~06:30</span>
+  </div>
+  <div class="detail-row">
+    <span style="background:#374151;color:#D1D5DB;padding:2px 10px;border-radius:8px;font-size:12px;font-weight:700;">휴무</span>
+    <span style="color:#CDD6F4;">{raw["휴무_근무자"]} ({raw["휴무_조"]}조)</span>
+    <span style="color:#6C7086;font-size:12px;">{raw["휴무_구분"]}</span>
+  </div>'''
+
+    # 해당 날짜 휴가자 목록
+    vacationers = []
+    for lv in leave_list:
+        try:
+            ls = datetime.date.fromisoformat(lv["start"])
+            le = datetime.date.fromisoformat(lv["end"])
+        except Exception:
+            continue
+        if ls <= sel_date <= le:
+            vacationers.append(lv)
+
+    if vacationers:
+        detail_html += '<div style="margin-top:14px;font-size:12px;color:#6C7086;font-weight:600;letter-spacing:1px;">휴가자</div>'
+        for lv in vacationers:
+            sub_txt = f" → 대근: {lv['sub']}" if lv.get("sub") else ""
+            detail_html += f'''
+  <div class="detail-row">
+    <span style="background:#92400E;color:#FEF3C7;padding:2px 10px;border-radius:8px;font-size:12px;font-weight:700;">🌴 {lv["type"]}</span>
+    <span style="color:#CDD6F4;">{lv["name"]}</span>
+    <span style="color:#9399B2;font-size:12px;">{lv["start"]} ~ {lv["end"]}{sub_txt}</span>
+  </div>'''
+
+    detail_html += "</div>"
+    st.markdown(detail_html, unsafe_allow_html=True)
+
+
 # ──────────────────────────────────────
 # 재고 관리 페이지
 # ──────────────────────────────────────
@@ -1759,5 +2112,7 @@ elif menu == "📋 일일 작업일지 작성":
     page_work_log()
 elif menu == "📈 근무 통계":
     page_statistics()
+elif menu == "📅 근무 일정표":
+    page_my_schedule()
 elif menu == "📦 재고 관리":
     page_inventory()
