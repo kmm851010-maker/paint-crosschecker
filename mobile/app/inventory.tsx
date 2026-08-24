@@ -79,7 +79,7 @@ function parseOcrBlocks(blocks: TextBlock[]): DrumItem | null {
 
 const SECTORS = [
   "입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리",
-  "8번자리", "9번자리", "반품자리", "반품대기", "CW2", "CP5", "창고뒤", "롤반 앞",
+  "8번자리", "9번자리", "반품자리", "반품대기", "CW2", "CP5", "창고뒤", "롤반 앞", "믹싱룸",
 ];
 const CHECKOUT = "라인입고";
 type Mode = "idle" | "scanning" | "sectorPick" | "status";
@@ -326,7 +326,7 @@ export default function InventoryScreen() {
               <Text style={[styles.sectorBtnText, { color: "#fff" }]}>{CHECKOUT}</Text>
             </TouchableOpacity>
           </ScrollView>
-          <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setMode("scanning")}>
+          <TouchableOpacity style={[styles.modalCancelBtn, { paddingBottom: 14 + insets.bottom }]} onPress={() => setMode("scanning")}>
             <Text style={styles.modalCancelText}>돌아가기</Text>
           </TouchableOpacity>
         </View>
