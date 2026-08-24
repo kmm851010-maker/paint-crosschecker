@@ -236,10 +236,10 @@ async def parse_barcode_endpoint(req: ParseBarcodeRequest):
 @app.post("/api/inventory/register")
 async def inventory_register(req: InventoryRegisterRequest):
     """드럼 목록을 섹터에 등록/이동, 라인입고 시 재고에서 제거"""
-    from utils.inventory_sheets import save_drums_to_sector, checkout_drums, CHECKOUT_SECTOR
+    from utils.inventory_sheets import save_drums_to_sector, checkout_drums, CHECKOUT_SECTOR, RETURN_SECTOR
     drums = [d.model_dump() for d in req.drums]
     try:
-        if req.sector == CHECKOUT_SECTOR:
+        if req.sector in (CHECKOUT_SECTOR, RETURN_SECTOR):
             checkout_drums(drums)
         else:
             save_drums_to_sector(drums, req.sector)

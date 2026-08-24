@@ -437,6 +437,8 @@ export default function InventoryScreen() {
       grouped[key].push(drum);
     }
     const groupKeys = Object.keys(grouped).sort();
+    const selectedDrums = allDrums.filter(d => selectedLots.has(d.lot));
+    const allInReturn = selectedDrums.length > 0 && selectedDrums.every(d => d.sector === "반품대기");
 
     return (
       <>
@@ -529,21 +531,23 @@ export default function InventoryScreen() {
             )}
           </ScrollView>
 
-          {/* 라인입고 버튼 */}
+          {/* 라인입고 / 반품완료 버튼 */}
           {selectedLots.size > 0 && (
             <View style={[styles.checkoutBar, { paddingBottom: 12 + insets.bottom }]}>
               <Text style={styles.checkoutBarText}>{selectedLots.size}드럼 선택됨</Text>
               <TouchableOpacity
-                style={styles.checkoutBarBtn}
+                style={[styles.checkoutBarBtn, allInReturn && { backgroundColor: "#6D28D9" }]}
                 onPress={async () => {
-                  const drums = allDrums.filter(d => selectedLots.has(d.lot));
+                  const drums = selectedDrums;
+                  const sector = allInReturn ? "반품완료" : CHECKOUT;
+                  const label = allInReturn ? "반품완료" : "라인입고";
                   setLoading(true);
                   try {
-                    await registerDrums(drums, CHECKOUT);
+                    await registerDrums(drums, sector);
                     setSelectedLots(new Set());
                     const data = await getSectorInventory();
                     setSectorData(data);
-                    Alert.alert("완료", `${drums.length}드럼 라인입고 처리`);
+                    Alert.alert("완료", `${drums.length}드럼 ${label} 처리`);
                   } catch (e: any) {
                     Alert.alert("실패", e.message);
                   } finally {
@@ -552,7 +556,9 @@ export default function InventoryScreen() {
                 }}
                 disabled={loading}
               >
-                {loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.checkoutBarBtnText}>라인입고</Text>}
+                {loading
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={styles.checkoutBarBtnText}>{allInReturn ? "반품완료" : "라인입고"}</Text>}
               </TouchableOpacity>
             </View>
           )}

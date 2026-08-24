@@ -36,6 +36,7 @@ SECTORS = [
     "8번자리", "9번자리", "반품자리", "반품대기", "CW2", "CP5", "창고뒤", "롤반 앞",
 ]
 CHECKOUT_SECTOR = "라인입고"
+RETURN_SECTOR = "반품완료"
 
 
 def _get_client():

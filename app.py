@@ -2405,17 +2405,26 @@ def page_inventory():
                     c5.text(row.get("sector", ""))
                 c6.text(row.get("registered", ""))
 
-    # 라인입고 버튼
+    # 라인입고 / 반품완료 버튼
     if selected_lots:
         st.markdown("---")
+        selected_drums_list = [d for d in all_drums if d["lot"] in selected_lots]
+        all_in_return = all(d.get("sector") == "반품대기" for d in selected_drums_list)
         st.warning(f"**{len(selected_lots)}드럼** 선택됨")
-        if st.button(f"🚚 라인입고 처리 ({len(selected_lots)}드럼)", type="primary", key="checkout_btn"):
-            drums_to_checkout = [d for d in all_drums if d["lot"] in selected_lots]
+        if all_in_return:
+            btn_label = f"↩️ 반품완료 처리 ({len(selected_lots)}드럼)"
+            btn_sector = "반품완료"
+            btn_ok_msg = f"{len(selected_drums_list)}드럼 반품완료 처리되었습니다."
+        else:
+            btn_label = f"🚚 라인입고 처리 ({len(selected_lots)}드럼)"
+            btn_sector = "라인입고"
+            btn_ok_msg = f"{len(selected_drums_list)}드럼 라인입고 처리 완료!"
+        if st.button(btn_label, type="primary", key="checkout_btn"):
             try:
                 res = _req.post(f"{BACKEND}/api/inventory/register",
-                                json={"drums": drums_to_checkout, "sector": "라인입고"}, timeout=15)
+                                json={"drums": selected_drums_list, "sector": btn_sector}, timeout=15)
                 if res.ok:
-                    st.success(f"{len(drums_to_checkout)}드럼 라인입고 처리 완료!")
+                    st.success(btn_ok_msg)
                     st.rerun()
                 else:
                     st.error(f"실패: {res.text}")
