@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  BackHandler,
   FlatList,
   Modal,
   ScrollView,
@@ -134,6 +135,17 @@ export default function InventoryScreen() {
     if (permission && !permission.granted && !permission.canAskAgain) return;
     if (!permission?.granted) requestPermission();
   }, [permission]);
+
+  // 하드웨어 뒤로가기: 비idle 모드일 때 앱 종료 방지
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (mode === "sectorPick") { setMode("scanning"); return true; }
+      if (mode === "scanning")   { setMode("idle");     return true; }
+      if (mode === "status")     { setMode("idle");     return true; }
+      return false;
+    });
+    return () => sub.remove();
+  }, [mode]);
 
   // 스캔 모드 진입/종료 + 저장 중 OCR 루프 시작/정지
   useEffect(() => {
