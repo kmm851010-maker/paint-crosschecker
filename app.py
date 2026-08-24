@@ -254,6 +254,53 @@ _CYCLE_20 = [
 _BASE_DATE = datetime.date(2026, 3, 1)
 _NIGHT_HOURS_BASE = {"1근": 0, "2근": 0.5, "3근": 7.5}
 
+# ── 3조3교대 (3팀, 주중만, 3주 사이클) ──
+_3S3_REF_MON = datetime.date(2026, 7, 27)
+_3S3_SHIFTS = [
+    {"A": "3근", "B": "1근", "C": "2근"},
+    {"A": "2근", "B": "3근", "C": "1근"},
+    {"A": "1근", "B": "2근", "C": "3근"},
+]
+
+
+def _shift_for_date_3s3(target_date, team):
+    wd = target_date.weekday()
+    if wd >= 5:
+        return "휴무"
+    mon = target_date - datetime.timedelta(days=wd)
+    phase = ((mon - _3S3_REF_MON).days // 7) % 3
+    return _3S3_SHIFTS[phase].get(team, "?")
+
+
+# ── 2조2교대 (2팀, 주중만, 2주 사이클) ──
+_2S2_REF_MON = datetime.date(2026, 7, 27)
+_2S2_SHIFTS = [
+    {"A": "2근", "B": "1근"},
+    {"A": "1근", "B": "2근"},
+]
+
+
+def _shift_for_date_2s2(target_date, team):
+    wd = target_date.weekday()
+    if wd >= 5:
+        return "휴무"
+    mon = target_date - datetime.timedelta(days=wd)
+    phase = ((mon - _2S2_REF_MON).days // 7) % 2
+    return _2S2_SHIFTS[phase].get(team, "?")
+
+
+# ── 4조2교대 (4팀, 연속 교대, 4일 사이클: 주간→야간→휴무→휴무) ──
+_4S2_REF = datetime.date(2026, 7, 27)  # 기준일: A조=주간
+_4S2_CYCLE = ["주간", "야간", "휴무", "휴무"]
+_4S2_OFFSET = {"A": 0, "B": 1, "C": 2, "D": 3}
+
+
+def _shift_for_date_4s2(target_date, team):
+    days_since = (target_date - _4S2_REF).days
+    offset = _4S2_OFFSET.get(team, 0)
+    phase = (days_since + offset) % 4
+    return _4S2_CYCLE[phase]
+
 
 def _shift_for_date(target_date, members):
     idx = (target_date - _BASE_DATE).days % 20
@@ -1734,28 +1781,58 @@ def page_my_schedule():
 
     today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
 
+    shift_type = st.selectbox(
+        "근무 형태", ["4조3교대", "3조3교대", "2조2교대", "4조2교대"],
+        key="sched_shift_type",
+    )
+
+    _SHIFT_TEAMS = {
+        "4조3교대": ALL_MEMBERS,
+        "3조3교대": ["A조", "B조", "C조"],
+        "2조2교대": ["A조", "B조"],
+        "4조2교대": ["A조", "B조", "C조", "D조"],
+    }
+    _team_label = "이름" if shift_type == "4조3교대" else "조"
+    _team_code = ""  # non-4조3교대용 팀 코드 (A/B/C/D)
+
     col_name, col_yr, col_mo = st.columns([2, 1, 1])
     with col_name:
-        selected_name = st.selectbox("이름", ALL_MEMBERS, key="sched_name")
+        selected_name = st.selectbox(_team_label, _SHIFT_TEAMS[shift_type], key="sched_name")
     with col_yr:
         selected_year = st.selectbox("년도", list(range(2020, today.year + 6)), index=list(range(2020, today.year + 6)).index(today.year), key="sched_yr")
     with col_mo:
         selected_month = st.selectbox("월", list(range(1, 13)), index=today.month - 1, key="sched_mo")
 
-    # 이름 → 조 매핑
+    if shift_type != "4조3교대":
+        _team_code = selected_name[0]  # "A조" → "A"
+
+    # 이름 → 조 매핑 (4조3교대 전용)
     name_to_team = {v: k for k, v in MEMBERS.items()}
     my_team = name_to_team.get(selected_name, "")
 
-    # 휴가 목록 로드
+    # 휴가 목록 로드 (4조3교대 전용)
     from utils.sheets import load_leaves as _load_leaves
     leave_list = []
-    try:
-        leave_list = _load_leaves()
-    except Exception:
-        pass
+    if shift_type == "4조3교대":
+        try:
+            leave_list = _load_leaves()
+        except Exception:
+            pass
 
     def _get_day_info(d):
         """특정 날짜의 근무 정보 반환"""
+        # ── 4조3교대 외 단순 패턴 ──
+        if shift_type == "3조3교대":
+            s = _shift_for_date_3s3(d, _team_code)
+            return {"shift": s, "is_leave": False, "leave_type": "", "sub_for": "", "sub_for_shift": "", "sub_role": "", "raw": None}
+        if shift_type == "2조2교대":
+            s = _shift_for_date_2s2(d, _team_code)
+            return {"shift": s, "is_leave": False, "leave_type": "", "sub_for": "", "sub_for_shift": "", "sub_role": "", "raw": None}
+        if shift_type == "4조2교대":
+            s = _shift_for_date_4s2(d, _team_code)
+            return {"shift": s, "is_leave": False, "leave_type": "", "sub_for": "", "sub_for_shift": "", "sub_role": "", "raw": None}
+
+        # ── 4조3교대 ──
         shift = _shift_for_date(d, MEMBERS)
         s1, s2, s3, off = shift["1근_근무자"], shift["2근_근무자"], shift["3근_근무자"], shift["휴무_근무자"]
 
@@ -1829,8 +1906,10 @@ def page_my_schedule():
             "raw": shift,
         }
 
-    SHIFT_TIME = {"1근": "06:30~14:30", "2근": "14:30~22:30", "3근": "22:30~06:30", "휴무": ""}
-    SHIFT_COLOR = {"1근": "#1D4ED8", "2근": "#15803D", "3근": "#B91C1C", "휴무": "#374151"}
+    SHIFT_TIME = {"1근": "06:30~14:30", "2근": "14:30~22:30", "3근": "22:30~06:30", "휴무": "",
+                  "주간": "07:00~19:00", "야간": "19:00~07:00"}
+    SHIFT_COLOR = {"1근": "#1D4ED8", "2근": "#15803D", "3근": "#B91C1C", "휴무": "#374151",
+                   "주간": "#1D4ED8", "야간": "#B91C1C"}
 
     # ── 달력 설정 ──
     first_day = datetime.date(selected_year, selected_month, 1)
@@ -1844,7 +1923,23 @@ def page_my_schedule():
     sel_day_num = st.session_state[_skey]
 
     # 범례
-    st.markdown("""
+    if shift_type == "4조2교대":
+        _legend_html = """
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#0c1a38;border:1px solid #3b82f6;border-radius:20px;padding:3px 10px;font-size:12px;color:#93c5fd;font-weight:600;">☀️ 주간</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#1a100a;border:1px solid #f97316;border-radius:20px;padding:3px 10px;font-size:12px;color:#fdba74;font-weight:600;">🌙 야간</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#1a1a2e;border:1px solid #475569;border-radius:20px;padding:3px 10px;font-size:12px;color:#94a3b8;font-weight:600;">💤 휴무</span>
+</div>"""
+    elif shift_type in ("3조3교대", "2조2교대"):
+        _legend_html = """
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#0c1a38;border:1px solid #3b82f6;border-radius:20px;padding:3px 10px;font-size:12px;color:#93c5fd;font-weight:600;">🌅 1근</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#0b1a10;border:1px solid #22c55e;border-radius:20px;padding:3px 10px;font-size:12px;color:#86efac;font-weight:600;">☀️ 2근</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#1a100a;border:1px solid #f97316;border-radius:20px;padding:3px 10px;font-size:12px;color:#fdba74;font-weight:600;">🌙 3근</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#1a1a2e;border:1px solid #475569;border-radius:20px;padding:3px 10px;font-size:12px;color:#94a3b8;font-weight:600;">💤 휴무 (주말)</span>
+</div>"""
+    else:
+        _legend_html = """
 <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
   <span style="display:inline-flex;align-items:center;gap:5px;background:#0c1a38;border:1px solid #3b82f6;border-radius:20px;padding:3px 10px;font-size:12px;color:#93c5fd;font-weight:600;">🌅 1근</span>
   <span style="display:inline-flex;align-items:center;gap:5px;background:#0b1a10;border:1px solid #22c55e;border-radius:20px;padding:3px 10px;font-size:12px;color:#86efac;font-weight:600;">☀️ 2근</span>
@@ -1852,8 +1947,8 @@ def page_my_schedule():
   <span style="display:inline-flex;align-items:center;gap:5px;background:#1a1a2e;border:1px solid #475569;border-radius:20px;padding:3px 10px;font-size:12px;color:#94a3b8;font-weight:600;">💤 휴무</span>
   <span style="display:inline-flex;align-items:center;gap:5px;background:#201800;border:1px solid #f59e0b;border-radius:20px;padding:3px 10px;font-size:12px;color:#fde68a;font-weight:600;">🏖️ 휴가</span>
   <span style="display:inline-flex;align-items:center;gap:5px;background:#1c1035;border:1px solid #a855f7;border-radius:20px;padding:3px 10px;font-size:12px;color:#d8b4fe;font-weight:600;">🔄 대근</span>
-</div>
-""", unsafe_allow_html=True)
+</div>"""
+    st.markdown(_legend_html, unsafe_allow_html=True)
 
     # ── 달력 CSS ──
     st.markdown("""<style>
@@ -1950,12 +2045,17 @@ div[data-testid="stMarkdownContainer"]:has(.ctoday) + div[data-testid="stButton"
     # 상단 날짜 영역 — 공통 연한 보라 그라디언트
     _TOP_BG  = "linear-gradient(160deg, #3b2d6e, #2a1f52)"
     _TOP_BDR = "#5b4397"
-    SHIFT_TOP_BG  = {"1근": _TOP_BG, "2근": _TOP_BG, "3근": _TOP_BG, "휴무": _TOP_BG}
-    SHIFT_TOP_BDR = {"1근": _TOP_BDR, "2근": _TOP_BDR, "3근": _TOP_BDR, "휴무": "#3d3560"}
-    SHIFT_NUM_CLR = {"1근": "#c4b5fd", "2근": "#c4b5fd", "3근": "#c4b5fd", "휴무": "#7c6fa0"}
+    SHIFT_TOP_BG  = {"1근": _TOP_BG, "2근": _TOP_BG, "3근": _TOP_BG, "휴무": _TOP_BG,
+                     "주간": _TOP_BG, "야간": _TOP_BG}
+    SHIFT_TOP_BDR = {"1근": _TOP_BDR, "2근": _TOP_BDR, "3근": _TOP_BDR, "휴무": "#3d3560",
+                     "주간": _TOP_BDR, "야간": _TOP_BDR}
+    SHIFT_NUM_CLR = {"1근": "#c4b5fd", "2근": "#c4b5fd", "3근": "#c4b5fd", "휴무": "#7c6fa0",
+                     "주간": "#c4b5fd", "야간": "#c4b5fd"}
     SHIFT_LABEL   = {"1근": "🌅 1근  06:30~14:30", "2근": "☀️ 2근  14:30~22:30",
-                     "3근": "🌙 3근  22:30~06:30", "휴무": "💤 휴무"}
-    SHIFT_MCLS    = {"1근": "cs1", "2근": "cs2", "3근": "cs3", "휴무": "csoff"}
+                     "3근": "🌙 3근  22:30~06:30", "휴무": "💤 휴무",
+                     "주간": "☀️ 주간  07:00~19:00", "야간": "🌙 야간  19:00~07:00"}
+    SHIFT_MCLS    = {"1근": "cs1", "2근": "cs2", "3근": "cs3", "휴무": "csoff",
+                     "주간": "cs1", "야간": "cs3"}
 
     for wk in weeks:
         wcols = st.columns(7, gap="small")
@@ -2028,21 +2128,31 @@ div[data-testid="stMarkdownContainer"]:has(.ctoday) + div[data-testid="stButton"
                         st.rerun()
 
     # ── 월간 요약 ──
-    counts = {"1근": 0, "2근": 0, "3근": 0, "휴무": 0, "휴가": 0, "대근": 0}
+    if shift_type == "4조2교대":
+        counts = {"주간": 0, "야간": 0, "휴무": 0}
+        color_map = {"주간": "#1D4ED8", "야간": "#B91C1C", "휴무": "#6B7280"}
+    elif shift_type in ("3조3교대", "2조2교대"):
+        counts = {"1근": 0, "2근": 0, "3근": 0, "휴무": 0}
+        color_map = {"1근": "#1D4ED8", "2근": "#15803D", "3근": "#B91C1C", "휴무": "#6B7280"}
+    else:
+        counts = {"1근": 0, "2근": 0, "3근": 0, "휴무": 0, "휴가": 0, "대근": 0}
+        color_map = {"1근": "#1D4ED8", "2근": "#15803D", "3근": "#B91C1C", "휴무": "#6B7280", "휴가": "#D97706", "대근": "#7C3AED"}
+
     for dn in range(1, last_day.day + 1):
         d = datetime.date(selected_year, selected_month, dn)
         info = _get_day_info(d)
         if info["is_leave"]:
-            counts["휴가"] += 1
+            if "휴가" in counts:
+                counts["휴가"] += 1
         else:
             s = info["shift"]
             if s in counts:
                 counts[s] += 1
-        if info["sub_for"]:
+        if info["sub_for"] and "대근" in counts:
             counts["대근"] += 1
 
-    color_map = {"1근": "#1D4ED8", "2근": "#15803D", "3근": "#B91C1C", "휴무": "#6B7280", "휴가": "#D97706", "대근": "#7C3AED"}
-    summary_html = '<div class="summary-grid">'
+    _grid_cols = len(counts)
+    summary_html = f'<div style="display:grid;grid-template-columns:repeat({_grid_cols},1fr);gap:8px;margin-top:12px;margin-bottom:4px;">'
     for label, cnt in counts.items():
         summary_html += f'<div class="summary-card"><div class="sc-num" style="color:{color_map[label]}">{cnt}</div><div class="sc-label">{label}</div></div>'
     summary_html += "</div>"
@@ -2087,78 +2197,73 @@ div[data-testid="stMarkdownContainer"]:has(.ctoday) + div[data-testid="stButton"
     <span style="color:#C4B5FD;font-weight:600;">{info["sub_for"]} 휴가로 인한 대근</span>
   </div>'''
 
-    # 전체 근무 배치 — 휴가자 있으면 대근 체제로 표시
-    _vacationers_today = []
-    for lv in leave_list:
-        try:
-            _ls = datetime.date.fromisoformat(lv["start"])
-            _le = datetime.date.fromisoformat(lv["end"])
-        except Exception:
-            continue
-        if _ls <= sel_date <= _le:
-            _vacationers_today.append(lv)
+    if shift_type == "4조3교대":
+        # 전체 근무 배치 — 휴가자 있으면 대근 체제로 표시
+        _vacationers_today = []
+        for lv in leave_list:
+            try:
+                _ls = datetime.date.fromisoformat(lv["start"])
+                _le = datetime.date.fromisoformat(lv["end"])
+            except Exception:
+                continue
+            if _ls <= sel_date <= _le:
+                _vacationers_today.append(lv)
 
-    detail_html += '<div style="margin-top:14px;font-size:12px;color:#6C7086;font-weight:600;letter-spacing:1px;">전체 근무 배치</div>'
+        detail_html += '<div style="margin-top:14px;font-size:12px;color:#6C7086;font-weight:600;letter-spacing:1px;">전체 근무 배치</div>'
 
-    if _vacationers_today:
-        # 휴가자의 원래 근무 파악 → 나머지 2명을 주간/야간으로 배치
-        absent_names = {lv["name"] for lv in _vacationers_today}
-        # 3명 근무자 중 휴가자 제외
-        workers = []  # (근무자명, 조, 원래근무)
-        for shift_key, team_key, label in [
-            ("1근_근무자", "1근_조", "1근"),
-            ("2근_근무자", "2근_조", "2근"),
-            ("3근_근무자", "3근_조", "3근"),
-        ]:
-            name = raw[shift_key]
-            if name not in absent_names:
-                workers.append((name, raw[team_key], label))
+        if _vacationers_today:
+            absent_names = {lv["name"] for lv in _vacationers_today}
+            workers = []
+            for shift_key, team_key, label in [
+                ("1근_근무자", "1근_조", "1근"),
+                ("2근_근무자", "2근_조", "2근"),
+                ("3근_근무자", "3근_조", "3근"),
+            ]:
+                name = raw[shift_key]
+                if name not in absent_names:
+                    workers.append((name, raw[team_key], label))
 
-        # 주간/야간 결정: 3근 결근이면 1근=주간,2근=야간 / 그 외 3근이면 야간
-        absent_shifts = set()
-        for lv in _vacationers_today:
-            nm = lv["name"]
-            if raw["1근_근무자"] == nm: absent_shifts.add("1근")
-            elif raw["2근_근무자"] == nm: absent_shifts.add("2근")
-            elif raw["3근_근무자"] == nm: absent_shifts.add("3근")
+            absent_shifts = set()
+            for lv in _vacationers_today:
+                nm = lv["name"]
+                if raw["1근_근무자"] == nm: absent_shifts.add("1근")
+                elif raw["2근_근무자"] == nm: absent_shifts.add("2근")
+                elif raw["3근_근무자"] == nm: absent_shifts.add("3근")
 
-        def _role(orig_shift):
-            if "3근" in absent_shifts:
-                return "주간" if orig_shift == "1근" else "야간"
-            return "야간" if orig_shift == "3근" else "주간"
+            def _role(orig_shift):
+                if "3근" in absent_shifts:
+                    return "주간" if orig_shift == "1근" else "야간"
+                return "야간" if orig_shift == "3근" else "주간"
 
-        ROLE_COLOR = {"주간": "#1D6FA4", "야간": "#7C3AED"}
-        ROLE_TIME  = {"주간": "06:30~22:30", "야간": "22:30~06:30"}
+            ROLE_COLOR = {"주간": "#1D6FA4", "야간": "#7C3AED"}
+            ROLE_TIME  = {"주간": "06:30~22:30", "야간": "22:30~06:30"}
 
-        for name, team, orig in workers:
-            role = _role(orig)
-            clr  = ROLE_COLOR[role]
-            t    = ROLE_TIME[role]
-            detail_html += f'''
+            for name, team, orig in workers:
+                role = _role(orig)
+                clr  = ROLE_COLOR[role]
+                t    = ROLE_TIME[role]
+                detail_html += f'''
   <div class="detail-row">
     <span style="background:{clr};color:#fff;padding:2px 10px;border-radius:8px;font-size:12px;font-weight:700;">{role}</span>
     <span style="color:#CDD6F4;">{name} ({team}조)</span>
     <span style="color:#6C7086;font-size:12px;">{t}</span>
   </div>'''
 
-        # 휴가자 표시
-        for lv in _vacationers_today:
-            detail_html += f'''
+            for lv in _vacationers_today:
+                detail_html += f'''
   <div class="detail-row">
     <span style="background:#92400E;color:#FEF3C7;padding:2px 10px;border-radius:8px;font-size:12px;font-weight:700;">🌴 {lv["type"]}</span>
     <span style="color:#9399B2;">{lv["name"]} — 휴가</span>
   </div>'''
 
-        # 휴무자
-        detail_html += f'''
+            detail_html += f'''
   <div class="detail-row">
     <span style="background:#374151;color:#D1D5DB;padding:2px 10px;border-radius:8px;font-size:12px;font-weight:700;">휴무</span>
     <span style="color:#CDD6F4;">{raw["휴무_근무자"]} ({raw["휴무_조"]}조)</span>
     <span style="color:#6C7086;font-size:12px;">{raw["휴무_구분"]}</span>
   </div>'''
-    else:
-        # 휴가자 없음 — 정상 3교대 배치
-        detail_html += f'''
+        else:
+            detail_html += f'''
   <div class="detail-row">
     <span style="background:#1D4ED8;color:#fff;padding:2px 10px;border-radius:8px;font-size:12px;font-weight:700;">1근</span>
     <span style="color:#CDD6F4;">{raw["1근_근무자"]} ({raw["1근_조"]}조)</span>
@@ -2183,7 +2288,9 @@ div[data-testid="stMarkdownContainer"]:has(.ctoday) + div[data-testid="stButton"
     detail_html += "</div>"
     st.markdown(detail_html, unsafe_allow_html=True)
 
-    # ── 특이사항 입력 ──
+    # ── 특이사항 입력 (4조3교대 전용) ──
+    if shift_type != "4조3교대":
+        return
     from utils.sheets import save_schedule_note as _save_note, load_schedule_note as _load_note
     _note_key = f"sched_note_{selected_name}_{sel_date}"
     if _note_key not in st.session_state:
