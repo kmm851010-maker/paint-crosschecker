@@ -8,8 +8,10 @@
       "developmentClient": true,
       "distribution": "internal",
       "android": {
-        "buildType": "apk",
-        "applicationId": "com.kgsteel.paintchecker.dev"
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_VARIANT": "development"
       }
     },
     "preview": {
