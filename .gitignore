@@ -24,3 +24,6 @@ Thumbs.db
 *.aab
 api json/
 streamlit_secrets.txt
+
+# 로컬 Streamlit secrets (절대 커밋 금지)
+.streamlit/secrets.toml
