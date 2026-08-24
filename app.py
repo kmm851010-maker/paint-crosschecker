@@ -216,7 +216,7 @@ st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(
     "메뉴 선택",
-    ["🔍 생산계획 vs 입고 교차검증", "📊 캡처 이미지 → 엑셀 변환기", "📋 일일 작업일지 작성", "📈 근무 통계", "📅 근무 일정표", "📦 재고 관리"],
+    ["🔍 생산계획 vs 입고 교차검증", "📋 일일 작업일지 작성", "📈 근무 통계", "📅 근무 일정표", "📦 재고 관리"],
     label_visibility="collapsed",
 )
 
@@ -2437,8 +2437,6 @@ def page_inventory():
 # ──────────────────────────────────────
 if menu == "🔍 생산계획 vs 입고 교차검증":
     page_cross_check()
-elif menu == "📊 캡처 이미지 → 엑셀 변환기":
-    page_image_to_excel()
 elif menu == "📋 일일 작업일지 작성":
     page_work_log()
 elif menu == "📈 근무 통계":
