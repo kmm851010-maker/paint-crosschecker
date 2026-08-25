@@ -32,10 +32,10 @@ const MAKER_MAP: Record<string, string> = {
 };
 
 // ── OCR 추출 패턴 ──
-// LOT: 영문1 + 숫자2 + 영문1 + 숫자5 = 9자  예) P26D03917
-const LOT_RE = /[A-Z][0-9]{2}[A-Z][0-9]{5}/;
-// 품명: 영문1 + 숫자1 + 영문1 + (숫자또는영문){3} + 영문1 = 7자  예) P7M122B, P7YA83B
-const ITEM_RE = /[A-Z][0-9][A-Z][A-Z0-9]{3}[A-Z]/;
+// LOT: 제조사(G/D/K/S/Y/P) + 년도2자리 + 월(A=1월~L=12월) + 일련번호5자리
+const LOT_RE = /[GDKSYP][0-9]{2}[A-L][0-9]{5}/;
+// 품명: 영문1 + 숫자1 + 영문1 + (영문or숫자)1 + 숫자2 + 영문1 = 7자  예) P7M122B, P7YA83B
+const ITEM_RE = /[A-Z][0-9][A-Z][A-Z0-9][0-9]{2}[A-Z]/;
 const LOT_KEYWORDS = ["DRUM LOT", "LOT.NO", "DRUM NO", "LOT NO", "LOT", "롯트번호"];
 
 function parseOcrBlocks(blocks: TextBlock[]): DrumItem | null {
@@ -78,8 +78,8 @@ function parseOcrBlocks(blocks: TextBlock[]): DrumItem | null {
 }
 
 // ── 형식 검증 ──
-const LOT_VALID = /^[A-Z][0-9]{2}[A-Z][0-9]{5}$/;
-const ITEM_VALID = /^[A-Z][0-9][A-Z][A-Z0-9]{3}[A-Z]$/;
+const LOT_VALID = /^[GDKSYP][0-9]{2}[A-L][0-9]{5}$/;
+const ITEM_VALID = /^[A-Z][0-9][A-Z][A-Z0-9][0-9]{2}[A-Z]$/;
 
 function validateBatch(drums: DrumItem[]): string[] {
   const warns: string[] = [];
