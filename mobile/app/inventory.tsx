@@ -157,7 +157,8 @@ export default function InventoryScreen() {
   const batchRef = useRef<DrumItem[]>([]);
   const processingRef = useRef(false);
   const cooldownRef = useRef(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scanActiveRef = useRef(false);
+  const intervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flashAnim = useRef(new Animated.Value(0)).current;
   const torchModeRef = useRef<"off" | "auto" | "on">("off");
 
@@ -201,19 +202,22 @@ export default function InventoryScreen() {
     return () => sub.remove();
   }, [mode]);
 
-  // 스캔 모드 진입/종료 + 저장 중 OCR 루프 시작/정지
+  // 스캔 모드 진입/종료 + OCR 루프 시작/정지 (setTimeout 체이닝 방식)
   useEffect(() => {
     if (mode === "scanning" && !loading) {
-      intervalRef.current = setInterval(runOcr, SCAN_SPEEDS[speedIdxRef.current]);
+      scanActiveRef.current = true;
+      intervalRef.current = setTimeout(runOcr, SCAN_SPEEDS[speedIdxRef.current]);
     } else {
+      scanActiveRef.current = false;
       if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+        clearTimeout(intervalRef.current);
         intervalRef.current = null;
       }
     }
     return () => {
+      scanActiveRef.current = false;
       if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+        clearTimeout(intervalRef.current);
         intervalRef.current = null;
       }
     };
@@ -228,7 +232,7 @@ export default function InventoryScreen() {
   };
 
   const runOcr = async () => {
-    if (processingRef.current || cooldownRef.current || !cameraRef.current) return;
+    if (cooldownRef.current || !cameraRef.current || !scanActiveRef.current) return;
     processingRef.current = true;
     let uri: string | undefined;
     try {
@@ -263,6 +267,10 @@ export default function InventoryScreen() {
     } finally {
       processingRef.current = false;
       if (uri) FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+      // 완료 후 다음 OCR 예약 (슬라이더 속도 = 완료~다음 시작 간격)
+      if (scanActiveRef.current) {
+        intervalRef.current = setTimeout(runOcr, SCAN_SPEEDS[speedIdxRef.current]);
+      }
     }
   };
 
@@ -634,12 +642,16 @@ export default function InventoryScreen() {
           {returnFilter !== "" && returnFilterDrums.length > 0 && (
             <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 4, gap: 8, backgroundColor: "#F9FAFB", borderBottomWidth: 1, borderBottomColor: "#E5E7EB" }}>
               <Text style={{ fontSize: 12, color: "#555" }}>{returnFilter}반품 {returnFilterDrums.length}건</Text>
-              <TouchableOpacity
-                style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: COLORS.primary, borderRadius: 6 }}
-                onPress={() => setSelectedLots(new Set(returnFilterDrums.map((d: any) => d.lot)))}
-              >
-                <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>전체선택</Text>
-              </TouchableOpacity>
+              {sortMode !== "maker" ? (
+                <TouchableOpacity
+                  style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: COLORS.primary, borderRadius: 6 }}
+                  onPress={() => setSelectedLots(new Set(returnFilterDrums.map((d: any) => d.lot)))}
+                >
+                  <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>전체선택</Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={{ fontSize: 11, color: "#999" }}>제조사별 그룹에서 선택하세요 ▼</Text>
+              )}
               {selectedLots.size > 0 && (
                 <TouchableOpacity
                   style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: "#6B7280", borderRadius: 6 }}
@@ -663,20 +675,27 @@ export default function InventoryScreen() {
                   <View style={styles.sectorHeader}>
                     <Text style={styles.sectorName}>{key}</Text>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      {/* 반품필터 + 제조사 정렬 시 그룹 내 반품만 선택 */}
+                      {/* 반품필터 + 제조사 정렬 시 그룹별 전체선택 (토글) */}
                       {returnFilter !== "" && sortMode === "maker" && (() => {
                         const grpReturn = grouped[key].filter((d: any) => d.returnStatus === returnFilter);
                         if (grpReturn.length === 0) return null;
+                        const allGrpSelected = grpReturn.every((d: any) => selectedLots.has(d.lot));
                         return (
                           <TouchableOpacity
-                            style={{ paddingHorizontal: 7, paddingVertical: 2, backgroundColor: COLORS.primary, borderRadius: 5 }}
+                            style={{ paddingHorizontal: 9, paddingVertical: 3, backgroundColor: allGrpSelected ? "#6B7280" : COLORS.primary, borderRadius: 5 }}
                             onPress={() => setSelectedLots(prev => {
                               const next = new Set(prev);
-                              grpReturn.forEach((d: any) => next.add(d.lot));
+                              if (allGrpSelected) {
+                                grpReturn.forEach((d: any) => next.delete(d.lot));
+                              } else {
+                                grpReturn.forEach((d: any) => next.add(d.lot));
+                              }
                               return next;
                             })}
                           >
-                            <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>{returnFilter} {grpReturn.length}건</Text>
+                            <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>
+                              {allGrpSelected ? "선택해제" : `전체선택 ${grpReturn.length}건`}
+                            </Text>
                           </TouchableOpacity>
                         );
                       })()}
