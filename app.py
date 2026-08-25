@@ -30,7 +30,7 @@ st.set_page_config(
 # ──────────────────────────────────────
 # 세션 토큰 (HMAC 서명 - 서버 재시작 후에도 유효)
 # ──────────────────────────────────────
-_SESSION_TTL = 3 * 60 * 60  # 3시간
+_SESSION_TTL = 5 * 60 * 60  # 5시간
 
 def _get_secret() -> bytes:
     return st.secrets.get("session_secret", "kg-steel-default-secret-2024").encode()
