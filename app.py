@@ -991,9 +991,31 @@ def page_work_log():
         with rc5:
             leave_sub = st.selectbox("대근자", [""] + ALL_MEMBERS, key="leave_sub")
 
+        # 공휴 + 평일 포함 시 경고
+        _gonghu_weekday_warn = False
+        if leave_type == "공휴":
+            _cur = leave_start
+            while _cur <= leave_end:
+                if _cur.weekday() < 5:  # 월~금
+                    _gonghu_weekday_warn = True
+                    break
+                _cur += datetime.timedelta(days=1)
+
+        if _gonghu_weekday_warn:
+            st.warning(
+                "⚠️ **공휴는 주말 또는 법정공휴일에만 적용됩니다.**  \n"
+                f"선택 기간 **{leave_start} ~ {leave_end}** 에 평일이 포함되어 있습니다.  \n"
+                "평일에 공휴를 등록하려면 아래를 체크하세요."
+            )
+            _gonghu_confirmed = st.checkbox("⚠️ 평일 포함을 확인하고 등록합니다.", key="gonghu_confirm")
+        else:
+            _gonghu_confirmed = True
+
         if st.button("✅ 등록", use_container_width=True, key="add_leave"):
             if leave_start > leave_end:
                 st.error("시작일이 종료일보다 늦습니다.")
+            elif _gonghu_weekday_warn and not _gonghu_confirmed:
+                st.error("⛔ 평일이 포함된 공휴 등록 시 확인 체크가 필요합니다.")
             else:
                 st.session_state["leave_list"].append({
                     "name": leave_name,
@@ -1113,21 +1135,33 @@ def page_work_log():
         return day_ot, night_ot, start, end
 
     if is_2person:
+        _leave_type_2p = shift_auto.get("leave_type", "")
+        _is_gonghu = _leave_type_2p == "공휴"
+        _default_note = "공휴일 휴일연장대근" if _is_gonghu else "대휴 연장4H"
+
+        if _is_gonghu:
+            st.info(
+                f"🗓️ **공휴일 근무 체제** — {shift_auto.get('leave_person', '')} 공휴 처리 "
+                f"→ 나머지 2인이 **휴일연장대근**으로 커버합니다."
+            )
+
         c1, c2, c3 = st.columns(3)
         with c1:
             st.markdown("**주간** (06:30~18:30)")
             day_name = st.text_input("주간 근무자", value=shift_auto["주간_근무자"])
             day_day_ot, day_night_ot, _, _ = _ot_widget("day_ot_start", "day_ot_end")
-            day_note = st.text_input("주간 비고", "대근 연장4H")
+            day_note = st.text_input("주간 비고", _default_note)
         with c2:
             st.markdown("**야간** (18:30~06:30)")
             night_name = st.text_input("야간 근무자", value=shift_auto["야간_근무자"])
             night_day_ot, night_night_ot, _, _ = _ot_widget("night_ot_start", "night_ot_end")
-            night_note = st.text_input("야간 비고", "대근 연장4H")
+            night_note = st.text_input("야간 비고", _default_note)
         with c3:
             st.markdown("**휴무**")
             off_name = st.text_input("휴무자", value=shift_auto["휴무_근무자"])
-            off_type = st.selectbox("휴무 구분", ["교대휴무","주휴휴무"], index=0 if shift_auto["휴무_구분"]=="교대휴무" else 1)
+            _off_opts_2p = ["교대휴무","주휴휴무","정기휴가","연차","특별휴가","명휴","생일휴가","공가","공상휴업","산재","휴직","대휴","교육","결근","조퇴","외출","청원휴가","공휴"]
+            _off_idx_2p = _off_opts_2p.index(shift_auto["휴무_구분"]) if shift_auto["휴무_구분"] in _off_opts_2p else 0
+            off_type = st.selectbox("휴무 구분", _off_opts_2p, index=_off_idx_2p)
 
         shift_data_final = {
             "1근_조": shift_auto["주간_조"], "1근_근무자": day_name,
@@ -1160,8 +1194,9 @@ def page_work_log():
         with c4:
             st.markdown("**휴무**")
             off_name = st.text_input("휴무자", value=shift_auto["휴무_근무자"])
-            off_type = st.selectbox("휴무 구분", ["교대휴무","주휴휴무","정기휴가","연차","특별휴가","명휴","생일휴가","공가","공상휴업","산재","휴직","교육"],
-                                    index=0 if shift_auto["휴무_구분"]=="교대휴무" else 1)
+            _off_opts_3p = ["교대휴무","주휴휴무","정기휴가","연차","특별휴가","명휴","생일휴가","공가","공상휴업","산재","휴직","대휴","교육","결근","조퇴","외출","청원휴가","공휴"]
+            _off_idx_3p = _off_opts_3p.index(shift_auto["휴무_구분"]) if shift_auto["휴무_구분"] in _off_opts_3p else 0
+            off_type = st.selectbox("휴무 구분", _off_opts_3p, index=_off_idx_3p)
 
         shift_data_final = {
             "1근_조": shift_auto["1근_조"], "1근_근무자": s1_name,
