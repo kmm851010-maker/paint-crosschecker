@@ -124,7 +124,7 @@ function filterAndProceed(
 
 const SECTORS = [
   "입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리",
-  "8번자리", "9번자리", "반품자리", "CW2", "CP5", "창고뒤", "창고사이", "롤반 앞", "믹싱룸",
+  "8번자리", "9번자리", "반품자리", "CW2", "CP5", "창고뒤", "창고사이", "하차장", "롤반 앞", "믹싱룸",
 ];
 const CHECKOUT = "라인입고";
 type Mode = "idle" | "scanning" | "sectorPick" | "status";
