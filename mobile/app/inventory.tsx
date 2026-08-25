@@ -374,6 +374,7 @@ export default function InventoryScreen() {
           </View>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 
@@ -398,7 +399,6 @@ export default function InventoryScreen() {
           </TouchableOpacity>
         </View>
       </View>
-      </KeyboardAvoidingView>
     </Modal>
   );
 
