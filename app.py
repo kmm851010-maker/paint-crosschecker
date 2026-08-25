@@ -2762,8 +2762,8 @@ def page_inventory():
                     st.session_state[f"chk_{_l}"] = True
                 st.rerun()
         if _info_cols[2].button("선택해제", key="rf_desel", use_container_width=True):
-            for _l in rf_lots:
-                st.session_state.pop(f"chk_{_l}", None)
+            for _l in df_all["lot"].tolist():
+                st.session_state[f"chk_{_l}"] = False
             st.rerun()
 
     # 드럼별 체크박스 선택
@@ -2771,21 +2771,18 @@ def page_inventory():
     _seen_groups = []
     for group_key, group_df in df_filtered.groupby(group_col, sort=False):
         cnt = len(group_df)
-        # 제조사별 + 반품필터: 그룹 내 반품 항목 목록
+        # 반품필터 활성 시 그룹 내 해당 반품 항목 목록
         grp_rf_lots = group_df[group_df["returnStatus"] == return_filter]["lot"].tolist() if return_filter else []
         grp_all_rf_selected = bool(grp_rf_lots) and all(st.session_state.get(f"chk_{_l}", False) for _l in grp_rf_lots)
 
         with st.expander(f"**{group_key}** — {cnt}드럼", expanded=True):
             # 그룹별 전체선택 버튼 (반품필터 활성 + 해당 그룹에 반품 항목 있을 때)
             if grp_rf_lots:
-                _gbtn_label = f"선택해제 ({len(grp_rf_lots)})" if grp_all_rf_selected else f"{'제조사 ' if sort_mode=='제조사별' else ''}전체선택 {len(grp_rf_lots)}건"
+                _gbtn_label = f"선택해제 ({len(grp_rf_lots)})" if grp_all_rf_selected else f"{'제조사별 ' if sort_mode=='제조사별' else ''}전체선택 {len(grp_rf_lots)}건"
                 if st.button(_gbtn_label, key=f"grpsel_{group_key}", type="secondary"):
                     _new_val = not grp_all_rf_selected
                     for _l in grp_rf_lots:
-                        if _new_val:
-                            st.session_state[f"chk_{_l}"] = True
-                        else:
-                            st.session_state.pop(f"chk_{_l}", None)
+                        st.session_state[f"chk_{_l}"] = _new_val
                     st.rerun()
 
             # 헤더
