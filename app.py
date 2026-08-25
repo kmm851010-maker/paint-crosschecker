@@ -2457,9 +2457,14 @@ def page_inventory():
                         st.rerun()
 
             if unmatched:
-                with st.expander(f"재고 미매칭 {len(unmatched)}건 (현재 재고에 없는 LOT)"):
-                    import pandas as _pd3
-                    st.dataframe(_pd3.DataFrame(unmatched), use_container_width=True, hide_index=True)
+                st.warning(
+                    f"⚠️ 아래 **{len(unmatched)}건**은 현재 재고에 없어 적용에서 제외됩니다.",
+                    icon=None,
+                )
+                import pandas as _pd3
+                df_um = _pd3.DataFrame(unmatched)[["product", "lot_no", "return_type"]]
+                df_um.columns = ["품명", "LOT-NO", "반품유형"]
+                st.dataframe(df_um, use_container_width=True, hide_index=True)
 
     st.markdown("---")
 
