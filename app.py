@@ -2569,12 +2569,25 @@ def page_inventory():
     st.subheader("📦 재고 현황")
     st.caption("스캔/등록은 모바일 앱에서 진행하세요.")
 
-    col_refresh, _, col_sort = st.columns([1, 3, 2])
+    col_refresh, col_sort = st.columns([1, 5])
     with col_refresh:
         if st.button("🔄 새로고침", key="inv_refresh"):
             st.rerun()
     with col_sort:
-        sort_mode = st.radio("정렬", ["섹터별", "제조사별", "품목별"], horizontal=True, key="inv_sort", label_visibility="collapsed")
+        sort_mode = st.radio("정렬", ["섹터별", "제조사별", "품목별", "LOT순", "반품순"], horizontal=True, key="inv_sort", label_visibility="collapsed")
+
+    # 반품 필터 탭
+    _rf_cols = st.columns([1, 1, 1, 4])
+    _rf_opts = {"": "전체", "불량": "🔴 불량반품", "기술": "🟡 기술반품", "무상": "🔵 무상반품"}
+    if "inv_return_filter" not in st.session_state:
+        st.session_state["inv_return_filter"] = ""
+    for _i, (_rf_key, _rf_label) in enumerate(list(_rf_opts.items())[1:]):
+        with _rf_cols[_i]:
+            _active = st.session_state["inv_return_filter"] == _rf_key
+            if st.button(_rf_label, key=f"rfbtn_{_rf_key}", type="primary" if _active else "secondary", use_container_width=True):
+                st.session_state["inv_return_filter"] = "" if _active else _rf_key
+                st.rerun()
+    return_filter = st.session_state["inv_return_filter"]
 
     try:
         resp = _req.get(f"{BACKEND}/api/inventory/sectors", timeout=10)
@@ -2608,12 +2621,32 @@ def page_inventory():
     if search.strip():
         s = search.strip().upper()
         mask = df_all["lot"].str.upper().str.contains(s, na=False) | df_all["product"].str.upper().str.contains(s, na=False)
-        df_filtered = df_all[mask]
+        df_filtered = df_all[mask].copy()
     else:
-        df_filtered = df_all
+        df_filtered = df_all.copy()
 
-    # 그룹 키
-    group_col = {"섹터별": "sector", "제조사별": "maker", "품목별": "product"}[sort_mode]
+    # 반품 필터 활성 시: 해당 반품 항목 상단 정렬 키 부여
+    if return_filter:
+        df_filtered["_rsort"] = df_filtered["returnStatus"].apply(lambda rs: 0 if rs == return_filter else 1)
+    else:
+        df_filtered["_rsort"] = 0
+
+    # 그룹 키 + 정렬
+    if sort_mode == "LOT순":
+        group_col = "_all"
+        df_filtered["_all"] = "전체 (LOT순)"
+        df_filtered = df_filtered.sort_values(["_rsort", "lot"])
+    elif sort_mode == "반품순":
+        group_col = "_rgroup"
+        _rorder = {"불량": 0, "기술": 1, "무상": 2}
+        df_filtered["_rgroup"] = df_filtered["returnStatus"].apply(
+            lambda rs: f"{'🔴' if rs=='불량' else '🟡' if rs=='기술' else '🔵' if rs=='무상' else '⬜'} {'불량반품' if rs=='불량' else '기술반품' if rs=='기술' else '무상반품' if rs=='무상' else '정상'}"
+        )
+        df_filtered["_rord"] = df_filtered["returnStatus"].map(_rorder).fillna(9)
+        df_filtered = df_filtered.sort_values(["_rord", "lot"])
+    else:
+        group_col = {"섹터별": "sector", "제조사별": "maker", "품목별": "product"}[sort_mode]
+        df_filtered = df_filtered.sort_values(["_rsort", group_col, "lot"])
 
     # ─── 반품 리스트 자동 매칭 ───────────────────────────────────
     with st.expander("📋 반품 리스트 자동 매칭 (이미지/엑셀 업로드)", expanded=False):
@@ -2717,21 +2750,55 @@ def page_inventory():
 
     st.markdown("---")
 
+    # 반품 필터 활성 시 안내 + 전체선택 (제조사 정렬이 아닐 때만)
+    if return_filter:
+        rf_drums = df_filtered[df_filtered["returnStatus"] == return_filter]
+        rf_lots = rf_drums["lot"].tolist()
+        _info_cols = st.columns([2, 1, 1, 3])
+        _info_cols[0].info(f"{_rf_opts[return_filter]} {len(rf_lots)}건 필터 중")
+        if sort_mode != "제조사별" and rf_lots:
+            if _info_cols[1].button("전체선택", key="rf_selall", use_container_width=True):
+                for _l in rf_lots:
+                    st.session_state[f"chk_{_l}"] = True
+                st.rerun()
+        if _info_cols[2].button("선택해제", key="rf_desel", use_container_width=True):
+            for _l in rf_lots:
+                st.session_state.pop(f"chk_{_l}", None)
+            st.rerun()
+
     # 드럼별 체크박스 선택
     selected_lots = set()
-    for group_key, group_df in df_filtered.groupby(group_col, sort=True):
+    _seen_groups = []
+    for group_key, group_df in df_filtered.groupby(group_col, sort=False):
         cnt = len(group_df)
+        # 제조사별 + 반품필터: 그룹 내 반품 항목 목록
+        grp_rf_lots = group_df[group_df["returnStatus"] == return_filter]["lot"].tolist() if return_filter else []
+        grp_all_rf_selected = bool(grp_rf_lots) and all(st.session_state.get(f"chk_{_l}", False) for _l in grp_rf_lots)
+
         with st.expander(f"**{group_key}** — {cnt}드럼", expanded=True):
+            # 그룹별 전체선택 버튼 (반품필터 활성 + 해당 그룹에 반품 항목 있을 때)
+            if grp_rf_lots:
+                _gbtn_label = f"선택해제 ({len(grp_rf_lots)})" if grp_all_rf_selected else f"{'제조사 ' if sort_mode=='제조사별' else ''}전체선택 {len(grp_rf_lots)}건"
+                if st.button(_gbtn_label, key=f"grpsel_{group_key}", type="secondary"):
+                    _new_val = not grp_all_rf_selected
+                    for _l in grp_rf_lots:
+                        if _new_val:
+                            st.session_state[f"chk_{_l}"] = True
+                        else:
+                            st.session_state.pop(f"chk_{_l}", None)
+                    st.rerun()
+
             # 헤더
             h1, h2, h3, h4, h5, h6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
             h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
             h4.markdown("**제조사**")
-            if sort_mode != "섹터별": h5.markdown("**섹터**")
+            if sort_mode not in ("섹터별",): h5.markdown("**섹터**")
             h6.markdown("**등록시간**")
             # 행
             for _, row in group_df.iterrows():
                 rs = row.get("returnStatus", "")
                 return_emoji = "🔴" if rs == "불량" else "🟡" if rs == "기술" else "🔵" if rs == "무상" else ""
+                _row_bg = ""
                 c1, c2, c3, c4, c5, c6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
                 checked = c1.checkbox("", key=f"chk_{row['lot']}", label_visibility="collapsed")
                 if checked:
@@ -2740,7 +2807,7 @@ def page_inventory():
                 c2.markdown(product_label)
                 c3.text(row.get("lot", ""))
                 c4.text(row.get("maker", ""))
-                if sort_mode != "섹터별":
+                if sort_mode not in ("섹터별",):
                     c5.text(row.get("sector", ""))
                 c6.text(row.get("registered", ""))
 
