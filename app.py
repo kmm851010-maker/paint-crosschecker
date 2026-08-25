@@ -2381,7 +2381,7 @@ def page_inventory():
 
     st.markdown("---")
 
-    # 드럼별 체크박스 선택 (라인입고용)
+    # 드럼별 체크박스 선택
     selected_lots = set()
     for group_key, group_df in df_filtered.groupby(group_col, sort=True):
         cnt = len(group_df)
@@ -2394,42 +2394,85 @@ def page_inventory():
             h6.markdown("**등록시간**")
             # 행
             for _, row in group_df.iterrows():
+                is_return = row.get("returnStatus") == "Y"
                 c1, c2, c3, c4, c5, c6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
                 checked = c1.checkbox("", key=f"chk_{row['lot']}", label_visibility="collapsed")
                 if checked:
                     selected_lots.add(row["lot"])
-                c2.markdown(f"**{row.get('product','')}**")
+                product_label = f"🟡 **{row.get('product','')}**" if is_return else f"**{row.get('product','')}**"
+                c2.markdown(product_label)
                 c3.text(row.get("lot", ""))
                 c4.text(row.get("maker", ""))
                 if sort_mode != "섹터별":
                     c5.text(row.get("sector", ""))
                 c6.text(row.get("registered", ""))
 
-    # 라인입고 / 반품완료 버튼
+    # 액션 버튼바
     if selected_lots:
         st.markdown("---")
         selected_drums_list = [d for d in all_drums if d["lot"] in selected_lots]
-        all_in_return = all(d.get("sector") == "반품대기" for d in selected_drums_list)
+        all_in_return = all(d.get("returnStatus") == "Y" for d in selected_drums_list)
         st.warning(f"**{len(selected_lots)}드럼** 선택됨")
+
         if all_in_return:
-            btn_label = f"↩️ 반품완료 처리 ({len(selected_lots)}드럼)"
-            btn_sector = "반품완료"
-            btn_ok_msg = f"{len(selected_drums_list)}드럼 반품완료 처리되었습니다."
+            ba, bb, bc = st.columns(3)
+            if ba.button(f"↩️ 반품완료 ({len(selected_lots)})", type="primary", key="btn_return_done"):
+                try:
+                    res = _req.post(f"{BACKEND}/api/inventory/register",
+                                    json={"drums": selected_drums_list, "sector": "반품완료"}, timeout=15)
+                    if res.ok:
+                        st.success(f"{len(selected_drums_list)}드럼 반품완료 처리!")
+                        st.rerun()
+                    else:
+                        st.error(f"실패: {res.text}")
+                except Exception as e:
+                    st.error(f"오류: {e}")
+            if bb.button(f"🔓 반품대기 해제 ({len(selected_lots)})", key="btn_return_cancel"):
+                try:
+                    res = _req.post(f"{BACKEND}/api/inventory/return-status",
+                                    json={"drums": selected_drums_list, "status": ""}, timeout=15)
+                    if res.ok:
+                        st.success(f"{len(selected_drums_list)}드럼 반품대기 해제!")
+                        st.rerun()
+                    else:
+                        st.error(f"실패: {res.text}")
+                except Exception as e:
+                    st.error(f"오류: {e}")
+            if bc.button(f"🚚 라인입고 ({len(selected_lots)})", key="btn_checkout_r"):
+                try:
+                    res = _req.post(f"{BACKEND}/api/inventory/register",
+                                    json={"drums": selected_drums_list, "sector": "라인입고"}, timeout=15)
+                    if res.ok:
+                        st.success(f"{len(selected_drums_list)}드럼 라인입고 완료!")
+                        st.rerun()
+                    else:
+                        st.error(f"실패: {res.text}")
+                except Exception as e:
+                    st.error(f"오류: {e}")
         else:
-            btn_label = f"🚚 라인입고 처리 ({len(selected_lots)}드럼)"
-            btn_sector = "라인입고"
-            btn_ok_msg = f"{len(selected_drums_list)}드럼 라인입고 처리 완료!"
-        if st.button(btn_label, type="primary", key="checkout_btn"):
-            try:
-                res = _req.post(f"{BACKEND}/api/inventory/register",
-                                json={"drums": selected_drums_list, "sector": btn_sector}, timeout=15)
-                if res.ok:
-                    st.success(btn_ok_msg)
-                    st.rerun()
-                else:
-                    st.error(f"실패: {res.text}")
-            except Exception as e:
-                st.error(f"오류: {e}")
+            ca, cb = st.columns(2)
+            if ca.button(f"🚚 라인입고 ({len(selected_lots)})", type="primary", key="btn_checkout"):
+                try:
+                    res = _req.post(f"{BACKEND}/api/inventory/register",
+                                    json={"drums": selected_drums_list, "sector": "라인입고"}, timeout=15)
+                    if res.ok:
+                        st.success(f"{len(selected_drums_list)}드럼 라인입고 완료!")
+                        st.rerun()
+                    else:
+                        st.error(f"실패: {res.text}")
+                except Exception as e:
+                    st.error(f"오류: {e}")
+            if cb.button(f"⏳ 반품대기 ({len(selected_lots)})", key="btn_return_set"):
+                try:
+                    res = _req.post(f"{BACKEND}/api/inventory/return-status",
+                                    json={"drums": selected_drums_list, "status": "Y"}, timeout=15)
+                    if res.ok:
+                        st.success(f"{len(selected_drums_list)}드럼 반품대기 등록!")
+                        st.rerun()
+                    else:
+                        st.error(f"실패: {res.text}")
+                except Exception as e:
+                    st.error(f"오류: {e}")
 
 
 # ──────────────────────────────────────
