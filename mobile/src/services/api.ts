@@ -181,7 +181,7 @@ export async function getSectorInventory(): Promise<SectorInventory> {
   return data.sectors;
 }
 
-export async function setDrumReturnStatus(drums: DrumItem[], status: "Y" | ""): Promise<void> {
+export async function setDrumReturnStatus(drums: DrumItem[], status: "불량" | "기술" | "무상" | ""): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/api/inventory/return-status`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

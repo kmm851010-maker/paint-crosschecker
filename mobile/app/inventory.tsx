@@ -701,7 +701,7 @@ export default function InventoryScreen() {
               )}
               {loading && <ActivityIndicator color="#fff" size="small" />}
             </View>
-          }}
+          )}
         </View>
       </>
     );
