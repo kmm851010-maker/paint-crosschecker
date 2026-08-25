@@ -408,11 +408,14 @@ export default function InventoryScreen() {
             <Text style={styles.scanListCount}>총 {batch.length}건 스캔됨</Text>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <TouchableOpacity
-                style={[styles.doneSmallBtn, { backgroundColor: scanManual ? "#4AFF91" : "#555" }]}
+                style={[
+                  styles.doneSmallBtn,
+                  { backgroundColor: scanManual ? "#4AFF91" : "#333", borderWidth: 1.5, borderColor: scanManual ? "#4AFF91" : "#888", minWidth: 36 }
+                ]}
                 onPress={() => setScanManual(m => !m)}
               >
-                <Text style={[styles.doneSmallBtnText, scanManual && { color: "#111" }]}>
-                  {scanManual ? "수동" : "자동"}
+                <Text style={[styles.doneSmallBtnText, scanManual ? { color: "#111", fontWeight: "900", fontSize: 15 } : { color: "#aaa", fontSize: 15 }]}>
+                  {scanManual ? "M" : "A"}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
