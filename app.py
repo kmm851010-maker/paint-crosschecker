@@ -991,31 +991,38 @@ def page_work_log():
         with rc5:
             leave_sub = st.selectbox("대근자", [""] + ALL_MEMBERS, key="leave_sub")
 
-        # 공휴 + 평일 포함 시 경고
-        _gonghu_weekday_warn = False
+        # 공휴 검증: 한국 법정공휴일(국경일·명절·대체공휴일)이 아닌 날 감지
+        _gonghu_nonholiday = []
         if leave_type == "공휴":
-            _cur = leave_start
-            while _cur <= leave_end:
-                if _cur.weekday() < 5:  # 월~금
-                    _gonghu_weekday_warn = True
-                    break
-                _cur += datetime.timedelta(days=1)
+            try:
+                import holidays as _hol
+                _cur = leave_start
+                _weekday_names = ["월", "화", "수", "목", "금", "토", "일"]
+                while _cur <= leave_end:
+                    _kr = _hol.SouthKorea(years=_cur.year)
+                    if _cur not in _kr:
+                        _gonghu_nonholiday.append(
+                            f"{_cur.strftime('%m/%d')}({_weekday_names[_cur.weekday()]})"
+                        )
+                    _cur += datetime.timedelta(days=1)
+            except Exception:
+                pass  # holidays 라이브러리 없으면 검증 생략
 
-        if _gonghu_weekday_warn:
+        if _gonghu_nonholiday:
             st.warning(
-                "⚠️ **공휴는 주말 또는 법정공휴일에만 적용됩니다.**  \n"
-                f"선택 기간 **{leave_start} ~ {leave_end}** 에 평일이 포함되어 있습니다.  \n"
-                "평일에 공휴를 등록하려면 아래를 체크하세요."
+                "⚠️ **공휴는 국경일·명절·대체공휴일에만 적용 가능합니다.**  \n"
+                f"선택 기간 중 법정공휴일이 아닌 날: **{', '.join(_gonghu_nonholiday)}**  \n"
+                "그래도 등록하려면 아래를 체크하세요."
             )
-            _gonghu_confirmed = st.checkbox("⚠️ 평일 포함을 확인하고 등록합니다.", key="gonghu_confirm")
+            _gonghu_confirmed = st.checkbox("⚠️ 비공휴일 포함을 확인하고 등록합니다.", key="gonghu_confirm")
         else:
             _gonghu_confirmed = True
 
         if st.button("✅ 등록", use_container_width=True, key="add_leave"):
             if leave_start > leave_end:
                 st.error("시작일이 종료일보다 늦습니다.")
-            elif _gonghu_weekday_warn and not _gonghu_confirmed:
-                st.error("⛔ 평일이 포함된 공휴 등록 시 확인 체크가 필요합니다.")
+            elif _gonghu_nonholiday and not _gonghu_confirmed:
+                st.error("⛔ 비공휴일 포함 시 확인 체크가 필요합니다.")
             else:
                 st.session_state["leave_list"].append({
                     "name": leave_name,
