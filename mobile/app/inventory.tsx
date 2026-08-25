@@ -232,7 +232,12 @@ export default function InventoryScreen() {
   };
 
   const runOcr = async () => {
-    if (cooldownRef.current || !cameraRef.current || !scanActiveRef.current) return;
+    if (!cameraRef.current || !scanActiveRef.current) return;
+    if (cooldownRef.current) {
+      if (scanActiveRef.current)
+        intervalRef.current = setTimeout(runOcr, SCAN_SPEEDS[speedIdxRef.current]);
+      return;
+    }
     processingRef.current = true;
     let uri: string | undefined;
     try {
