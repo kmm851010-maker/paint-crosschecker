@@ -199,7 +199,7 @@ export default function InventoryScreen() {
   useEffect(() => {
     if (mode === "scanning" && !loading) {
       scanActiveRef.current = true;
-      intervalRef.current = setInterval(runOcr, 800);
+      intervalRef.current = setInterval(runOcr, 1500);
     } else {
       scanActiveRef.current = false;
       if (intervalRef.current) {
