@@ -2382,30 +2382,43 @@ def page_inventory():
     # ─── 반품 리스트 자동 매칭 ───────────────────────────────────
     with st.expander("📋 반품 리스트 자동 매칭 (이미지/엑셀 업로드)", expanded=False):
         st.caption("기술·무상·불량 반품 리스트를 업로드하면 현재 재고와 자동 매칭 후 반품상태를 일괄 적용합니다.")
-        rl_file = st.file_uploader(
-            "반품 리스트 파일 선택",
+        rl_files = st.file_uploader(
+            "반품 리스트 파일 선택 (여러 장 동시 업로드 가능)",
             type=["jpg", "jpeg", "png", "xlsx", "xls", "csv"],
             key="rl_upload",
+            accept_multiple_files=True,
         )
-        if rl_file:
+        if rl_files:
+            st.caption(f"{len(rl_files)}개 파일 선택됨: " + ", ".join(f.name for f in rl_files))
             col_rl_btn, _ = st.columns([1, 3])
             if col_rl_btn.button("🔍 리스트 분석", key="btn_rl_parse", use_container_width=True):
-                with st.spinner("분석 중... (이미지는 10~20초 소요)"):
-                    import base64 as _b64
-                    file_b64 = _b64.b64encode(rl_file.read()).decode()
-                    try:
-                        res_rl = _req.post(
-                            f"{BACKEND}/api/inventory/parse-return-list",
-                            json={"file_data": file_b64, "filename": rl_file.name, "api_key": ""},
-                            timeout=90,
-                        )
-                        if res_rl.ok:
-                            st.session_state["rl_parsed"] = res_rl.json().get("items", [])
-                            st.session_state.pop("rl_matched", None)
-                        else:
-                            st.error(f"분석 실패: {res_rl.text}")
-                    except Exception as _e:
-                        st.error(f"오류: {_e}")
+                import base64 as _b64
+                all_items, parse_errors = [], []
+                seen_lots = set()
+                for _fi, rl_file in enumerate(rl_files):
+                    with st.spinner(f"분석 중... ({_fi+1}/{len(rl_files)}) {rl_file.name}"):
+                        file_b64 = _b64.b64encode(rl_file.read()).decode()
+                        try:
+                            res_rl = _req.post(
+                                f"{BACKEND}/api/inventory/parse-return-list",
+                                json={"file_data": file_b64, "filename": rl_file.name, "api_key": ""},
+                                timeout=90,
+                            )
+                            if res_rl.ok:
+                                for item in res_rl.json().get("items", []):
+                                    if item["lot_no"] not in seen_lots:
+                                        seen_lots.add(item["lot_no"])
+                                        all_items.append(item)
+                            else:
+                                parse_errors.append(f"{rl_file.name}: {res_rl.text}")
+                        except Exception as _e:
+                            parse_errors.append(f"{rl_file.name}: {_e}")
+                if parse_errors:
+                    for _err in parse_errors:
+                        st.error(f"분석 실패 — {_err}")
+                if all_items:
+                    st.session_state["rl_parsed"] = all_items
+                    st.session_state.pop("rl_matched", None)
 
         if st.session_state.get("rl_parsed"):
             parsed = st.session_state["rl_parsed"]
