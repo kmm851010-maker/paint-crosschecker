@@ -20,7 +20,6 @@ import * as FileSystem from "expo-file-system";
 import TextRecognition, { type TextBlock } from "@react-native-ml-kit/text-recognition";
 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Slider from "@react-native-community/slider";
 import { LightSensor } from "expo-sensors";
 
 import { COLORS } from "../src/constants/config";
@@ -142,12 +141,6 @@ export default function InventoryScreen() {
   const [sortMode, setSortMode] = useState<"maker"|"sector"|"lot"|"product"|"return">("sector");
   const [returnFilter, setReturnFilter] = useState<"무상"|"기술"|"불량"|"">(""); 
   const [selectedLots, setSelectedLots] = useState<Set<string>>(new Set());
-  // 스캔 속도: 5단계
-  const SCAN_SPEEDS = [2500, 1600, 900, 500, 280] as const;
-  const SCAN_SPEED_LABELS = ["🐢 최저", "🐢 느림", "⚡ 보통", "🚀 빠름", "🚀 최고"] as const;
-  const [speedIdx, setSpeedIdx] = useState(2);
-  const speedIdxRef = useRef(1);
-  useEffect(() => { speedIdxRef.current = speedIdx; }, [speedIdx]);
 
   // 토치: "off" | "auto" | "on"
   const [torchMode, setTorchMode] = useState<"off" | "auto" | "on">("off");
@@ -206,7 +199,7 @@ export default function InventoryScreen() {
   useEffect(() => {
     if (mode === "scanning" && !loading) {
       scanActiveRef.current = true;
-      intervalRef.current = setInterval(runOcr, SCAN_SPEEDS[speedIdxRef.current]);
+      intervalRef.current = setInterval(runOcr, 800);
     } else {
       scanActiveRef.current = false;
       if (intervalRef.current) {
@@ -221,7 +214,7 @@ export default function InventoryScreen() {
         intervalRef.current = null;
       }
     };
-  }, [mode, loading, speedIdx]);
+  }, [mode, loading]);
 
   const triggerFeedback = () => {
     Vibration.vibrate([0, 80, 60, 80]);
@@ -465,28 +458,6 @@ export default function InventoryScreen() {
             pointerEvents="none"
             style={[StyleSheet.absoluteFillObject, { backgroundColor: "#4AFF91", opacity: flashAnim }]}
           />
-          {/* 속도 슬라이더 */}
-          <View style={styles.speedSliderBox}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 }}>
-              <Text style={styles.speedIcon}>⏱</Text>
-              <Text style={styles.speedLabel}>{SCAN_SPEED_LABELS[speedIdx]}</Text>
-            </View>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-              <Text style={styles.speedEndLabel}>느림</Text>
-              <Slider
-                style={{ width: 120, height: 28 }}
-                minimumValue={0}
-                maximumValue={4}
-                step={1}
-                value={speedIdx}
-                onValueChange={v => setSpeedIdx(v)}
-                minimumTrackTintColor="#4AFF91"
-                maximumTrackTintColor="rgba(255,255,255,0.25)"
-                thumbTintColor="#4AFF91"
-              />
-              <Text style={styles.speedEndLabel}>빠름</Text>
-            </View>
-          </View>
           {/* 토치 버튼 */}
           <TouchableOpacity
             style={styles.torchBtn}
@@ -1032,17 +1003,6 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   savingText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  speedSliderBox: {
-    position: "absolute", bottom: 12, left: 8,
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.6)",
-    borderRadius: 14,
-    paddingHorizontal: 10, paddingVertical: 7,
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.1)",
-  },
-  speedIcon: { fontSize: 13 },
-  speedLabel: { color: "#4AFF91", fontSize: 12, fontWeight: "700" },
-  speedEndLabel: { color: "rgba(255,255,255,0.5)", fontSize: 10 },
   torchBtn: {
     position: "absolute", bottom: 12, right: 12,
     alignItems: "center", backgroundColor: "rgba(0,0,0,0.5)",
