@@ -95,6 +95,7 @@ export default function InventoryScreen() {
   const [searchText, setSearchText] = useState("");
   const [sortMode, setSortMode] = useState<"sector" | "maker" | "product">("sector");
   const [selectedLots, setSelectedLots] = useState<Set<string>>(new Set());
+  const [returnPickOpen, setReturnPickOpen] = useState(false);
   // 토치: "off" | "auto" | "on"
   const [torchMode, setTorchMode] = useState<"off" | "auto" | "on">("off");
   const [autoTorchActive, setAutoTorchActive] = useState(false);
@@ -334,6 +335,41 @@ export default function InventoryScreen() {
     </Modal>
   );
 
+  // ── 반품대기 해제 섹터 선택 모달 ──
+  const ReturnPickModal = ({ drums }: { drums: any[] }) => (
+    <Modal visible={returnPickOpen} animationType="slide" transparent>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>{drums.length}드럼 → 이동할 섹터 선택</Text>
+          <ScrollView>
+            {SECTORS.filter(s => s !== "반품대기").map((s) => (
+              <TouchableOpacity key={s} style={styles.sectorBtn} onPress={async () => {
+                setReturnPickOpen(false);
+                setLoading(true);
+                try {
+                  await registerDrums(drums, s);
+                  setSelectedLots(new Set());
+                  const data = await getSectorInventory();
+                  setSectorData(data);
+                  Alert.alert("완료", `${drums.length}드럼 → ${s} 이동`);
+                } catch (e: any) {
+                  Alert.alert("실패", e.message);
+                } finally {
+                  setLoading(false);
+                }
+              }}>
+                <Text style={styles.sectorBtnText}>{s}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <TouchableOpacity style={[styles.modalCancelBtn, { paddingBottom: 14 + insets.bottom }]} onPress={() => setReturnPickOpen(false)}>
+            <Text style={styles.modalCancelText}>취소</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
   // ── 스캔 화면 ──
   if (mode === "scanning") {
     return (
@@ -451,6 +487,7 @@ export default function InventoryScreen() {
     const groupKeys = Object.keys(grouped).sort();
     const selectedDrums = allDrums.filter(d => selectedLots.has(d.lot));
     const allInReturn = selectedDrums.length > 0 && selectedDrums.every(d => d.sector === "반품대기");
+    const noneInReturn = selectedDrums.every(d => d.sector !== "반품대기");
 
     return (
       <>
@@ -516,10 +553,11 @@ export default function InventoryScreen() {
                   </View>
                   {grouped[key].map((drum: any, i: number) => {
                     const isSelected = selectedLots.has(drum.lot);
+                    const isReturn = drum.sector === "반품대기";
                     return (
                       <TouchableOpacity
                         key={i}
-                        style={[styles.statusDrumRow, i % 2 === 1 && styles.drumRowAlt, isSelected && styles.drumRowSelected]}
+                        style={[styles.statusDrumRow, i % 2 === 1 && styles.drumRowAlt, isReturn && styles.drumRowReturn, isSelected && styles.drumRowSelected]}
                         onPress={() => setSelectedLots(prev => {
                           const next = new Set(prev);
                           if (next.has(drum.lot)) next.delete(drum.lot);
@@ -543,37 +581,80 @@ export default function InventoryScreen() {
             )}
           </ScrollView>
 
-          {/* 라인입고 / 반품완료 버튼 */}
+          {/* 액션 버튼바 */}
           {selectedLots.size > 0 && (
-            <View style={[styles.checkoutBar, { paddingBottom: 12 + insets.bottom }]}>
-              <Text style={styles.checkoutBarText}>{selectedLots.size}드럼 선택됨</Text>
-              <TouchableOpacity
-                style={[styles.checkoutBarBtn, allInReturn && { backgroundColor: "#6D28D9" }]}
-                onPress={async () => {
-                  const drums = selectedDrums;
-                  const sector = allInReturn ? "반품완료" : CHECKOUT;
-                  const label = allInReturn ? "반품완료" : "라인입고";
-                  setLoading(true);
-                  try {
-                    await registerDrums(drums, sector);
-                    setSelectedLots(new Set());
-                    const data = await getSectorInventory();
-                    setSectorData(data);
-                    Alert.alert("완료", `${drums.length}드럼 ${label} 처리`);
-                  } catch (e: any) {
-                    Alert.alert("실패", e.message);
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-                disabled={loading}
-              >
-                {loading
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <Text style={styles.checkoutBarBtnText}>{allInReturn ? "반품완료" : "라인입고"}</Text>}
-              </TouchableOpacity>
+            <View style={[styles.checkoutBar, { paddingBottom: 12 + insets.bottom, flexWrap: "wrap", gap: 6 }]}>
+              <Text style={[styles.checkoutBarText, { width: "100%", marginBottom: 2 }]}>{selectedLots.size}드럼 선택됨</Text>
+              {/* 반품대기 항목만 선택됐을 때 */}
+              {allInReturn && (
+                <>
+                  <TouchableOpacity style={[styles.checkoutBarBtn, { backgroundColor: "#6D28D9", flex: 1 }]} disabled={loading}
+                    onPress={async () => {
+                      setLoading(true);
+                      try {
+                        await registerDrums(selectedDrums, "반품완료");
+                        setSelectedLots(new Set());
+                        setSectorData(await getSectorInventory());
+                        Alert.alert("완료", `${selectedDrums.length}드럼 반품완료`);
+                      } catch (e: any) { Alert.alert("실패", (e as any).message); }
+                      finally { setLoading(false); }
+                    }}>
+                    <Text style={styles.checkoutBarBtnText}>반품완료</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.checkoutBarBtn, { backgroundColor: "#F59E0B", flex: 1 }]} disabled={loading}
+                    onPress={() => setReturnPickOpen(true)}>
+                    <Text style={styles.checkoutBarBtnText}>반품대기 해제</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.checkoutBarBtn, { flex: 1 }]} disabled={loading}
+                    onPress={async () => {
+                      setLoading(true);
+                      try {
+                        await registerDrums(selectedDrums, CHECKOUT);
+                        setSelectedLots(new Set());
+                        setSectorData(await getSectorInventory());
+                        Alert.alert("완료", `${selectedDrums.length}드럼 라인입고`);
+                      } catch (e: any) { Alert.alert("실패", (e as any).message); }
+                      finally { setLoading(false); }
+                    }}>
+                    <Text style={styles.checkoutBarBtnText}>라인입고</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+              {/* 반품대기 외 항목 선택됐을 때 */}
+              {!allInReturn && (
+                <>
+                  <TouchableOpacity style={[styles.checkoutBarBtn, { flex: 1 }]} disabled={loading}
+                    onPress={async () => {
+                      setLoading(true);
+                      try {
+                        await registerDrums(selectedDrums, CHECKOUT);
+                        setSelectedLots(new Set());
+                        setSectorData(await getSectorInventory());
+                        Alert.alert("완료", `${selectedDrums.length}드럼 라인입고`);
+                      } catch (e: any) { Alert.alert("실패", (e as any).message); }
+                      finally { setLoading(false); }
+                    }}>
+                    <Text style={styles.checkoutBarBtnText}>라인입고</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.checkoutBarBtn, { backgroundColor: "#D97706", flex: 1 }]} disabled={loading}
+                    onPress={async () => {
+                      setLoading(true);
+                      try {
+                        await registerDrums(selectedDrums, "반품대기");
+                        setSelectedLots(new Set());
+                        setSectorData(await getSectorInventory());
+                        Alert.alert("완료", `${selectedDrums.length}드럼 반품대기 등록`);
+                      } catch (e: any) { Alert.alert("실패", (e as any).message); }
+                      finally { setLoading(false); }
+                    }}>
+                    <Text style={styles.checkoutBarBtnText}>반품대기</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+              {loading && <ActivityIndicator color="#fff" size="small" />}
             </View>
           )}
+          <ReturnPickModal drums={selectedDrums} />
         </View>
       </>
     );
@@ -738,6 +819,7 @@ const styles = StyleSheet.create({
   statusProduct: { flex: 1.5, fontSize: 14, fontWeight: "700", color: COLORS.textPrimary },
   statusLot: { flex: 2, fontSize: 11, color: COLORS.textSecondary },
   drumRowAlt: { backgroundColor: "rgba(0,0,0,0.02)" },
+  drumRowReturn: { backgroundColor: "#FEF3C7" },
   drumRowSelected: { backgroundColor: "#EDE7F6" },
   checkBox: { width: 24, fontSize: 16, textAlign: "center", color: COLORS.primary },
   checkoutBar: {
