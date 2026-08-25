@@ -141,6 +141,7 @@ export default function InventoryScreen() {
   const [sortMode, setSortMode] = useState<"maker"|"sector"|"lot"|"product"|"return">("sector");
   const [returnFilter, setReturnFilter] = useState<"무상"|"기술"|"불량"|"">(""); 
   const [selectedLots, setSelectedLots] = useState<Set<string>>(new Set());
+  const [scanManual, setScanManual] = useState(false);
 
   // 토치: "off" | "auto" | "on"
   const [torchMode, setTorchMode] = useState<"off" | "auto" | "on">("off");
@@ -199,7 +200,9 @@ export default function InventoryScreen() {
   useEffect(() => {
     if (mode === "scanning" && !loading) {
       scanActiveRef.current = true;
-      intervalRef.current = setInterval(runOcr, 1500);
+      if (!scanManual) {
+        intervalRef.current = setInterval(runOcr, 1500);
+      }
     } else {
       scanActiveRef.current = false;
       if (intervalRef.current) {
@@ -214,7 +217,7 @@ export default function InventoryScreen() {
         intervalRef.current = null;
       }
     };
-  }, [mode, loading]);
+  }, [mode, loading, scanManual]);
 
   const triggerFeedback = () => {
     Vibration.vibrate([0, 80, 60, 80]);
@@ -405,6 +408,14 @@ export default function InventoryScreen() {
             <Text style={styles.scanListCount}>총 {batch.length}건 스캔됨</Text>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <TouchableOpacity
+                style={[styles.doneSmallBtn, { backgroundColor: scanManual ? "#4AFF91" : "#555" }]}
+                onPress={() => setScanManual(m => !m)}
+              >
+                <Text style={[styles.doneSmallBtnText, scanManual && { color: "#111" }]}>
+                  {scanManual ? "수동" : "자동"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 style={[styles.doneSmallBtn, { backgroundColor: "#555" }]}
                 onPress={() => setEditingItem({ index: -1, lot: "", product: "" })}
               >
@@ -453,11 +464,25 @@ export default function InventoryScreen() {
             facing="back"
             enableTorch={torchMode === "on" || (torchMode === "auto" && autoTorchActive)}
           />
+          {/* 수동 모드: 탭으로 OCR 실행 */}
+          {scanManual && (
+            <TouchableOpacity
+              style={StyleSheet.absoluteFillObject}
+              activeOpacity={1}
+              onPress={runOcr}
+            />
+          )}
           {/* 인식 성공 플래시 */}
           <Animated.View
             pointerEvents="none"
             style={[StyleSheet.absoluteFillObject, { backgroundColor: "#4AFF91", opacity: flashAnim }]}
           />
+          {/* 수동 모드 안내 */}
+          {scanManual && (
+            <View pointerEvents="none" style={{ position: "absolute", bottom: 8, alignSelf: "center" }}>
+              <Text style={{ color: "#4AFF91", fontSize: 12, fontWeight: "600" }}>화면 터치로 인식</Text>
+            </View>
+          )}
           {/* 토치 버튼 */}
           <TouchableOpacity
             style={styles.torchBtn}
