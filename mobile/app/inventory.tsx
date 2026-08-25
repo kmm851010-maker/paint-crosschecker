@@ -5,7 +5,9 @@ import {
   Animated,
   BackHandler,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -316,6 +318,10 @@ export default function InventoryScreen() {
   // ── 항목 편집 모달 ──
   const EditModal = () => (
     <Modal visible={editingItem !== null} animationType="fade" transparent>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
       <View style={styles.modalOverlay}>
         <View style={styles.editCard}>
           <Text style={styles.editTitle}>{editingItem?.index === -1 ? "수동 등록" : "항목 수정"}</Text>
@@ -392,6 +398,7 @@ export default function InventoryScreen() {
           </TouchableOpacity>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 
@@ -460,21 +467,18 @@ export default function InventoryScreen() {
         </View>
 
         {/* 하단: 카메라 */}
-        <View style={styles.cameraArea}>
+        <TouchableOpacity
+          style={styles.cameraArea}
+          activeOpacity={1}
+          onPress={scanManual ? runOcr : undefined}
+          disabled={!scanManual}
+        >
           <CameraView
             ref={cameraRef}
             style={{ flex: 1 }}
             facing="back"
             enableTorch={torchMode === "on" || (torchMode === "auto" && autoTorchActive)}
           />
-          {/* 수동 모드: 탭으로 OCR 실행 */}
-          {scanManual && (
-            <TouchableOpacity
-              style={StyleSheet.absoluteFillObject}
-              activeOpacity={1}
-              onPress={runOcr}
-            />
-          )}
           {/* 인식 성공 플래시 */}
           <Animated.View
             pointerEvents="none"
@@ -498,7 +502,7 @@ export default function InventoryScreen() {
               {torchMode === "on" ? "ON" : torchMode === "auto" ? `AUTO${autoTorchActive ? "🟡" : "⚪"}` : "OFF"}
             </Text>
           </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
 
         {/* 취소 버튼 */}
         <TouchableOpacity style={styles.scanCancelBtn} onPress={() => setMode("idle")}>
