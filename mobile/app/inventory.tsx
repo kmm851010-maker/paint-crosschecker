@@ -158,7 +158,7 @@ export default function InventoryScreen() {
   const processingRef = useRef(false);
   const cooldownRef = useRef(false);
   const scanActiveRef = useRef(false);
-  const intervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const flashAnim = useRef(new Animated.Value(0)).current;
   const torchModeRef = useRef<"off" | "auto" | "on">("off");
 
@@ -202,22 +202,22 @@ export default function InventoryScreen() {
     return () => sub.remove();
   }, [mode]);
 
-  // 스캔 모드 진입/종료 + OCR 루프 시작/정지 (setTimeout 체이닝 방식)
+  // 스캔 모드 진입/종료 + OCR 루프 시작/정지
   useEffect(() => {
     if (mode === "scanning" && !loading) {
       scanActiveRef.current = true;
-      intervalRef.current = setTimeout(runOcr, SCAN_SPEEDS[speedIdxRef.current]);
+      intervalRef.current = setInterval(runOcr, SCAN_SPEEDS[speedIdxRef.current]);
     } else {
       scanActiveRef.current = false;
       if (intervalRef.current) {
-        clearTimeout(intervalRef.current);
+        clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
     }
     return () => {
       scanActiveRef.current = false;
       if (intervalRef.current) {
-        clearTimeout(intervalRef.current);
+        clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
     };
@@ -232,12 +232,7 @@ export default function InventoryScreen() {
   };
 
   const runOcr = async () => {
-    if (!cameraRef.current || !scanActiveRef.current) return;
-    if (cooldownRef.current) {
-      if (scanActiveRef.current)
-        intervalRef.current = setTimeout(runOcr, SCAN_SPEEDS[speedIdxRef.current]);
-      return;
-    }
+    if (cooldownRef.current || processingRef.current || !cameraRef.current || !scanActiveRef.current) return;
     processingRef.current = true;
     let uri: string | undefined;
     try {
@@ -272,10 +267,6 @@ export default function InventoryScreen() {
     } finally {
       processingRef.current = false;
       if (uri) FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
-      // 완료 후 다음 OCR 예약 (슬라이더 속도 = 완료~다음 시작 간격)
-      if (scanActiveRef.current) {
-        intervalRef.current = setTimeout(runOcr, SCAN_SPEEDS[speedIdxRef.current]);
-      }
     }
   };
 
