@@ -231,7 +231,7 @@ if st.sidebar.button("🚪 로그아웃", use_container_width=True):
 st.sidebar.markdown("---")
 st.sidebar.markdown("📱 **모바일 앱**")
 st.sidebar.markdown(
-    '<a href="https://expo.dev/artifacts/eas/sKuGjElkO12t5QyykKzAi-IwVbGpNB-A40MgNj53TL0.apk" '
+    '<a href="https://expo.dev/artifacts/eas/h5PR7ewFNb8iPHX_Yt28SUCcZJEjJ37Oer36vDLl-g4.apk" '
     'style="display:block;text-align:center;padding:10px;background:#F5A623;color:#1A1A2E;'
     'border-radius:8px;font-weight:700;text-decoration:none;">⬇️ KG OPS 설치</a>',
     unsafe_allow_html=True,
