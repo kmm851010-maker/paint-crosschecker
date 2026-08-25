@@ -231,7 +231,7 @@ if st.sidebar.button("🚪 로그아웃", use_container_width=True):
 st.sidebar.markdown("---")
 st.sidebar.markdown("📱 **모바일 앱**")
 st.sidebar.markdown(
-    '<a href="https://expo.dev/artifacts/eas/_nalMID0KS6xfQbmY-qxx0O_dyXL1yOYaGRaZOIRWRE.apk" '
+    '<a href="https://expo.dev/artifacts/eas/sKuGjElkO12t5QyykKzAi-IwVbGpNB-A40MgNj53TL0.apk" '
     'style="display:block;text-align:center;padding:10px;background:#F5A623;color:#1A1A2E;'
     'border-radius:8px;font-weight:700;text-decoration:none;">⬇️ KG OPS 설치</a>',
     unsafe_allow_html=True,
@@ -978,12 +978,12 @@ def page_work_log():
     """, unsafe_allow_html=True)
 
     # 휴가/대근 사전등록
-    with st.expander("📝 휴가·대근·휴직 사전등록", expanded=False):
+    with st.expander("📝 휴가·대휴·휴직 사전등록", expanded=False):
         rc1, rc2, rc3, rc4, rc5 = st.columns(5)
         with rc1:
             leave_name = st.selectbox("대상자", ALL_MEMBERS, key="leave_name")
         with rc2:
-            leave_type = st.selectbox("구분", ["정기휴가", "연차", "특별휴가", "명휴", "생일휴가", "공가", "공상휴업", "산재", "휴직", "대근", "교육"], key="leave_type")
+            leave_type = st.selectbox("구분", ["정기휴가", "연차", "특별휴가", "명휴", "생일휴가", "공가", "공상휴업", "산재", "휴직", "대휴", "교육", "결근", "조퇴", "외출", "청원휴가", "공휴"], key="leave_type")
         with rc3:
             leave_start = st.date_input("시작일", datetime.date.today(), key="leave_start")
         with rc4:
@@ -1646,6 +1646,163 @@ def page_statistics():
         except Exception:
             return v
 
+    # ── 급여시간표 헬퍼 ──
+    _SALARY_COLS = [
+        "정상근로", "유휴근로", "휴일근로", "연장근로", "휴일연장", "야간근로",
+        "휴일비근로", "휴가비근로", "스틸아카데미", "항군교육",
+        "사내교육(1)", "사내교육(1.5)", "사외교육(1)", "사외교육(1.5)", "공가",
+    ]
+
+    def _build_salary_rows(name):
+        def _sf(v):
+            try:
+                return float(v)
+            except Exception:
+                return 0.0
+
+        rows = []
+        for day in range(1, days_in_month + 1):
+            date = datetime.date(year, month, day)
+            date_str = date.strftime("%Y-%m-%d")
+            is_weekend = date.weekday() >= 5
+
+            row = {c: 0.0 for c in _SALARY_COLS}
+            row["날짜"] = f"{month:02d}/{day:02d}"
+
+            if date_str in daily_details:
+                shift = daily_details[date_str].get("shift", {})
+                is_2p = shift.get("is_2person", False)
+
+                if is_2p:
+                    leave_person = shift.get("leave_person", "")
+                    day_worker = shift.get("주간_근무자", "") or shift.get("1근_근무자", "")
+                    night_worker = shift.get("야간_근무자", "") or shift.get("2근_근무자", "")
+                    leave_type_val = shift.get("leave_type", "")
+
+                    if name == leave_person:
+                        if leave_type_val == "공가":
+                            row["공가"] = 8.0
+                        elif leave_type_val == "공휴":
+                            pass  # 공휴일 휴무 → 급여시간 없음
+                        else:
+                            row["휴가비근로"] = 8.0
+                    elif name == day_worker:
+                        base_ot = _sf(shift.get("1근_연장", 4))
+                        extra_ot = max(0.0, _sf(shift.get("1근_주간연장", base_ot)) - base_ot) + _sf(shift.get("1근_야간연장", 0))
+                        total_ot = base_ot + extra_ot
+                        if is_weekend or leave_type_val == "공휴":
+                            row["유휴근로"] = 8.0
+                            row["휴일연장"] = total_ot
+                            row["휴일비근로"] = 8.0
+                        else:
+                            row["정상근로"] = 8.0
+                            row["연장근로"] = total_ot
+                    elif name == night_worker:
+                        base_ot = _sf(shift.get("2근_연장", 4))
+                        night_base = NIGHT_HOURS.get("야간", 7.5)
+                        if is_weekend or leave_type_val == "공휴":
+                            row["유휴근로"] = 8.0
+                            row["야간근로"] = night_base
+                            row["휴일연장"] = base_ot
+                            row["휴일비근로"] = 8.0
+                        else:
+                            row["정상근로"] = 8.0
+                            row["야간근로"] = night_base
+                            row["연장근로"] = base_ot
+                else:
+                    for shift_key, 근 in [("1근_근무자", "1근"), ("2근_근무자", "2근"), ("3근_근무자", "3근")]:
+                        if shift.get(shift_key) == name:
+                            exp_day = shift.get(f"{근}_주간연장")
+                            exp_night = shift.get(f"{근}_야간연장")
+                            base_ot = _sf(shift.get(f"{근}_연장", 0))
+                            day_ot = _sf(exp_day) if exp_day is not None else base_ot
+                            night_ot_h = _sf(exp_night) if exp_night is not None else 0.0
+                            night_base = NIGHT_HOURS.get(근, 0)
+                            if is_weekend:
+                                row["휴일근로"] = 8.0
+                                row["휴일비근로"] = 8.0
+                                row["휴일연장"] = day_ot + night_ot_h
+                                if night_base > 0:
+                                    row["야간근로"] = night_base
+                            else:
+                                row["정상근로"] = 8.0
+                                row["연장근로"] = day_ot
+                                if night_base > 0:
+                                    row["야간근로"] = night_base + night_ot_h
+                            break
+                    else:
+                        if shift.get("휴무_근무자") == name:
+                            off_type = shift.get("휴무_구분", "")
+                            if off_type in ("정기휴가", "연차", "특별휴가", "명휴", "생일휴가", "청원휴가"):
+                                row["휴가비근로"] = 8.0
+                            elif off_type == "공가":
+                                row["공가"] = 8.0
+            else:
+                for lv in base_leaves:
+                    if lv.get("name") == name:
+                        try:
+                            lv_s = datetime.date.fromisoformat(lv["start"])
+                            lv_e = datetime.date.fromisoformat(lv["end"])
+                            if lv_s <= date <= lv_e:
+                                lv_t = lv.get("type", "")
+                                if lv_t == "공가":
+                                    row["공가"] = 8.0
+                                elif lv_t not in ("공휴", "결근", "조퇴", "외출", ""):
+                                    row["휴가비근로"] = 8.0
+                                break
+                        except Exception:
+                            pass
+
+            total = sum(row[c] for c in _SALARY_COLS)
+            row["일별합계"] = total
+            if total > 0:
+                rows.append(row)
+        return rows
+
+    def _render_salary_table(rows):
+        totals = {c: sum(r[c] for r in rows) for c in _SALARY_COLS}
+        totals["일별합계"] = sum(r["일별합계"] for r in rows)
+
+        def _fmt(v):
+            return f"{v:.2f}" if v else ""
+
+        header_sub = "".join(f'<th style="background:#4472C4;color:#fff;text-align:center;padding:5px 3px;border:1px solid #2F5496;font-size:10px;white-space:nowrap;">{c}</th>' for c in _SALARY_COLS)
+        html = f"""<div style="overflow-x:auto;margin-top:8px;">
+<table style="border-collapse:collapse;font-size:11px;width:100%;min-width:900px;">
+<thead>
+<tr>
+  <th rowspan="2" style="background:#4472C4;color:#fff;text-align:center;padding:6px 4px;border:1px solid #2F5496;white-space:nowrap;">날짜</th>
+  <th colspan="{len(_SALARY_COLS)}" style="background:#4472C4;color:#fff;text-align:center;padding:6px 4px;border:1px solid #2F5496;">일일 급여시간</th>
+  <th rowspan="2" style="background:#2F5496;color:#fff;text-align:center;padding:6px 4px;border:1px solid #2F5496;white-space:nowrap;">일별합계</th>
+</tr>
+<tr>{header_sub}</tr>
+</thead><tbody>"""
+
+        for i, row in enumerate(rows):
+            bg = "#f0f4fb" if i % 2 == 0 else "#ffffff"
+            cells = "".join(
+                f'<td style="text-align:right;padding:3px 5px;border:1px solid #D0D7E4;background:{bg};">{_fmt(row[c])}</td>'
+                for c in _SALARY_COLS
+            )
+            total_val = _fmt(row["일별합계"])
+            html += (
+                f'<tr><td style="text-align:center;padding:3px 5px;border:1px solid #D0D7E4;background:#EEF2FA;font-weight:600;">{row["날짜"]}</td>'
+                f'{cells}'
+                f'<td style="text-align:right;padding:3px 5px;border:1px solid #2F5496;background:#D9E1F2;font-weight:700;color:#1F3864;">{total_val}</td></tr>'
+            )
+
+        total_cells = "".join(
+            f'<td style="text-align:right;padding:4px 5px;border:1px solid #9DC3E6;background:#BDD7EE;font-weight:700;color:#1F3864;">{_fmt(totals[c])}</td>'
+            for c in _SALARY_COLS
+        )
+        html += (
+            f'<tr><td style="text-align:center;padding:4px 5px;border:1px solid #9DC3E6;background:#9DC3E6;font-weight:700;color:#1F3864;">근로별 월합계</td>'
+            f'{total_cells}'
+            f'<td style="text-align:right;padding:4px 5px;border:1px solid #9DC3E6;background:#9DC3E6;font-weight:700;color:#1F3864;">{_fmt(totals["일별합계"])}</td></tr>'
+        )
+        html += "</tbody></table></div>"
+        return html
+
     for name in ALL_MEMBERS:
         s = stats[name]
         total_ot = s["연장근로_대근"] + s["연장근로_주간"] + s["연장근로_야간"]
@@ -1692,6 +1849,14 @@ def page_statistics():
                     st.info(summary)
                     for lv in yr_leaves:
                         st.write(f"{lv['날짜']} — {lv['구분']}")
+
+            # 급여시간표
+            with st.expander(f"📊 {month}월 급여시간표 자세히보기"):
+                _salary_rows = _build_salary_rows(name)
+                if _salary_rows:
+                    st.markdown(_render_salary_table(_salary_rows), unsafe_allow_html=True)
+                else:
+                    st.info("저장된 근무 데이터가 없습니다.")
 
 
 # ══════════════════════════════════════
