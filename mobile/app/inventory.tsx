@@ -309,7 +309,7 @@ export default function InventoryScreen() {
     <Modal visible={editingItem !== null} animationType="fade" transparent>
       <View style={styles.modalOverlay}>
         <View style={styles.editCard}>
-          <Text style={styles.editTitle}>항목 수정</Text>
+          <Text style={styles.editTitle}>{editingItem?.index === -1 ? "수동 등록" : "항목 수정"}</Text>
           <Text style={styles.editLabel}>품명</Text>
           <TextInput
             style={styles.editInput}
@@ -334,16 +334,23 @@ export default function InventoryScreen() {
               style={[styles.editBtn, { flex: 2, backgroundColor: COLORS.primary }]}
               onPress={() => {
                 if (!editingItem) return;
-                setBatch(prev => {
-                  const next = [...prev];
-                  next[editingItem.index] = {
-                    ...next[editingItem.index],
-                    lot: editingItem.lot,
-                    product: editingItem.product,
-                    maker: MAKER_MAP[editingItem.lot[0]] ?? next[editingItem.index].maker,
-                  };
-                  return next;
-                });
+                const newItem: DrumItem = {
+                  lot: editingItem.lot,
+                  product: editingItem.product,
+                  maker: MAKER_MAP[editingItem.lot[0]] ?? "미상",
+                };
+                if (editingItem.index === -1) {
+                  // 신규 수동 추가
+                  if (!editingItem.lot || !editingItem.product) return;
+                  setBatch(prev => prev.some(d => d.lot === editingItem.lot) ? prev : [...prev, newItem]);
+                } else {
+                  // 기존 항목 수정
+                  setBatch(prev => {
+                    const next = [...prev];
+                    next[editingItem.index] = { ...next[editingItem.index], ...newItem };
+                    return next;
+                  });
+                }
                 setEditingItem(null);
               }}
             >
@@ -390,13 +397,21 @@ export default function InventoryScreen() {
         <View style={styles.scanListArea}>
           <View style={styles.scanListHeader}>
             <Text style={styles.scanListCount}>총 {batch.length}건 스캔됨</Text>
-            <TouchableOpacity
-              style={[styles.doneSmallBtn, batch.length === 0 && styles.btnDisabled]}
-              onPress={() => { if (batch.length > 0) filterAndProceed(batch, setBatch, () => setMode("sectorPick")); }}
-              disabled={batch.length === 0}
-            >
-              <Text style={styles.doneSmallBtnText}>완료 ({batch.length})</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <TouchableOpacity
+                style={[styles.doneSmallBtn, { backgroundColor: "#555" }]}
+                onPress={() => setEditingItem({ index: -1, lot: "", product: "" })}
+              >
+                <Text style={styles.doneSmallBtnText}>수동등록</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.doneSmallBtn, batch.length === 0 && styles.btnDisabled]}
+                onPress={() => { if (batch.length > 0) filterAndProceed(batch, setBatch, () => setMode("sectorPick")); }}
+                disabled={batch.length === 0}
+              >
+                <Text style={styles.doneSmallBtnText}>완료 ({batch.length})</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           {batch.length === 0 ? (
             <Text style={styles.scanListEmpty}>라벨을 카메라에 비춰주세요</Text>
