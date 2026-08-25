@@ -77,9 +77,54 @@ function parseOcrBlocks(blocks: TextBlock[]): DrumItem | null {
   return { lot, product: product.replace(/[-\s]/g, ""), maker: MAKER_MAP[lot[0]] ?? lot[0] };
 }
 
+// ── 형식 검증 ──
+const LOT_VALID = /^[A-Z][0-9]{2}[A-Z][0-9]{5}$/;
+const ITEM_VALID = /^[A-Z][0-9][A-Z][A-Z0-9]{3}[A-Z]$/;
+
+function validateBatch(drums: DrumItem[]): string[] {
+  const warns: string[] = [];
+  drums.forEach((d, i) => {
+    const num = i + 1;
+    if (!LOT_VALID.test(d.lot))     warns.push(`${num}번 LOT: "${d.lot}"`);
+    if (!ITEM_VALID.test(d.product)) warns.push(`${num}번 품명: "${d.product}"`);
+  });
+  return warns;
+}
+
+function filterAndProceed(
+  drums: DrumItem[],
+  setBatch: (fn: (prev: DrumItem[]) => DrumItem[]) => void,
+  onProceed: () => void,
+) {
+  const invalid = drums.filter(d => !LOT_VALID.test(d.lot) || !ITEM_VALID.test(d.product));
+  const valid   = drums.filter(d =>  LOT_VALID.test(d.lot) &&  ITEM_VALID.test(d.product));
+
+  if (invalid.length === 0) { onProceed(); return; }
+
+  const lines = invalid.map((d, i) => {
+    const reasons = [];
+    if (!LOT_VALID.test(d.lot))      reasons.push(`LOT "${d.lot}"`);
+    if (!ITEM_VALID.test(d.product)) reasons.push(`품명 "${d.product}"`);
+    return `• ${reasons.join(", ")}`;
+  }).join("\n");
+
+  setBatch(() => valid);
+
+  Alert.alert(
+    "⚠️ 등록 거부 — 형식 불일치",
+    `아래 ${invalid.length}건은 형식이 맞지 않아 등록이 거부됐습니다. 다시 스캔해 주세요.\n\n${lines}`,
+    valid.length > 0
+      ? [
+          { text: "다시 스캔", style: "cancel" },
+          { text: `${valid.length}건 저장 진행`, onPress: onProceed },
+        ]
+      : [{ text: "확인", style: "cancel" }]
+  );
+}
+
 const SECTORS = [
   "입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리",
-  "8번자리", "9번자리", "반품자리", "CW2", "CP5", "창고뒤", "롤반 앞", "믹싱룸",
+  "8번자리", "9번자리", "반품자리", "CW2", "CP5", "창고뒤", "창고사이", "롤반 앞", "믹싱룸",
 ];
 const CHECKOUT = "라인입고";
 type Mode = "idle" | "scanning" | "sectorPick" | "status";
@@ -347,7 +392,7 @@ export default function InventoryScreen() {
             <Text style={styles.scanListCount}>총 {batch.length}건 스캔됨</Text>
             <TouchableOpacity
               style={[styles.doneSmallBtn, batch.length === 0 && styles.btnDisabled]}
-              onPress={() => { if (batch.length > 0) setMode("sectorPick"); }}
+              onPress={() => { if (batch.length > 0) filterAndProceed(batch, setBatch, () => setMode("sectorPick")); }}
               disabled={batch.length === 0}
             >
               <Text style={styles.doneSmallBtnText}>완료 ({batch.length})</Text>
@@ -697,7 +742,7 @@ export default function InventoryScreen() {
         </TouchableOpacity>
 
         {batch.length > 0 && (
-          <TouchableOpacity style={[styles.btn, styles.registerBtn]} onPress={() => setMode("sectorPick")} disabled={loading}>
+          <TouchableOpacity style={[styles.btn, styles.registerBtn]} onPress={() => filterAndProceed(batch, setBatch, () => setMode("sectorPick"))} disabled={loading}>
             <Text style={styles.btnText}>섹터 선택 → 저장</Text>
           </TouchableOpacity>
         )}
