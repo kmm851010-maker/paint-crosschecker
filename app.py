@@ -231,7 +231,7 @@ if st.sidebar.button("🚪 로그아웃", use_container_width=True):
 st.sidebar.markdown("---")
 st.sidebar.markdown("📱 **모바일 앱**")
 st.sidebar.markdown(
-    '<a href="https://expo.dev/artifacts/eas/pkzZqv06Jx9zETXLdmqRx-wOzSduBAV_vLO2NPPh8Pc.apk" '
+    '<a href="https://expo.dev/artifacts/eas/4ZE7OrBR_S0-u4UgON7mRvYJjS9Anbj2xAcRJpqklhM.apk" '
     'style="display:block;text-align:center;padding:10px;background:#F5A623;color:#1A1A2E;'
     'border-radius:8px;font-weight:700;text-decoration:none;">⬇️ KG OPS 설치</a>',
     unsafe_allow_html=True,
@@ -2574,7 +2574,7 @@ def page_inventory():
         if st.button("🔄 새로고침", key="inv_refresh"):
             st.rerun()
     with col_sort:
-        sort_mode = st.radio("정렬", ["섹터별", "제조사별", "품목별", "LOT순", "반품순"], horizontal=True, key="inv_sort", label_visibility="collapsed")
+        sort_mode = st.radio("정렬", ["섹터별", "제조사별", "품목별", "LOT순"], horizontal=True, key="inv_sort", label_visibility="collapsed")
 
     # 반품 필터 탭
     _rf_cols = st.columns([1, 1, 1, 4])
@@ -2636,14 +2636,6 @@ def page_inventory():
         group_col = "_all"
         df_filtered["_all"] = "전체 (LOT순)"
         df_filtered = df_filtered.sort_values(["_rsort", "lot"])
-    elif sort_mode == "반품순":
-        group_col = "_rgroup"
-        _rorder = {"불량": 0, "기술": 1, "무상": 2}
-        df_filtered["_rgroup"] = df_filtered["returnStatus"].apply(
-            lambda rs: f"{'🔴' if rs=='불량' else '🟡' if rs=='기술' else '🔵' if rs=='무상' else '⬜'} {'불량반품' if rs=='불량' else '기술반품' if rs=='기술' else '무상반품' if rs=='무상' else '정상'}"
-        )
-        df_filtered["_rord"] = df_filtered["returnStatus"].map(_rorder).fillna(9)
-        df_filtered = df_filtered.sort_values(["_rord", "lot"])
     else:
         group_col = {"섹터별": "sector", "제조사별": "maker", "품목별": "product"}[sort_mode]
         df_filtered = df_filtered.sort_values(["_rsort", group_col, "lot"])
