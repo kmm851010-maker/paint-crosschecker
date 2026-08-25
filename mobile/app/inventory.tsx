@@ -139,7 +139,8 @@ export default function InventoryScreen() {
   const [sectorData, setSectorData] = useState<Record<string, any[]>>({});
   const [editingItem, setEditingItem] = useState<{ index: number; lot: string; product: string } | null>(null);
   const [searchText, setSearchText] = useState("");
-  const [sortMode, setSortMode] = useState<"sector" | "maker" | "product">("sector");
+  const [sortMode, setSortMode] = useState<"maker"|"sector"|"lot"|"product"|"return">("sector");
+  const [returnFilter, setReturnFilter] = useState<"무상"|"기술"|"불량"|"">(""); 
   const [selectedLots, setSelectedLots] = useState<Set<string>>(new Set());
   // 스캔 속도: 5단계
   const SCAN_SPEEDS = [2500, 1600, 900, 500, 280] as const;
@@ -530,16 +531,44 @@ export default function InventoryScreen() {
         )
       : allDrums;
 
+    // 반품 필터 적용 (해당 반품 항목 상단 배치)
+    let processed = [...filtered];
+    if (returnFilter) {
+      const matching = processed.filter(d => d.returnStatus === returnFilter);
+      const rest = processed.filter(d => d.returnStatus !== returnFilter);
+      processed = [...matching, ...rest];
+    }
+
     // 그룹화
-    const grouped: Record<string, typeof filtered> = {};
-    for (const drum of filtered) {
-      const key = sortMode === "sector" ? drum.sector
-        : sortMode === "maker" ? (drum.maker || "미상")
-        : drum.product || "미상";
+    const grouped: Record<string, typeof processed> = {};
+    for (const drum of processed) {
+      let key: string;
+      if (sortMode === "maker")   key = drum.maker || "미상";
+      else if (sortMode === "sector")  key = drum.sector || "미분류";
+      else if (sortMode === "lot")     key = "전체 (LOT순)";
+      else if (sortMode === "product") key = drum.product || "미상";
+      else /* return */ {
+        key = drum.returnStatus === "불량" ? "🔴 불량반품"
+            : drum.returnStatus === "기술" ? "🟡 기술반품"
+            : drum.returnStatus === "무상" ? "🔵 무상반품"
+            : "⬜ 정상";
+      }
       if (!grouped[key]) grouped[key] = [];
       grouped[key].push(drum);
     }
-    const groupKeys = Object.keys(grouped).sort();
+    // lot 정렬 시 그룹 내 LOT 순 정렬
+    if (sortMode === "lot") {
+      for (const k of Object.keys(grouped)) grouped[k].sort((a: any, b: any) => a.lot.localeCompare(b.lot));
+    }
+    // 그룹 키 정렬
+    const RETURN_ORDER = ["🔴 불량반품", "🟡 기술반품", "🔵 무상반품", "⬜ 정상"];
+    const groupKeys = Object.keys(grouped).sort((a, b) =>
+      sortMode === "return"
+        ? RETURN_ORDER.indexOf(a) - RETURN_ORDER.indexOf(b)
+        : a.localeCompare(b)
+    );
+    // 반품 필터 전체선택용
+    const returnFilterDrums = returnFilter ? allDrums.filter((d: any) => d.returnStatus === returnFilter) : [];
     const selectedDrums = allDrums.filter(d => selectedLots.has(d.lot));
     const allInReturn = selectedDrums.length > 0 && selectedDrums.every(d => !!d.returnStatus);
     const noneInReturn = selectedDrums.every(d => !d.returnStatus);
@@ -569,20 +598,58 @@ export default function InventoryScreen() {
             />
           </View>
 
-          {/* 정렬 탭 */}
-          <View style={styles.sortRow}>
-            {(["sector", "maker", "product"] as const).map((m) => (
+          {/* 정렬 탭 + 반품 필터 탭 */}
+          <View style={[styles.sortRow, { flexWrap: "wrap", gap: 4 }]}>
+            {([
+              { key: "maker", label: "제조사" },
+              { key: "sector", label: "섹터" },
+              { key: "lot", label: "로트" },
+              { key: "product", label: "품명" },
+              { key: "return", label: "반품" },
+            ] as const).map((m) => (
               <TouchableOpacity
-                key={m}
-                style={[styles.sortTab, sortMode === m && styles.sortTabActive]}
-                onPress={() => setSortMode(m)}
+                key={m.key}
+                style={[styles.sortTab, sortMode === m.key && styles.sortTabActive, { flex: 0, paddingHorizontal: 10 }]}
+                onPress={() => setSortMode(m.key)}
               >
-                <Text style={[styles.sortTabText, sortMode === m && styles.sortTabTextActive]}>
-                  {m === "sector" ? "섹터별" : m === "maker" ? "제조사별" : "품목별"}
-                </Text>
+                <Text style={[styles.sortTabText, sortMode === m.key && styles.sortTabTextActive]}>{m.label}</Text>
+              </TouchableOpacity>
+            ))}
+            <View style={{ width: 1, backgroundColor: "#ddd", marginHorizontal: 2 }} />
+            {([
+              { key: "무상", label: "🔵무상", color: "#2563EB" },
+              { key: "기술", label: "🟡기술", color: "#D97706" },
+              { key: "불량", label: "🔴불량", color: "#DC2626" },
+            ] as const).map((f) => (
+              <TouchableOpacity
+                key={f.key}
+                style={[styles.sortTab, { flex: 0, paddingHorizontal: 10 }, returnFilter === f.key && { backgroundColor: f.color, borderColor: f.color }]}
+                onPress={() => setReturnFilter(prev => prev === f.key ? "" : f.key)}
+              >
+                <Text style={[styles.sortTabText, returnFilter === f.key && { color: "#fff" }]}>{f.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
+          {/* 반품 필터 활성 시: 전체선택 버튼 */}
+          {returnFilter !== "" && returnFilterDrums.length > 0 && (
+            <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 4, gap: 8, backgroundColor: "#F9FAFB", borderBottomWidth: 1, borderBottomColor: "#E5E7EB" }}>
+              <Text style={{ fontSize: 12, color: "#555" }}>{returnFilter}반품 {returnFilterDrums.length}건</Text>
+              <TouchableOpacity
+                style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: COLORS.primary, borderRadius: 6 }}
+                onPress={() => setSelectedLots(new Set(returnFilterDrums.map((d: any) => d.lot)))}
+              >
+                <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>전체선택</Text>
+              </TouchableOpacity>
+              {selectedLots.size > 0 && (
+                <TouchableOpacity
+                  style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: "#6B7280", borderRadius: 6 }}
+                  onPress={() => setSelectedLots(new Set())}
+                >
+                  <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>선택해제</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
 
           {/* 목록 */}
           <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: selectedLots.size > 0 ? 100 + insets.bottom : 40 }}>
@@ -595,7 +662,26 @@ export default function InventoryScreen() {
                 <View key={key} style={styles.sectorCard}>
                   <View style={styles.sectorHeader}>
                     <Text style={styles.sectorName}>{key}</Text>
-                    <Text style={styles.sectorCount}>{grouped[key].length}드럼</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      {/* 반품필터 + 제조사 정렬 시 그룹 내 반품만 선택 */}
+                      {returnFilter !== "" && sortMode === "maker" && (() => {
+                        const grpReturn = grouped[key].filter((d: any) => d.returnStatus === returnFilter);
+                        if (grpReturn.length === 0) return null;
+                        return (
+                          <TouchableOpacity
+                            style={{ paddingHorizontal: 7, paddingVertical: 2, backgroundColor: COLORS.primary, borderRadius: 5 }}
+                            onPress={() => setSelectedLots(prev => {
+                              const next = new Set(prev);
+                              grpReturn.forEach((d: any) => next.add(d.lot));
+                              return next;
+                            })}
+                          >
+                            <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>{returnFilter} {grpReturn.length}건</Text>
+                          </TouchableOpacity>
+                        );
+                      })()}
+                      <Text style={styles.sectorCount}>{grouped[key].length}드럼</Text>
+                    </View>
                   </View>
                   {/* 테이블 헤더 */}
                   <View style={styles.tableHeader}>
@@ -603,7 +689,7 @@ export default function InventoryScreen() {
                     <Text style={[styles.thCell, { flex: 1.5 }]}>품명</Text>
                     <Text style={[styles.thCell, { flex: 2 }]}>LOT</Text>
                     <Text style={[styles.thCell, { flex: 1.5 }]}>제조사</Text>
-                    {sortMode !== "sector" && <Text style={[styles.thCell, { flex: 1.2 }]}>섹터</Text>}
+                    {sortMode !== "sector" && sortMode !== "lot" && <Text style={[styles.thCell, { flex: 1.2 }]}>섹터</Text>}
                     <Text style={[styles.thCell, { flex: 1.8 }]}>등록시간</Text>
                   </View>
                   {grouped[key].map((drum: any, i: number) => {
@@ -627,7 +713,7 @@ export default function InventoryScreen() {
                         <Text style={styles.statusProduct}>{drum.product}</Text>
                         <Text style={styles.statusLot}>{drum.lot}</Text>
                         <Text style={[styles.drumMaker, { flex: 1.5 }]}>{drum.maker}</Text>
-                        {sortMode !== "sector" && (
+                        {sortMode !== "sector" && sortMode !== "lot" && (
                           <Text style={[styles.drumMaker, { flex: 1.2, color: COLORS.primary }]}>{drum.sector}</Text>
                         )}
                         <Text style={[styles.drumMaker, { flex: 1.8, fontSize: 10 }]}>{drum.registered}</Text>
