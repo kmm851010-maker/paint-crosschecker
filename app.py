@@ -2384,7 +2384,7 @@ def page_inventory():
         st.caption("기술·무상·불량 반품 리스트를 업로드하면 현재 재고와 자동 매칭 후 반품상태를 일괄 적용합니다.")
         rl_file = st.file_uploader(
             "반품 리스트 파일 선택",
-            type=["jpg", "jpeg", "png", "xlsx", "xls"],
+            type=["jpg", "jpeg", "png", "xlsx", "xls", "csv"],
             key="rl_upload",
         )
         if rl_file:
