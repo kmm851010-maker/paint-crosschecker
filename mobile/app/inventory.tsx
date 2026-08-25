@@ -462,18 +462,25 @@ export default function InventoryScreen() {
           />
           {/* 속도 슬라이더 */}
           <View style={styles.speedSliderBox}>
-            <Text style={styles.speedLabel}>⏱ {SCAN_SPEED_LABELS[speedIdx]}</Text>
-            <Slider
-              style={{ width: 130, height: 30 }}
-              minimumValue={0}
-              maximumValue={4}
-              step={1}
-              value={speedIdx}
-              onValueChange={v => setSpeedIdx(v)}
-              minimumTrackTintColor="#4AFF91"
-              maximumTrackTintColor="#555"
-              thumbTintColor="#fff"
-            />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 }}>
+              <Text style={styles.speedIcon}>⏱</Text>
+              <Text style={styles.speedLabel}>{SCAN_SPEED_LABELS[speedIdx]}</Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Text style={styles.speedEndLabel}>느림</Text>
+              <Slider
+                style={{ width: 120, height: 28 }}
+                minimumValue={0}
+                maximumValue={4}
+                step={1}
+                value={speedIdx}
+                onValueChange={v => setSpeedIdx(v)}
+                minimumTrackTintColor="#4AFF91"
+                maximumTrackTintColor="rgba(255,255,255,0.25)"
+                thumbTintColor="#4AFF91"
+              />
+              <Text style={styles.speedEndLabel}>빠름</Text>
+            </View>
           </View>
           {/* 토치 버튼 */}
           <TouchableOpacity
@@ -926,10 +933,15 @@ const styles = StyleSheet.create({
   savingText: { color: "#fff", fontSize: 16, fontWeight: "600" },
   speedSliderBox: {
     position: "absolute", bottom: 12, left: 8,
-    alignItems: "center", backgroundColor: "rgba(0,0,0,0.5)",
-    borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4,
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderRadius: 14,
+    paddingHorizontal: 10, paddingVertical: 7,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.1)",
   },
-  speedLabel: { color: "#4AFF91", fontSize: 11, fontWeight: "700", marginBottom: 2 },
+  speedIcon: { fontSize: 13 },
+  speedLabel: { color: "#4AFF91", fontSize: 12, fontWeight: "700" },
+  speedEndLabel: { color: "rgba(255,255,255,0.5)", fontSize: 10 },
   torchBtn: {
     position: "absolute", bottom: 12, right: 12,
     alignItems: "center", backgroundColor: "rgba(0,0,0,0.5)",
