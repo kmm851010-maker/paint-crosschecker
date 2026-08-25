@@ -23,7 +23,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LightSensor } from "expo-sensors";
 
 import { COLORS } from "../src/constants/config";
-import { registerDrums, getSectorInventory, type DrumItem } from "../src/services/api";
+import { registerDrums, getSectorInventory, setDrumReturnStatus, type DrumItem } from "../src/services/api";
 
 // ── 제조사 코드 ──
 const MAKER_MAP: Record<string, string> = {
@@ -79,7 +79,7 @@ function parseOcrBlocks(blocks: TextBlock[]): DrumItem | null {
 
 const SECTORS = [
   "입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리",
-  "8번자리", "9번자리", "반품자리", "반품대기", "CW2", "CP5", "창고뒤", "롤반 앞", "믹싱룸",
+  "8번자리", "9번자리", "반품자리", "CW2", "CP5", "창고뒤", "롤반 앞", "믹싱룸",
 ];
 const CHECKOUT = "라인입고";
 type Mode = "idle" | "scanning" | "sectorPick" | "status";
@@ -95,7 +95,6 @@ export default function InventoryScreen() {
   const [searchText, setSearchText] = useState("");
   const [sortMode, setSortMode] = useState<"sector" | "maker" | "product">("sector");
   const [selectedLots, setSelectedLots] = useState<Set<string>>(new Set());
-  const [returnPickOpen, setReturnPickOpen] = useState(false);
   // 토치: "off" | "auto" | "on"
   const [torchMode, setTorchMode] = useState<"off" | "auto" | "on">("off");
   const [autoTorchActive, setAutoTorchActive] = useState(false);
@@ -335,40 +334,6 @@ export default function InventoryScreen() {
     </Modal>
   );
 
-  // ── 반품대기 해제 섹터 선택 모달 ──
-  const ReturnPickModal = ({ drums }: { drums: any[] }) => (
-    <Modal visible={returnPickOpen} animationType="slide" transparent>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>{drums.length}드럼 → 이동할 섹터 선택</Text>
-          <ScrollView>
-            {SECTORS.filter(s => s !== "반품대기").map((s) => (
-              <TouchableOpacity key={s} style={styles.sectorBtn} onPress={async () => {
-                setReturnPickOpen(false);
-                setLoading(true);
-                try {
-                  await registerDrums(drums, s);
-                  setSelectedLots(new Set());
-                  const data = await getSectorInventory();
-                  setSectorData(data);
-                  Alert.alert("완료", `${drums.length}드럼 → ${s} 이동`);
-                } catch (e: any) {
-                  Alert.alert("실패", e.message);
-                } finally {
-                  setLoading(false);
-                }
-              }}>
-                <Text style={styles.sectorBtnText}>{s}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-          <TouchableOpacity style={[styles.modalCancelBtn, { paddingBottom: 14 + insets.bottom }]} onPress={() => setReturnPickOpen(false)}>
-            <Text style={styles.modalCancelText}>취소</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
 
   // ── 스캔 화면 ──
   if (mode === "scanning") {
@@ -486,8 +451,8 @@ export default function InventoryScreen() {
     }
     const groupKeys = Object.keys(grouped).sort();
     const selectedDrums = allDrums.filter(d => selectedLots.has(d.lot));
-    const allInReturn = selectedDrums.length > 0 && selectedDrums.every(d => d.sector === "반품대기");
-    const noneInReturn = selectedDrums.every(d => d.sector !== "반품대기");
+    const allInReturn = selectedDrums.length > 0 && selectedDrums.every(d => d.returnStatus === "Y");
+    const noneInReturn = selectedDrums.every(d => d.returnStatus !== "Y");
 
     return (
       <>
@@ -553,7 +518,7 @@ export default function InventoryScreen() {
                   </View>
                   {grouped[key].map((drum: any, i: number) => {
                     const isSelected = selectedLots.has(drum.lot);
-                    const isReturn = drum.sector === "반품대기";
+                    const isReturn = drum.returnStatus === "Y";
                     return (
                       <TouchableOpacity
                         key={i}
@@ -602,7 +567,16 @@ export default function InventoryScreen() {
                     <Text style={styles.checkoutBarBtnText}>반품완료</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[styles.checkoutBarBtn, { backgroundColor: "#F59E0B", flex: 1 }]} disabled={loading}
-                    onPress={() => setReturnPickOpen(true)}>
+                    onPress={async () => {
+                      setLoading(true);
+                      try {
+                        await setDrumReturnStatus(selectedDrums, "");
+                        setSelectedLots(new Set());
+                        setSectorData(await getSectorInventory());
+                        Alert.alert("완료", `${selectedDrums.length}드럼 반품대기 해제`);
+                      } catch (e: any) { Alert.alert("실패", (e as any).message); }
+                      finally { setLoading(false); }
+                    }}>
                     <Text style={styles.checkoutBarBtnText}>반품대기 해제</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[styles.checkoutBarBtn, { flex: 1 }]} disabled={loading}
@@ -620,7 +594,7 @@ export default function InventoryScreen() {
                   </TouchableOpacity>
                 </>
               )}
-              {/* 반품대기 외 항목 선택됐을 때 */}
+              {/* 반품대기 아닌 항목 선택됐을 때 */}
               {!allInReturn && (
                 <>
                   <TouchableOpacity style={[styles.checkoutBarBtn, { flex: 1 }]} disabled={loading}
@@ -640,7 +614,7 @@ export default function InventoryScreen() {
                     onPress={async () => {
                       setLoading(true);
                       try {
-                        await registerDrums(selectedDrums, "반품대기");
+                        await setDrumReturnStatus(selectedDrums, "Y");
                         setSelectedLots(new Set());
                         setSectorData(await getSectorInventory());
                         Alert.alert("완료", `${selectedDrums.length}드럼 반품대기 등록`);
@@ -653,8 +627,7 @@ export default function InventoryScreen() {
               )}
               {loading && <ActivityIndicator color="#fff" size="small" />}
             </View>
-          )}
-          <ReturnPickModal drums={selectedDrums} />
+          }}
         </View>
       </>
     );

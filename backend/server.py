@@ -248,6 +248,23 @@ async def inventory_register(req: InventoryRegisterRequest):
     return {"success": True, "count": len(drums), "sector": req.sector}
 
 
+class ReturnStatusRequest(BaseModel):
+    drums: list[DrumItem]
+    status: str  # "Y" → 반품대기, "" → 해제
+
+
+@app.post("/api/inventory/return-status")
+async def set_return_status_endpoint(req: ReturnStatusRequest):
+    """반품상태 플래그 설정/해제 (섹터 변경 없음)"""
+    from utils.inventory_sheets import set_return_status
+    drums = [d.model_dump() for d in req.drums]
+    try:
+        set_return_status(drums, req.status)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, "count": len(drums), "status": req.status}
+
+
 @app.get("/api/inventory/sectors")
 async def get_inventory_sectors():
     """섹터별 보관 드럼 현황 조회"""

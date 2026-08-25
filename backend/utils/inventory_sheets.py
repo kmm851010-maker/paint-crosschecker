@@ -33,7 +33,7 @@ MAKERS = {
 
 SECTORS = [
     "입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리",
-    "8번자리", "9번자리", "반품자리", "반품대기", "CW2", "CP5", "창고뒤", "롤반 앞", "믹싱룸",
+    "8번자리", "9번자리", "반품자리", "CW2", "CP5", "창고뒤", "롤반 앞", "믹싱룸",
 ]
 CHECKOUT_SECTOR = "라인입고"
 RETURN_SECTOR = "반품완료"
@@ -92,7 +92,7 @@ def parse_barcode(raw_text: str):
 
 
 def _load_status_map(ws):
-    """재고현황 시트에서 LOT → {idx, sector} 맵 반환"""
+    """재고현황 시트에서 LOT → {idx, sector, return_status} 맵 반환"""
     all_data = ws.get_all_values()
     lot_map = {}
     for i, row in enumerate(all_data[1:], start=2):
@@ -100,6 +100,7 @@ def _load_status_map(ws):
             lot_map[row[0]] = {
                 "idx": i,
                 "sector": row[3] if len(row) > 3 else "",
+                "return_status": row[6] if len(row) > 6 else "",
             }
     return lot_map
 
@@ -109,12 +110,12 @@ def _kst_now() -> str:
 
 
 def save_drums_to_sector(drums: list, sector: str):
-    """드럼 목록을 지정 섹터에 보관 등록 또는 이동"""
+    """드럼 목록을 지정 섹터에 보관 등록 또는 이동 (반품상태는 유지)"""
     now = _kst_now()
 
     ws_status = _get_or_create_sheet(
         "재고현황",
-        ["LOT", "품명", "제조사", "섹터", "등록일시", "최종변경"],
+        ["LOT", "품명", "제조사", "섹터", "등록일시", "최종변경", "반품상태"],
     )
     ws_history = _get_or_create_sheet(
         "재고이력",
@@ -132,11 +133,12 @@ def save_drums_to_sector(drums: list, sector: str):
         if lot in lot_map:
             prev_sector = lot_map[lot]["sector"]
             row_idx = lot_map[lot]["idx"]
+            # 섹터만 변경, 반품상태(G열)는 보존
             ws_status.update([[sector]], f"D{row_idx}")
             ws_status.update([[now]], f"F{row_idx}")
             history_rows.append([lot, product, maker, prev_sector, sector, now])
         else:
-            ws_status.append_row([lot, product, maker, sector, now, now])
+            ws_status.append_row([lot, product, maker, sector, now, now, ""])
             history_rows.append([lot, product, maker, "", sector, now])
 
     if history_rows:
@@ -175,7 +177,7 @@ def checkout_drums(drums: list):
 
 
 def get_sector_inventory():
-    """섹터별 보관 드럼 현황 반환"""
+    """섹터별 보관 드럼 현황 반환 (returnStatus 포함)"""
     ws = _get_or_create_sheet("재고현황")
     all_data = ws.get_all_values()
 
@@ -192,6 +194,26 @@ def get_sector_inventory():
             "maker": row[2] if len(row) > 2 else "",
             "registered": row[4] if len(row) > 4 else "",
             "updated": row[5] if len(row) > 5 else "",
+            "returnStatus": row[6] if len(row) > 6 else "",
         })
 
     return sectors
+
+
+def set_return_status(drums: list, status: str):
+    """반품상태 플래그 설정 (status='Y' → 반품대기, status='' → 해제). 섹터는 변경하지 않음."""
+    now = _kst_now()
+    ws_status = _get_or_create_sheet(
+        "재고현황",
+        ["LOT", "품명", "제조사", "섹터", "등록일시", "최종변경", "반품상태"],
+    )
+    lot_map = _load_status_map(ws_status)
+
+    for drum in drums:
+        lot = drum["lot"]
+        if lot in lot_map:
+            row_idx = lot_map[lot]["idx"]
+            ws_status.update([[status]], f"G{row_idx}")
+            ws_status.update([[now]], f"F{row_idx}")
+
+    return True

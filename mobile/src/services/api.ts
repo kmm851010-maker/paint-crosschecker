@@ -142,6 +142,7 @@ export interface DrumItem {
   lot: string;
   product: string;
   maker: string;
+  returnStatus?: string;
 }
 
 export interface SectorInventory {
@@ -178,6 +179,18 @@ export async function getSectorInventory(): Promise<SectorInventory> {
   if (!response.ok) throw new Error("재고 조회 실패");
   const data = await response.json();
   return data.sectors;
+}
+
+export async function setDrumReturnStatus(drums: DrumItem[], status: "Y" | ""): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/inventory/return-status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ drums, status }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "처리 실패" }));
+    throw new Error(error.detail || `서버 오류 (${response.status})`);
+  }
 }
 
 // 교차검증 결과 엑셀
