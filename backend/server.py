@@ -276,6 +276,29 @@ async def get_inventory_sectors():
     return {"success": True, "sectors": sectors}
 
 
+class ParseReturnListRequest(BaseModel):
+    file_data: str  # base64
+    filename: str
+    api_key: str = ""
+
+
+@app.post("/api/inventory/parse-return-list")
+async def parse_return_list_endpoint(req: ParseReturnListRequest):
+    """반품 리스트 이미지/엑셀에서 품명·LOT-NO·반품유형 추출"""
+    from utils.return_list_parser import parse_return_list_excel, parse_return_list_image
+    key = get_api_key(req.api_key)
+    file_bytes = base64.b64decode(req.file_data)
+    ext = req.filename.lower().rsplit(".", 1)[-1]
+    try:
+        if ext in ("xlsx", "xls", "csv"):
+            items = parse_return_list_excel(file_bytes, ext)
+        else:
+            items = parse_return_list_image(file_bytes, req.filename, key)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, "count": len(items), "items": items}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

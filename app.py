@@ -2379,6 +2379,88 @@ def page_inventory():
     # 그룹 키
     group_col = {"섹터별": "sector", "제조사별": "maker", "품목별": "product"}[sort_mode]
 
+    # ─── 반품 리스트 자동 매칭 ───────────────────────────────────
+    with st.expander("📋 반품 리스트 자동 매칭 (이미지/엑셀 업로드)", expanded=False):
+        st.caption("기술·무상·불량 반품 리스트를 업로드하면 현재 재고와 자동 매칭 후 반품상태를 일괄 적용합니다.")
+        rl_file = st.file_uploader(
+            "반품 리스트 파일 선택",
+            type=["jpg", "jpeg", "png", "xlsx", "xls"],
+            key="rl_upload",
+        )
+        if rl_file:
+            col_rl_btn, _ = st.columns([1, 3])
+            if col_rl_btn.button("🔍 리스트 분석", key="btn_rl_parse", use_container_width=True):
+                with st.spinner("분석 중... (이미지는 10~20초 소요)"):
+                    import base64 as _b64
+                    file_b64 = _b64.b64encode(rl_file.read()).decode()
+                    try:
+                        res_rl = _req.post(
+                            f"{BACKEND}/api/inventory/parse-return-list",
+                            json={"file_data": file_b64, "filename": rl_file.name, "api_key": ""},
+                            timeout=90,
+                        )
+                        if res_rl.ok:
+                            st.session_state["rl_parsed"] = res_rl.json().get("items", [])
+                            st.session_state.pop("rl_matched", None)
+                        else:
+                            st.error(f"분석 실패: {res_rl.text}")
+                    except Exception as _e:
+                        st.error(f"오류: {_e}")
+
+        if st.session_state.get("rl_parsed"):
+            parsed = st.session_state["rl_parsed"]
+            # 현재 재고 lot 맵
+            lot_map = {d["lot"]: d for d in all_drums}
+            matched, unmatched = [], []
+            for item in parsed:
+                lot = item["lot_no"]
+                if lot in lot_map:
+                    matched.append({**lot_map[lot], "new_return_type": item["return_type"]})
+                else:
+                    unmatched.append(item)
+
+            type_label = {"기술": "🟡 기술반품", "무상": "🔵 무상반품", "불량": "🔴 불량반품"}
+            st.success(f"**추출 {len(parsed)}건** | 재고 매칭 **{len(matched)}건** | 미매칭 {len(unmatched)}건")
+
+            if matched:
+                import pandas as _pd2
+                df_m = _pd2.DataFrame(matched)[["product", "lot", "sector", "new_return_type"]]
+                df_m["반품유형"] = df_m["new_return_type"].map(type_label).fillna(df_m["new_return_type"])
+                st.dataframe(df_m[["product", "lot", "sector", "반품유형"]], use_container_width=True, hide_index=True)
+
+                if st.button(f"✅ {len(matched)}드럼 반품상태 일괄 적용", type="primary", key="btn_rl_apply"):
+                    groups = {"기술": [], "무상": [], "불량": []}
+                    for d in matched:
+                        rt = d.get("new_return_type", "무상")
+                        groups.setdefault(rt, []).append(d)
+                    ok_count, errs = 0, []
+                    for status, grp in groups.items():
+                        if not grp:
+                            continue
+                        try:
+                            r = _req.post(
+                                f"{BACKEND}/api/inventory/return-status",
+                                json={"drums": grp, "status": status},
+                                timeout=30,
+                            )
+                            if r.ok:
+                                ok_count += len(grp)
+                            else:
+                                errs.append(f"{status}: {r.text}")
+                        except Exception as _e2:
+                            errs.append(str(_e2))
+                    if errs:
+                        st.error(f"일부 오류: {errs}")
+                    else:
+                        st.success(f"{ok_count}드럼 반품상태 적용 완료!")
+                        st.session_state.pop("rl_parsed", None)
+                        st.rerun()
+
+            if unmatched:
+                with st.expander(f"재고 미매칭 {len(unmatched)}건 (현재 재고에 없는 LOT)"):
+                    import pandas as _pd3
+                    st.dataframe(_pd3.DataFrame(unmatched), use_container_width=True, hide_index=True)
+
     st.markdown("---")
 
     # 드럼별 체크박스 선택
