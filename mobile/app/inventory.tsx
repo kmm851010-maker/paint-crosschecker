@@ -140,6 +140,13 @@ export default function InventoryScreen() {
   const [searchText, setSearchText] = useState("");
   const [sortMode, setSortMode] = useState<"sector" | "maker" | "product">("sector");
   const [selectedLots, setSelectedLots] = useState<Set<string>>(new Set());
+  // 스캔 속도: 느림=1800ms, 보통=900ms, 빠름=450ms
+  const SCAN_SPEEDS = [1800, 900, 450] as const;
+  const SCAN_SPEED_LABELS = ["🐢 느림", "⚡ 보통", "🚀 빠름"] as const;
+  const [speedIdx, setSpeedIdx] = useState(1);
+  const speedIdxRef = useRef(1);
+  useEffect(() => { speedIdxRef.current = speedIdx; }, [speedIdx]);
+
   // 토치: "off" | "auto" | "on"
   const [torchMode, setTorchMode] = useState<"off" | "auto" | "on">("off");
   const [autoTorchActive, setAutoTorchActive] = useState(false);
@@ -195,7 +202,7 @@ export default function InventoryScreen() {
   // 스캔 모드 진입/종료 + 저장 중 OCR 루프 시작/정지
   useEffect(() => {
     if (mode === "scanning" && !loading) {
-      intervalRef.current = setInterval(runOcr, 900);
+      intervalRef.current = setInterval(runOcr, SCAN_SPEEDS[speedIdxRef.current]);
     } else {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -208,7 +215,7 @@ export default function InventoryScreen() {
         intervalRef.current = null;
       }
     };
-  }, [mode, loading]);
+  }, [mode, loading, speedIdx]);
 
   const triggerFeedback = () => {
     Vibration.vibrate([0, 80, 60, 80]);
@@ -452,6 +459,16 @@ export default function InventoryScreen() {
             pointerEvents="none"
             style={[StyleSheet.absoluteFillObject, { backgroundColor: "#4AFF91", opacity: flashAnim }]}
           />
+          {/* 속도 버튼 */}
+          <TouchableOpacity
+            style={[styles.torchBtn, { bottom: 12, left: 12, right: undefined }]}
+            onPress={() => setSpeedIdx(i => (i + 1) % 3)}
+          >
+            <Text style={styles.torchIcon}>⏱</Text>
+            <Text style={[styles.torchLabel, styles.torchLabelActive]}>
+              {SCAN_SPEED_LABELS[speedIdx]}
+            </Text>
+          </TouchableOpacity>
           {/* 토치 버튼 */}
           <TouchableOpacity
             style={styles.torchBtn}
