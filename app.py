@@ -1702,98 +1702,127 @@ def page_statistics():
             except Exception:
                 return 0.0
 
+        # 한국 법정공휴일 + 대체공휴일 세트 (해당 월 포함 연도)
+        try:
+            import holidays as _hol
+            _kr_holidays = _hol.SouthKorea(years=[year, year - 1, year + 1])
+        except Exception:
+            _kr_holidays = set()
+
+        def _is_holiday(d):
+            return d in _kr_holidays or d.weekday() >= 5
+
+        def _fill_2p(row, day_worker, night_worker, leave_person, leave_type_val,
+                     is_hol, day_ot=4.0, night_ot=4.0, night_base=7.5):
+            """2인 근무 시 해당 인원의 행 채우기"""
+            if name == leave_person:
+                if leave_type_val == "공가":
+                    row["공가"] = 8.0
+                elif leave_type_val == "공휴":
+                    pass  # 공휴일 → 급여시간 없음
+                else:
+                    row["휴가비근로"] = 8.0
+            elif name == day_worker:
+                if is_hol or leave_type_val == "공휴":
+                    row["유휴근로"] = 8.0
+                    row["휴일연장"] = day_ot
+                    row["휴일비근로"] = 8.0
+                else:
+                    row["정상근로"] = 8.0
+                    row["연장근로"] = day_ot
+            elif name == night_worker:
+                if is_hol or leave_type_val == "공휴":
+                    row["유휴근로"] = 8.0
+                    row["야간근로"] = night_base
+                    row["휴일연장"] = night_ot
+                    row["휴일비근로"] = 8.0
+                else:
+                    row["정상근로"] = 8.0
+                    row["야간근로"] = night_base
+                    row["연장근로"] = night_ot
+
+        def _fill_3p_worker(row, 근, is_hol, day_ot=0.0, night_ot_h=0.0):
+            """3인 근무 해당 근의 행 채우기"""
+            night_base = NIGHT_HOURS.get(근, 0)
+            if is_hol:
+                row["휴일근로"] = 8.0
+                row["휴일비근로"] = 8.0
+                row["휴일연장"] = day_ot + night_ot_h
+                if night_base > 0:
+                    row["야간근로"] = night_base
+            else:
+                row["정상근로"] = 8.0
+                row["연장근로"] = day_ot
+                if night_base > 0:
+                    row["야간근로"] = night_base + night_ot_h
+
         rows = []
         for day in range(1, days_in_month + 1):
             date = datetime.date(year, month, day)
             date_str = date.strftime("%Y-%m-%d")
-            is_weekend = date.weekday() >= 5
+            is_hol = _is_holiday(date)
 
             row = {c: 0.0 for c in _SALARY_COLS}
             row["날짜"] = f"{month:02d}/{day:02d}"
 
             if date_str in daily_details:
+                # ── 저장된 일지 우선 사용 ──
                 shift = daily_details[date_str].get("shift", {})
                 is_2p = shift.get("is_2person", False)
 
                 if is_2p:
-                    leave_person = shift.get("leave_person", "")
-                    day_worker = shift.get("주간_근무자", "") or shift.get("1근_근무자", "")
-                    night_worker = shift.get("야간_근무자", "") or shift.get("2근_근무자", "")
-                    leave_type_val = shift.get("leave_type", "")
-
-                    if name == leave_person:
-                        if leave_type_val == "공가":
-                            row["공가"] = 8.0
-                        elif leave_type_val == "공휴":
-                            pass  # 공휴일 휴무 → 급여시간 없음
-                        else:
-                            row["휴가비근로"] = 8.0
-                    elif name == day_worker:
-                        base_ot = _sf(shift.get("1근_연장", 4))
-                        extra_ot = max(0.0, _sf(shift.get("1근_주간연장", base_ot)) - base_ot) + _sf(shift.get("1근_야간연장", 0))
-                        total_ot = base_ot + extra_ot
-                        if is_weekend or leave_type_val == "공휴":
-                            row["유휴근로"] = 8.0
-                            row["휴일연장"] = total_ot
-                            row["휴일비근로"] = 8.0
-                        else:
-                            row["정상근로"] = 8.0
-                            row["연장근로"] = total_ot
-                    elif name == night_worker:
-                        base_ot = _sf(shift.get("2근_연장", 4))
-                        night_base = NIGHT_HOURS.get("야간", 7.5)
-                        if is_weekend or leave_type_val == "공휴":
-                            row["유휴근로"] = 8.0
-                            row["야간근로"] = night_base
-                            row["휴일연장"] = base_ot
-                            row["휴일비근로"] = 8.0
-                        else:
-                            row["정상근로"] = 8.0
-                            row["야간근로"] = night_base
-                            row["연장근로"] = base_ot
+                    lp = shift.get("leave_person", "") or shift.get("3근_근무자", "")
+                    dw = shift.get("주간_근무자", "") or shift.get("1근_근무자", "")
+                    nw = shift.get("야간_근무자", "") or shift.get("2근_근무자", "")
+                    lv = shift.get("leave_type", "") or shift.get("3근_비고", "")
+                    d_ot = _sf(shift.get("1근_연장", 4))
+                    n_ot = _sf(shift.get("2근_연장", 4))
+                    nb = NIGHT_HOURS.get("야간", 7.5)
+                    _fill_2p(row, dw, nw, lp, lv, is_hol, d_ot, n_ot, nb)
                 else:
-                    for shift_key, 근 in [("1근_근무자", "1근"), ("2근_근무자", "2근"), ("3근_근무자", "3근")]:
-                        if shift.get(shift_key) == name:
-                            exp_day = shift.get(f"{근}_주간연장")
-                            exp_night = shift.get(f"{근}_야간연장")
-                            base_ot = _sf(shift.get(f"{근}_연장", 0))
-                            day_ot = _sf(exp_day) if exp_day is not None else base_ot
-                            night_ot_h = _sf(exp_night) if exp_night is not None else 0.0
-                            night_base = NIGHT_HOURS.get(근, 0)
-                            if is_weekend:
-                                row["휴일근로"] = 8.0
-                                row["휴일비근로"] = 8.0
-                                row["휴일연장"] = day_ot + night_ot_h
-                                if night_base > 0:
-                                    row["야간근로"] = night_base
-                            else:
-                                row["정상근로"] = 8.0
-                                row["연장근로"] = day_ot
-                                if night_base > 0:
-                                    row["야간근로"] = night_base + night_ot_h
+                    for sk, 근 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                        if shift.get(sk) == name:
+                            exp_d = shift.get(f"{근}_주간연장")
+                            exp_n = shift.get(f"{근}_야간연장")
+                            base = _sf(shift.get(f"{근}_연장", 0))
+                            d_ot = _sf(exp_d) if exp_d is not None else base
+                            n_ot = _sf(exp_n) if exp_n is not None else 0.0
+                            _fill_3p_worker(row, 근, is_hol, d_ot, n_ot)
                             break
                     else:
                         if shift.get("휴무_근무자") == name:
-                            off_type = shift.get("휴무_구분", "")
-                            if off_type in ("정기휴가", "연차", "특별휴가", "명휴", "생일휴가", "청원휴가"):
+                            ot = shift.get("휴무_구분", "")
+                            if ot in ("정기휴가","연차","특별휴가","명휴","생일휴가","청원휴가"):
                                 row["휴가비근로"] = 8.0
-                            elif off_type == "공가":
+                            elif ot == "공가":
                                 row["공가"] = 8.0
+
             else:
-                for lv in base_leaves:
-                    if lv.get("name") == name:
-                        try:
-                            lv_s = datetime.date.fromisoformat(lv["start"])
-                            lv_e = datetime.date.fromisoformat(lv["end"])
-                            if lv_s <= date <= lv_e:
-                                lv_t = lv.get("type", "")
-                                if lv_t == "공가":
-                                    row["공가"] = 8.0
-                                elif lv_t not in ("공휴", "결근", "조퇴", "외출", ""):
-                                    row["휴가비근로"] = 8.0
-                                break
-                        except Exception:
-                            pass
+                # ── 저장 없음 → 교대 스케줄 기반 기본값 ──
+                sched = _shift_for_date(date, MEMBERS)
+                sched = _apply_leaves_stat(sched, date, base_leaves)
+                is_2p = sched.get("is_2person", False)
+
+                if is_2p:
+                    lp = sched.get("leave_person", "")
+                    dw = sched.get("주간_근무자", "")
+                    nw = sched.get("야간_근무자", "")
+                    lv = sched.get("leave_type", "")
+                    nb = NIGHT_HOURS.get("야간", 7.5)
+                    _fill_2p(row, dw, nw, lp, lv, is_hol, 4.0, 4.0, nb)
+                else:
+                    for sk, 근 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                        if sched.get(sk) == name:
+                            _fill_3p_worker(row, 근, is_hol)
+                            break
+                    else:
+                        if sched.get("휴무_근무자") == name:
+                            ot = sched.get("휴무_구분", "")
+                            if ot in ("정기휴가","연차","특별휴가","명휴","생일휴가","청원휴가"):
+                                row["휴가비근로"] = 8.0
+                            elif ot == "공가":
+                                row["공가"] = 8.0
+                            # 교대휴무/주휴휴무 → 시간 없음 (휴무일)
 
             total = sum(row[c] for c in _SALARY_COLS)
             row["일별합계"] = total
