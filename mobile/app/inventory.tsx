@@ -20,6 +20,7 @@ import * as FileSystem from "expo-file-system";
 import TextRecognition, { type TextBlock } from "@react-native-ml-kit/text-recognition";
 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Slider from "@react-native-community/slider";
 import { LightSensor } from "expo-sensors";
 
 import { COLORS } from "../src/constants/config";
@@ -459,16 +460,21 @@ export default function InventoryScreen() {
             pointerEvents="none"
             style={[StyleSheet.absoluteFillObject, { backgroundColor: "#4AFF91", opacity: flashAnim }]}
           />
-          {/* 속도 버튼 */}
-          <TouchableOpacity
-            style={[styles.torchBtn, { bottom: 12, left: 12, right: undefined }]}
-            onPress={() => setSpeedIdx(i => (i + 1) % 5)}
-          >
-            <Text style={styles.torchIcon}>⏱</Text>
-            <Text style={[styles.torchLabel, styles.torchLabelActive]}>
-              {SCAN_SPEED_LABELS[speedIdx]}
-            </Text>
-          </TouchableOpacity>
+          {/* 속도 슬라이더 */}
+          <View style={styles.speedSliderBox}>
+            <Text style={styles.speedLabel}>⏱ {SCAN_SPEED_LABELS[speedIdx]}</Text>
+            <Slider
+              style={{ width: 130, height: 30 }}
+              minimumValue={0}
+              maximumValue={4}
+              step={1}
+              value={speedIdx}
+              onValueChange={v => setSpeedIdx(v)}
+              minimumTrackTintColor="#4AFF91"
+              maximumTrackTintColor="#555"
+              thumbTintColor="#fff"
+            />
+          </View>
           {/* 토치 버튼 */}
           <TouchableOpacity
             style={styles.torchBtn}
@@ -918,6 +924,12 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   savingText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  speedSliderBox: {
+    position: "absolute", bottom: 12, left: 8,
+    alignItems: "center", backgroundColor: "rgba(0,0,0,0.5)",
+    borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4,
+  },
+  speedLabel: { color: "#4AFF91", fontSize: 11, fontWeight: "700", marginBottom: 2 },
   torchBtn: {
     position: "absolute", bottom: 12, right: 12,
     alignItems: "center", backgroundColor: "rgba(0,0,0,0.5)",
