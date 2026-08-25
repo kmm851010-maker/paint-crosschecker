@@ -140,10 +140,10 @@ export default function InventoryScreen() {
   const [searchText, setSearchText] = useState("");
   const [sortMode, setSortMode] = useState<"sector" | "maker" | "product">("sector");
   const [selectedLots, setSelectedLots] = useState<Set<string>>(new Set());
-  // 스캔 속도: 느림=1800ms, 보통=900ms, 빠름=450ms
-  const SCAN_SPEEDS = [1800, 900, 450] as const;
-  const SCAN_SPEED_LABELS = ["🐢 느림", "⚡ 보통", "🚀 빠름"] as const;
-  const [speedIdx, setSpeedIdx] = useState(1);
+  // 스캔 속도: 5단계
+  const SCAN_SPEEDS = [2500, 1600, 900, 500, 280] as const;
+  const SCAN_SPEED_LABELS = ["🐢 최저", "🐢 느림", "⚡ 보통", "🚀 빠름", "🚀 최고"] as const;
+  const [speedIdx, setSpeedIdx] = useState(2);
   const speedIdxRef = useRef(1);
   useEffect(() => { speedIdxRef.current = speedIdx; }, [speedIdx]);
 
@@ -462,7 +462,7 @@ export default function InventoryScreen() {
           {/* 속도 버튼 */}
           <TouchableOpacity
             style={[styles.torchBtn, { bottom: 12, left: 12, right: undefined }]}
-            onPress={() => setSpeedIdx(i => (i + 1) % 3)}
+            onPress={() => setSpeedIdx(i => (i + 1) % 5)}
           >
             <Text style={styles.torchIcon}>⏱</Text>
             <Text style={[styles.torchLabel, styles.torchLabelActive]}>
