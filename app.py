@@ -1710,7 +1710,7 @@ def page_statistics():
             _kr_holidays = set()
 
         def _is_holiday(d):
-            return d in _kr_holidays or d.weekday() >= 5
+            return d in _kr_holidays
 
         def _fill_2p(row, day_worker, night_worker, leave_person, leave_type_val,
                      is_hol, day_ot=4.0, night_ot=4.0, night_base=7.5):
@@ -1745,7 +1745,7 @@ def page_statistics():
             """3인 근무 해당 근의 행 채우기"""
             night_base = NIGHT_HOURS.get(근, 0)
             if is_hol:
-                row["휴일근로"] = 8.0
+                row["유휴근로"] = 8.0
                 row["휴일비근로"] = 8.0
                 row["휴일연장"] = day_ot + night_ot_h
                 if night_base > 0:
