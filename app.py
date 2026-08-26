@@ -160,6 +160,24 @@ st.markdown("""
     [data-testid="stSidebar"] .stCaption p {
         color: #D4C5F0 !important;
     }
+    /* 사이드바 버튼: 항상 텍스트 보이게 */
+    [data-testid="stSidebar"] .stButton > button {
+        color: #FFFFFF !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+        border: 1px solid rgba(255, 255, 255, 0.25) !important;
+    }
+    [data-testid="stSidebar"] .stButton > button:hover {
+        background: rgba(255, 255, 255, 0.18) !important;
+        border-color: rgba(255, 255, 255, 0.5) !important;
+    }
+    [data-testid="stSidebar"] .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #F5A623 0%, #E8951A 100%) !important;
+        border: none !important;
+        color: #1A1A2E !important;
+    }
+    [data-testid="stSidebar"] .stButton > button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #FFB84D 0%, #F5A623 100%) !important;
+    }
     /* 메트릭 카드 */
     [data-testid="stMetric"] {
         background: #FFFFFF;
