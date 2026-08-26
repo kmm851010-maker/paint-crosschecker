@@ -1514,7 +1514,7 @@ def page_work_log():
 
         # ── 메일 전송 ──
         _email_cfg = st.secrets.get("email", {})
-        if _email_cfg.get("gmail_user") and _email_cfg.get("gmail_app_password"):
+        if _email_cfg.get("gmail_user"):
             st.markdown("---")
             if st.button("✉️ 통합일지 메일 전송", use_container_width=True):
                 st.session_state["_show_mail_form"] = True
@@ -1548,21 +1548,21 @@ def page_work_log():
                                 st.error("받는 사람 이메일을 입력하세요.")
                             else:
                                 try:
-                                    import smtplib, uuid
+                                    import base64 as _b64
                                     from email.mime.multipart import MIMEMultipart
                                     from email.mime.text import MIMEText
                                     from email.mime.base import MIMEBase
                                     from email import encoders
-                                    from email.utils import formataddr, formatdate
                                     from email.header import Header
+                                    import google.oauth2.credentials as _goauth
+                                    import googleapiclient.discovery as _gdisco
+                                    from utils.sheets import _get_or_create_sheet as _gos
 
                                     _recipients = [r.strip() for r in _to.split(",") if r.strip()]
 
                                     msg = MIMEMultipart("mixed")
-                                    msg["From"]    = _email_cfg["gmail_user"]
                                     msg["To"]      = ", ".join(_recipients)
                                     msg["Subject"] = Header(_subject, "utf-8").encode()
-
                                     msg.attach(MIMEText(_body, "plain", "utf-8"))
 
                                     def _attach_file(data: bytes, fname: str):
@@ -1579,12 +1579,18 @@ def page_work_log():
                                         _attach_file(_ef.getvalue(), _ef.name)
 
                                     with st.spinner("메일 전송 중..."):
-                                        _pw = _email_cfg["gmail_app_password"].replace(" ", "")
-                                        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-                                            server.ehlo()
-                                            server.starttls()
-                                            server.login(_email_cfg["gmail_user"], _pw)
-                                            server.send_message(msg)
+                                        _gcfg_ws = _gos("gmail_config")
+                                        _gcfg = {r[0]: r[1] for r in _gcfg_ws.get_all_values() if len(r) >= 2}
+                                        _gcreds = _goauth.Credentials(
+                                            token=None,
+                                            refresh_token=_gcfg["refresh_token"],
+                                            token_uri="https://oauth2.googleapis.com/token",
+                                            client_id=_gcfg["client_id"],
+                                            client_secret=_gcfg["client_secret"],
+                                        )
+                                        _svc = _gdisco.build("gmail", "v1", credentials=_gcreds)
+                                        _raw = _b64.urlsafe_b64encode(msg.as_bytes()).decode()
+                                        _svc.users().messages().send(userId="me", body={"raw": _raw}).execute()
                                     st.success(f"✅ 메일 전송 완료! → {_to}")
                                     st.session_state["_show_mail_form"] = False
                                 except Exception as _e:
