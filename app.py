@@ -1559,21 +1559,28 @@ def page_work_log():
                                     _sender_name = _fn_team or "업무보고"
                                     _recipients  = [r.strip() for r in _to.split(",") if r.strip()]
 
-                                    msg = MIMEMultipart()
+                                    _gmail_domain = _email_cfg["gmail_user"].split("@")[-1]
+
+                                    # multipart/mixed 최외곽
+                                    msg = MIMEMultipart("mixed")
                                     msg["From"]       = formataddr((_sender_name, _email_cfg["gmail_user"]))
                                     msg["To"]         = ", ".join(_recipients)
                                     msg["Subject"]    = Header(_subject, "utf-8").encode()
                                     msg["Date"]       = formatdate(localtime=True)
-                                    _gmail_domain = _email_cfg["gmail_user"].split("@")[-1]
                                     msg["Message-ID"] = f"<{uuid.uuid4().hex}@{_gmail_domain}>"
+                                    msg["MIME-Version"] = "1.0"
 
-                                    msg.attach(MIMEText(_body, "plain", "utf-8"))
+                                    # 본문: text + html 둘 다 (Gmail 웹과 동일 구조)
+                                    _alt = MIMEMultipart("alternative")
+                                    _alt.attach(MIMEText(_body, "plain", "utf-8"))
+                                    _html_body = _body.replace("\n", "<br>")
+                                    _alt.attach(MIMEText(f"<html><body><p>{_html_body}</p></body></html>", "html", "utf-8"))
+                                    msg.attach(_alt)
 
                                     def _attach_file(data: bytes, fname: str):
                                         part = MIMEBase("application", "octet-stream")
                                         part.set_payload(data)
                                         encoders.encode_base64(part)
-                                        # RFC 2231 한글 파일명 인코딩
                                         part.add_header("Content-Disposition", "attachment",
                                                         filename=("utf-8", "", fname))
                                         msg.attach(part)
@@ -1587,7 +1594,7 @@ def page_work_log():
                                         _pw = _email_cfg["gmail_app_password"].replace(" ", "")
                                         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
                                             server.login(_email_cfg["gmail_user"], _pw)
-                                            server.sendmail(_email_cfg["gmail_user"], _recipients, msg.as_bytes())
+                                            server.send_message(msg)
                                     st.success(f"✅ 메일 전송 완료! → {_to}")
                                     st.session_state["_show_mail_form"] = False
                                 except Exception as _e:
