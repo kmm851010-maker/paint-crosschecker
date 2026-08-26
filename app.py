@@ -160,6 +160,11 @@ st.markdown("""
     [data-testid="stSidebar"] .stCaption p {
         color: #D4C5F0 !important;
     }
+    /* 사이드바 버튼 간격 제거 — 같은 섹션끼리 붙게 */
+    [data-testid="stSidebar"] .stButton {
+        margin-top: 1px !important;
+        margin-bottom: 1px !important;
+    }
     /* 사이드바 버튼: 항상 텍스트 보이게 */
     [data-testid="stSidebar"] .stButton > button {
         color: #FFFFFF !important;
