@@ -1548,46 +1548,45 @@ def page_work_log():
                                 st.error("받는 사람 이메일을 입력하세요.")
                             else:
                                 try:
-                                    import smtplib
+                                    import smtplib, uuid
                                     from email.mime.multipart import MIMEMultipart
                                     from email.mime.text import MIMEText
                                     from email.mime.base import MIMEBase
                                     from email import encoders
+                                    from email.utils import formataddr, formatdate
+                                    from email.header import Header
+
+                                    _sender_name = _fn_team or "업무보고"
+                                    _recipients  = [r.strip() for r in _to.split(",") if r.strip()]
 
                                     msg = MIMEMultipart()
-                                    msg["From"]    = _email_cfg["gmail_user"]
-                                    msg["To"]      = _to.strip()
-                                    msg["Subject"] = _subject
+                                    msg["From"]       = formataddr((_sender_name, _email_cfg["gmail_user"]))
+                                    msg["To"]         = ", ".join(_recipients)
+                                    msg["Subject"]    = Header(_subject, "utf-8").encode()
+                                    msg["Date"]       = formatdate(localtime=True)
+                                    msg["Message-ID"] = f"<{uuid.uuid4().hex}@kgsteel.report>"
 
                                     msg.attach(MIMEText(_body, "plain", "utf-8"))
 
-                                    # 기본 첨부 (통합 Excel)
-                                    if _attach_default:
+                                    def _attach_file(data: bytes, fname: str):
                                         part = MIMEBase("application", "octet-stream")
-                                        part.set_payload(st.session_state["_monthly_bytes"])
+                                        part.set_payload(data)
                                         encoders.encode_base64(part)
-                                        part.add_header("Content-Disposition",
-                                                        f'attachment; filename="{_monthly_fname}"')
+                                        # RFC 2231 한글 파일명 인코딩
+                                        part.add_header("Content-Disposition", "attachment",
+                                                        filename=("utf-8", "", fname))
                                         msg.attach(part)
 
-                                    # 추가 첨부
+                                    if _attach_default:
+                                        _attach_file(st.session_state["_monthly_bytes"], _monthly_fname)
                                     for _ef in (_extra_files or []):
-                                        _ep = MIMEBase("application", "octet-stream")
-                                        _ep.set_payload(_ef.getvalue())
-                                        encoders.encode_base64(_ep)
-                                        _ep.add_header("Content-Disposition",
-                                                       f'attachment; filename="{_ef.name}"')
-                                        msg.attach(_ep)
+                                        _attach_file(_ef.getvalue(), _ef.name)
 
                                     with st.spinner("메일 전송 중..."):
                                         _pw = _email_cfg["gmail_app_password"].replace(" ", "")
                                         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
                                             server.login(_email_cfg["gmail_user"], _pw)
-                                            server.sendmail(
-                                                _email_cfg["gmail_user"],
-                                                [r.strip() for r in _to.split(",") if r.strip()],
-                                                msg.as_bytes()
-                                            )
+                                            server.sendmail(_email_cfg["gmail_user"], _recipients, msg.as_bytes())
                                     st.success(f"✅ 메일 전송 완료! → {_to}")
                                     st.session_state["_show_mail_form"] = False
                                 except Exception as _e:
