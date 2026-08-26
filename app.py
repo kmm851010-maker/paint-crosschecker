@@ -248,14 +248,14 @@ def _nav(label, key):
         st.session_state["page"] = key
         st.rerun()
 
-_div = "<div style='margin:6px 0;border-top:1px solid rgba(255,255,255,0.15);'></div>"
+_gap = "<div style='margin:8px 0;'></div>"
 
 st.sidebar.markdown("**👥 근태 관리**")
 _nav("📅 근무표", "근무표")
 _nav("📈 근무 통계", "근무 통계")
-st.sidebar.markdown(_div, unsafe_allow_html=True)
+st.sidebar.markdown(_gap, unsafe_allow_html=True)
 _nav("📋 일일 작업 일지", "일일 작업 일지")
-st.sidebar.markdown(_div, unsafe_allow_html=True)
+st.sidebar.markdown(_gap, unsafe_allow_html=True)
 st.sidebar.markdown("**📦 재고 관리**")
 _nav("📊 재고 현황", "재고 현황")
 _nav("📥 입고 관리", "입고 관리")
@@ -2045,23 +2045,45 @@ def page_my_schedule():
                 st.rerun()
 
         if st.session_state["leave_list"]:
-            st.markdown("**등록된 일정:**")
-            for _i, _lv in enumerate(st.session_state["leave_list"]):
-                _ct, _cd = st.columns([4, 1])
-                with _ct:
-                    st.write(f"{_lv['name']} | {_lv['type']} | {_lv['start']} ~ {_lv['end']} | 대근: {_lv.get('sub','없음')}")
-                with _cd:
-                    if st.button("삭제", key=f"del_leave_{_i}"):
-                        _deleted = st.session_state["leave_list"].pop(_i)
-                        try:
-                            from utils.sheets import save_leaves, delete_daily_details_for_leave
-                            save_leaves(st.session_state["leave_list"])
-                            _rcnt = delete_daily_details_for_leave(_deleted)
-                            if _rcnt > 0:
-                                st.toast(f"휴가 삭제 — 관련 저장 일지 {_rcnt}일 초기화", icon="♻️")
-                        except Exception:
-                            pass
-                        st.rerun()
+            st.markdown("**등록된 일정 조회**")
+            _today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
+            _lv_years = sorted({datetime.date.fromisoformat(lv["start"]).year for lv in st.session_state["leave_list"]}, reverse=True)
+            _lv_fc1, _lv_fc2 = st.columns(2)
+            with _lv_fc1:
+                _filter_yr = st.selectbox("연도", _lv_years, index=0 if _today.year not in _lv_years else _lv_years.index(_today.year), key="lv_filter_yr")
+            with _lv_fc2:
+                _filter_mo = st.selectbox("월", list(range(1, 13)), index=_today.month - 1, key="lv_filter_mo", format_func=lambda m: f"{m}월")
+
+            # 선택 연/월에 걸치는 일정만 표시
+            _sel_start = datetime.date(_filter_yr, _filter_mo, 1)
+            _next_mo = (_filter_mo % 12) + 1
+            _next_yr = _filter_yr + (1 if _filter_mo == 12 else 0)
+            _sel_end = datetime.date(_next_yr, _next_mo, 1) - datetime.timedelta(days=1)
+
+            _shown = [(i, lv) for i, lv in enumerate(st.session_state["leave_list"])
+                      if datetime.date.fromisoformat(lv["end"]) >= _sel_start
+                      and datetime.date.fromisoformat(lv["start"]) <= _sel_end]
+
+            if not _shown:
+                st.caption(f"{_filter_yr}년 {_filter_mo}월 등록 일정 없음")
+            else:
+                st.caption(f"{_filter_yr}년 {_filter_mo}월 — {len(_shown)}건")
+                for _i, _lv in _shown:
+                    _ct, _cd = st.columns([4, 1])
+                    with _ct:
+                        st.write(f"{_lv['name']} | {_lv['type']} | {_lv['start']} ~ {_lv['end']} | 대근: {_lv.get('sub','없음')}")
+                    with _cd:
+                        if st.button("삭제", key=f"del_leave_{_i}"):
+                            _deleted = st.session_state["leave_list"].pop(_i)
+                            try:
+                                from utils.sheets import save_leaves, delete_daily_details_for_leave
+                                save_leaves(st.session_state["leave_list"])
+                                _rcnt = delete_daily_details_for_leave(_deleted)
+                                if _rcnt > 0:
+                                    st.toast(f"휴가 삭제 — 관련 저장 일지 {_rcnt}일 초기화", icon="♻️")
+                            except Exception:
+                                pass
+                            st.rerun()
 
     st.markdown("---")
 
