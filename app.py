@@ -1503,13 +1503,95 @@ def page_work_log():
 
     if st.session_state.get("_monthly_bytes"):
         _my, _mm = st.session_state["_monthly_ym"]
+        _monthly_fname = f"{_fn_team}_{_my}년{_mm}월_작업일지.xlsx"
         st.download_button(
             f"📥 {_my}년 {_mm}월 통합 다운로드 ({st.session_state['_monthly_count']}일)",
             data=st.session_state["_monthly_bytes"],
-            file_name=f"{_fn_team}_{_my}년{_mm}월_작업일지.xlsx",
+            file_name=_monthly_fname,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
+
+        # ── 메일 전송 ──
+        _email_cfg = st.secrets.get("email", {})
+        if _email_cfg.get("gmail_user") and _email_cfg.get("gmail_app_password"):
+            st.markdown("---")
+            if st.button("✉️ 통합일지 메일 전송", use_container_width=True):
+                st.session_state["_show_mail_form"] = True
+
+            if st.session_state.get("_show_mail_form"):
+                with st.expander("📨 메일 작성 및 미리보기", expanded=True):
+                    _def_to      = _email_cfg.get("to", "")
+                    _def_subject = _email_cfg.get("subject", "{year}년 {month}월 일일업무보고 통합").format(
+                        year=_my, month=_mm)
+                    _def_body    = _email_cfg.get("body", "{month}월 업무보고 통합 파일을 첨부합니다.").format(
+                        year=_my, month=_mm)
+
+                    _to      = st.text_input("받는 사람", value=_def_to, help="쉼표로 여러 명 입력 가능")
+                    _subject = st.text_input("제목", value=_def_subject)
+                    _body    = st.text_area("본문", value=_def_body, height=150)
+
+                    st.markdown("**첨부파일**")
+                    _attach_default = st.checkbox(f"✅ {_monthly_fname} (통합 Excel)", value=True)
+                    _extra_files = st.file_uploader(
+                        "추가 첨부파일 (선택)", accept_multiple_files=True, key="mail_extra_attach"
+                    )
+
+                    col_send, col_cancel = st.columns(2)
+                    with col_cancel:
+                        if st.button("취소", use_container_width=True):
+                            st.session_state["_show_mail_form"] = False
+                            st.rerun()
+                    with col_send:
+                        if st.button("📤 전송", use_container_width=True, type="primary"):
+                            if not _to.strip():
+                                st.error("받는 사람 이메일을 입력하세요.")
+                            else:
+                                try:
+                                    import smtplib
+                                    from email.mime.multipart import MIMEMultipart
+                                    from email.mime.text import MIMEText
+                                    from email.mime.base import MIMEBase
+                                    from email import encoders
+
+                                    msg = MIMEMultipart()
+                                    msg["From"]    = _email_cfg["gmail_user"]
+                                    msg["To"]      = _to.strip()
+                                    msg["Subject"] = _subject
+
+                                    msg.attach(MIMEText(_body, "plain", "utf-8"))
+
+                                    # 기본 첨부 (통합 Excel)
+                                    if _attach_default:
+                                        part = MIMEBase("application", "octet-stream")
+                                        part.set_payload(st.session_state["_monthly_bytes"])
+                                        encoders.encode_base64(part)
+                                        part.add_header("Content-Disposition",
+                                                        f'attachment; filename="{_monthly_fname}"')
+                                        msg.attach(part)
+
+                                    # 추가 첨부
+                                    for _ef in (_extra_files or []):
+                                        _ep = MIMEBase("application", "octet-stream")
+                                        _ep.set_payload(_ef.getvalue())
+                                        encoders.encode_base64(_ep)
+                                        _ep.add_header("Content-Disposition",
+                                                       f'attachment; filename="{_ef.name}"')
+                                        msg.attach(_ep)
+
+                                    with st.spinner("메일 전송 중..."):
+                                        _pw = _email_cfg["gmail_app_password"].replace(" ", "")
+                                        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                                            server.login(_email_cfg["gmail_user"], _pw)
+                                            server.sendmail(
+                                                _email_cfg["gmail_user"],
+                                                [r.strip() for r in _to.split(",") if r.strip()],
+                                                msg.as_bytes()
+                                            )
+                                    st.success(f"✅ 메일 전송 완료! → {_to}")
+                                    st.session_state["_show_mail_form"] = False
+                                except Exception as _e:
+                                    st.error(f"전송 실패: {_e}")
 
 
 # ══════════════════════════════════════
