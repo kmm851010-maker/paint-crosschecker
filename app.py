@@ -926,30 +926,25 @@ def page_work_log():
         # 3. 안전 관리 사항
         ws['A27'] = "3. 안전 관리 사항"
         ws['A27'].font = font_sec
-        ws.merge_cells('A28:C28')
-        for c in "ABC":
+        ws.merge_cells('A28:E28')
+        for c in "ABCDE":
             ws[f"{c}28"].fill, ws[f"{c}28"].border = fill_gray, thin_border
-        for pos, txt in [("D28","1근"),("E28","2근"),("F28","3근"),("G28","주간"),("H28","야간")]:
+        for pos, txt in [("F28","1근"),("G28","2근"),("H28","3근"),("I28","주간"),("J28","야간")]:
             ws[pos] = txt
             ws[pos].font, ws[pos].fill, ws[pos].alignment, ws[pos].border = font_hdr, fill_gray, align_c, thin_border
-        ws.merge_cells('I28:J28')
-        for c in "IJ":
-            ws[f"{c}28"].fill, ws[f"{c}28"].border = fill_gray, thin_border
 
+        align_safety = Alignment(horizontal="left", vertical="center", wrap_text=True)
         for idx, s_row in enumerate(safety_items, start=29):
-            ws.row_dimensions[idx].height = 22
-            ws.merge_cells(f"A{idx}:C{idx}")
+            ws.row_dimensions[idx].height = 34
+            ws.merge_cells(f"A{idx}:E{idx}")
             ws[f"A{idx}"] = s_row["text"]
-            ws[f"A{idx}"].font, ws[f"A{idx}"].alignment, ws[f"A{idx}"].border = font_bold, align_c, thin_border
-            for c in "BC":
+            ws[f"A{idx}"].font, ws[f"A{idx}"].alignment, ws[f"A{idx}"].border = font_bold, align_safety, thin_border
+            for c in "BCDE":
                 ws[f"{c}{idx}"].border = thin_border
-            for pc, key in [("D","s1"),("E","s2"),("F","s3"),("G","day"),("H","night")]:
+            for pc, key in [("F","s1"),("G","s2"),("H","s3"),("I","day"),("J","night")]:
                 cell = ws[f"{pc}{idx}"]
                 cell.value = "☑" if s_row.get(key) else "□"
                 cell.font, cell.alignment, cell.border = Font(name="맑은 고딕", size=10), align_c, thin_border
-            ws.merge_cells(f"I{idx}:J{idx}")
-            for c in "IJ":
-                ws[f"{c}{idx}"].border = thin_border
 
         # 4. 특이 사항
         ws['A36'] = "4. 특이 사항"
