@@ -1450,57 +1450,38 @@ def page_work_log():
 
     st.markdown("---")
 
-    # Google Sheets 저장 + 엑셀 다운로드
-    col_save, col_dl = st.columns(2)
-    with col_save:
-        import time as _time
-        _last_save = st.session_state.get("_last_save_ts", 0)
-        _cooldown = 20  # 초
-        _elapsed = _time.time() - _last_save
-        _can_save = _elapsed >= _cooldown
-        if st.button("💾 전체 저장 (Google Sheets)", use_container_width=True, type="primary", disabled=not _can_save):
-            try:
-                from utils.sheets import save_all
-                save_all(
-                    selected_date, work_items_data, shift_data_final,
-                    safety_items_data, note_text, st.session_state.get("leave_list", [])
-                )
-                st.session_state["_last_save_ts"] = _time.time()
-                st.success("✅ 전체 저장 완료! (업무현황 + 인원 + 안전 + 특이사항 + 휴가)")
-            except Exception as e:
-                st.error(f"저장 실패: {type(e).__name__}: {e}")
-        if not _can_save:
-            st.caption(f"⏳ {int(_cooldown - _elapsed)}초 후 재저장 가능")
-
-    with col_dl:
-        excel_bytes = generate_work_log_excel(selected_date, shift_data_final, work_items_data, safety_items_data, note_text)
-        _fn_team = st.secrets.get("company", {}).get("team", "일일업무")
-        file_name = f"{_fn_team}_일일업무보고_{selected_date.strftime('%Y%m%d')}.xlsx"
-        st.download_button(
-            label="📥 일간 다운로드",
-            data=excel_bytes,
-            file_name=file_name,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-
-    # 월간 통합 다운로드
-    st.markdown("---")
-    _fn_team2 = st.secrets.get("company", {}).get("team", "일일업무")
-    if st.button(f"📊 {selected_date.year}년 {selected_date.month}월 통합 준비 (1일~{selected_date.day}일)", use_container_width=True):
-        with st.spinner(f"{selected_date.month}월 작업일지 통합 중..."):
-            _mbytes, _mcount = generate_monthly_work_log_excel(selected_date)
-        st.session_state["_monthly_bytes"] = _mbytes
-        st.session_state["_monthly_count"] = _mcount
-        st.session_state["_monthly_ym"] = (selected_date.year, selected_date.month)
-        st.rerun()
+    # Google Sheets 저장
+    import time as _time
+    _fn_team = st.secrets.get("company", {}).get("team", "일일업무")
+    _last_save = st.session_state.get("_last_save_ts", 0)
+    _cooldown = 20  # 초
+    _elapsed = _time.time() - _last_save
+    _can_save = _elapsed >= _cooldown
+    if st.button("💾 전체 저장 (Google Sheets)", use_container_width=True, type="primary", disabled=not _can_save):
+        try:
+            from utils.sheets import save_all
+            save_all(
+                selected_date, work_items_data, shift_data_final,
+                safety_items_data, note_text, st.session_state.get("leave_list", [])
+            )
+            st.session_state["_last_save_ts"] = _time.time()
+            with st.spinner(f"{selected_date.month}월 통합 Excel 생성 중..."):
+                _mbytes, _mcount = generate_monthly_work_log_excel(selected_date)
+            st.session_state["_monthly_bytes"] = _mbytes
+            st.session_state["_monthly_count"] = _mcount
+            st.session_state["_monthly_ym"] = (selected_date.year, selected_date.month)
+            st.success(f"✅ 저장 완료! {selected_date.month}월 통합 Excel 준비됨 ({_mcount}일)")
+        except Exception as e:
+            st.error(f"저장 실패: {type(e).__name__}: {e}")
+    if not _can_save:
+        st.caption(f"⏳ {int(_cooldown - _elapsed)}초 후 재저장 가능")
 
     if st.session_state.get("_monthly_bytes"):
         _my, _mm = st.session_state["_monthly_ym"]
         st.download_button(
-            f"⬇️ {_my}년 {_mm}월 통합 다운로드 ({st.session_state['_monthly_count']}일)",
+            f"📥 {_my}년 {_mm}월 통합 다운로드 ({st.session_state['_monthly_count']}일)",
             data=st.session_state["_monthly_bytes"],
-            file_name=f"{_fn_team2}_{_my}년{_mm}월_작업일지.xlsx",
+            file_name=f"{_fn_team}_{_my}년{_mm}월_작업일지.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
