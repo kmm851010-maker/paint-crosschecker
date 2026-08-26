@@ -302,6 +302,48 @@ def save_all(selected_date, work_items, shift_data, safety_items, note_text, lea
     return True
 
 
+def load_monthly_data(year, month):
+    """해당 월 모든 작업일지 데이터를 날짜별로 반환.
+    Returns: (work_by_date: {date_str: [item_dict, ...]}, detail_by_date: {date_str: {shift, safety, note}})
+    """
+    month_prefix = f"{year:04d}-{month:02d}-"
+    work_by_date = {}
+    detail_by_date = {}
+
+    try:
+        ws_work = _retry(lambda: _get_or_create_sheet("업무현황"))
+        for row in ws_work.get_all_values()[1:]:
+            if row and row[0].startswith(month_prefix):
+                d = row[0]
+                try:
+                    work_by_date.setdefault(d, []).append({
+                        "name": row[1],
+                        "s1": int(float(row[2])) if len(row) > 2 and row[2] else 0,
+                        "s2": int(float(row[3])) if len(row) > 3 and row[3] else 0,
+                        "s3": int(float(row[4])) if len(row) > 4 and row[4] else 0,
+                        "day": int(float(row[5])) if len(row) > 5 and row[5] else 0,
+                        "night": int(float(row[6])) if len(row) > 6 and row[6] else 0,
+                        "month_total": int(float(row[8])) if len(row) > 8 and row[8] else 0,
+                    })
+                except (ValueError, IndexError):
+                    pass
+    except Exception:
+        pass
+
+    try:
+        ws_detail = _retry(lambda: _get_or_create_sheet("일지상세"))
+        for row in ws_detail.get_all_values()[1:]:
+            if row and row[0].startswith(month_prefix) and len(row) > 1:
+                try:
+                    detail_by_date[row[0]] = json.loads(row[1])
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    return work_by_date, detail_by_date
+
+
 def load_all(selected_date):
     work = load_work_items(selected_date)
     detail = load_daily_detail(selected_date)

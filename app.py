@@ -820,134 +820,200 @@ def page_work_log():
             "휴무_구분": off_type
         }
 
-    def generate_work_log_excel(selected_date, shift_data, work_items, safety_items, note_text):
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "일일업무보고"
-
+    def _fill_work_log_sheet(ws, selected_date, shift_data, work_items, safety_items, note_text):
+        """워크시트에 일일 작업일지를 채운다 (10컬럼 A-J)."""
         font_title = Font(name="맑은 고딕", size=18, bold=True, underline="single")
-        font_date = Font(name="맑은 고딕", size=11, bold=True)
-        font_sec_hdr = Font(name="맑은 고딕", size=11, bold=True)
-        font_tbl_hdr = Font(name="맑은 고딕", size=9, bold=True)
-        font_tbl_body = Font(name="맑은 고딕", size=9)
-        font_tbl_bold = Font(name="맑은 고딕", size=9, bold=True)
-        fill_gray = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
-        thin_border = Border(
-            left=Side(style='thin', color='000000'), right=Side(style='thin', color='000000'),
-            top=Side(style='thin', color='000000'), bottom=Side(style='thin', color='000000')
-        )
-        align_c = Alignment(horizontal="center", vertical="center")
+        font_date  = Font(name="맑은 고딕", size=11, bold=True)
+        font_sec   = Font(name="맑은 고딕", size=11, bold=True)
+        font_hdr   = Font(name="맑은 고딕", size=9, bold=True)
+        font_body  = Font(name="맑은 고딕", size=9)
+        font_bold  = Font(name="맑은 고딕", size=9, bold=True)
+        fill_gray  = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+        _t = Side(style='thin', color='000000')
+        thin_border = Border(left=_t, right=_t, top=_t, bottom=_t)
+        align_c  = Alignment(horizontal="center", vertical="center")
+        align_cw = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-        for col, width in {'A': 28, 'B': 7, 'C': 15, 'D': 11, 'E': 10, 'F': 10, 'G': 10, 'H': 10}.items():
-            ws.column_dimensions[col].width = width
+        # 열 너비 A~J
+        for col, w in zip("ABCDEFGHIJ", [9, 5, 13, 9, 9, 9, 9, 9, 9, 10]):
+            ws.column_dimensions[col].width = w
 
+        # 제목
         ws.row_dimensions[2].height = 32
-        ws.merge_cells('A2:H2')
+        ws.merge_cells('A2:J2')
         _doc_team = st.secrets.get("company", {}).get("team", "")
         ws['A2'] = f"{_doc_team} 일일 업무 보고" if _doc_team else "일일 업무 보고"
-        ws['A2'].font = font_title
-        ws['A2'].alignment = align_c
+        ws['A2'].font, ws['A2'].alignment = font_title, align_c
 
-        ws.merge_cells('F4:H4')
-        ws['F4'] = selected_date.strftime("%Y년 %m월 %d일")
-        ws['F4'].font = font_date
-        ws['F4'].alignment = Alignment(horizontal="right", vertical="center")
+        # 날짜
+        ws.merge_cells('H4:J4')
+        ws['H4'] = selected_date.strftime("%Y년 %m월 %d일")
+        ws['H4'].font = font_date
+        ws['H4'].alignment = Alignment(horizontal="right", vertical="center")
 
         # 1. 인원 현황
         ws['A5'] = "1. 인원 현황"
-        ws['A5'].font = font_sec_hdr
+        ws['A5'].font = font_sec
         for pos, txt in [("A6","구분"),("B6","조"),("C6","근무시간"),("D6","근무자"),("E6","휴무자"),("F6","연장근무")]:
             ws[pos] = txt
-            ws[pos].font, ws[pos].fill, ws[pos].alignment, ws[pos].border = font_tbl_hdr, fill_gray, align_c, thin_border
-        ws.merge_cells('G6:H6')
+            ws[pos].font, ws[pos].fill, ws[pos].alignment, ws[pos].border = font_hdr, fill_gray, align_c, thin_border
+        ws.merge_cells('G6:J6')
         ws['G6'] = "비고"
-        ws['G6'].font, ws['G6'].fill, ws['G6'].alignment, ws['G6'].border = font_tbl_hdr, fill_gray, align_c, thin_border
-        ws['H6'].border = thin_border
+        ws['G6'].font, ws['G6'].fill, ws['G6'].alignment, ws['G6'].border = font_hdr, fill_gray, align_c, thin_border
+        for c in "HIJ":
+            ws[f"{c}6"].fill, ws[f"{c}6"].border = fill_gray, thin_border
 
         if shift_data.get("is_2person"):
             rows_1 = [
-                ("주간", shift_data["1근_조"], "06:30 ~ 18:30", shift_data["1근_근무자"], "", shift_data.get("1근_연장",""), shift_data.get("1근_비고","")),
-                ("야간", shift_data["2근_조"], "18:30 ~ 06:30", shift_data["2근_근무자"], "", shift_data.get("2근_연장",""), shift_data.get("2근_비고","")),
-                ("휴무", "", "", "", shift_data["3근_근무자"], "", shift_data.get("3근_비고","")),
-                ("휴무", shift_data["휴무_조"], "", "", shift_data["휴무_근무자"], "", shift_data["휴무_구분"])
+                ("주간", shift_data.get("주간_조", shift_data.get("1근_조","")), "06:30 – 18:30",
+                 shift_data.get("주간_근무자", shift_data.get("1근_근무자","")), "", shift_data.get("1근_연장",""), shift_data.get("1근_비고","")),
+                ("야간", shift_data.get("야간_조", shift_data.get("2근_조","")), "18:30 – 06:30",
+                 shift_data.get("야간_근무자", shift_data.get("2근_근무자","")), "", shift_data.get("2근_연장",""), shift_data.get("2근_비고","")),
+                ("휴무", "", "", "", shift_data.get("3근_근무자",""), "", shift_data.get("3근_비고","")),
+                ("휴무", shift_data.get("휴무_조",""), "", "", shift_data.get("휴무_근무자",""), "", shift_data.get("휴무_구분",""))
             ]
         else:
             rows_1 = [
-                ("1근", shift_data["1근_조"], "06:30 ~ 14:30", shift_data["1근_근무자"], "", shift_data.get("1근_연장",""), shift_data.get("1근_비고","")),
-                ("2근", shift_data["2근_조"], "14:30 ~ 22:30", shift_data["2근_근무자"], "", shift_data.get("2근_연장",""), shift_data.get("2근_비고","")),
-                ("3근", shift_data["3근_조"], "22:30 ~ 06:30", shift_data["3근_근무자"], "", shift_data.get("3근_연장",""), shift_data.get("3근_비고","")),
-                ("휴무", shift_data["휴무_조"], "", "", shift_data["휴무_근무자"], "", shift_data["휴무_구분"])
+                ("1근", shift_data.get("1근_조",""), "06:30 – 14:30", shift_data.get("1근_근무자",""), "", shift_data.get("1근_연장",""), shift_data.get("1근_비고","")),
+                ("2근", shift_data.get("2근_조",""), "14:30 – 22:30", shift_data.get("2근_근무자",""), "", shift_data.get("2근_연장",""), shift_data.get("2근_비고","")),
+                ("3근", shift_data.get("3근_조",""), "22:30 – 06:30", shift_data.get("3근_근무자",""), "", shift_data.get("3근_연장",""), shift_data.get("3근_비고","")),
+                ("휴무", shift_data.get("휴무_조",""), "", "", shift_data.get("휴무_근무자",""), "", shift_data.get("휴무_구분",""))
             ]
-        for idx, r_data in enumerate(rows_1, start=7):
-            ws.row_dimensions[idx].height = 20
-            ws[f"A{idx}"], ws[f"B{idx}"], ws[f"C{idx}"], ws[f"D{idx}"], ws[f"E{idx}"], ws[f"F{idx}"] = r_data[:6]
-            ws.merge_cells(f"G{idx}:H{idx}")
-            ws[f"G{idx}"] = r_data[6]
-            for c in "ABCDEFGH":
-                cell = ws[f"{c}{idx}"]
-                cell.font, cell.alignment, cell.border = font_tbl_body, align_c, thin_border
+        for idx, r in enumerate(rows_1, start=7):
+            ws.row_dimensions[idx].height = 28
+            for ci, val in zip("ABCDEF", r[:6]):
+                ws[f"{ci}{idx}"] = val
+                ws[f"{ci}{idx}"].font  = font_body
+                ws[f"{ci}{idx}"].border = thin_border
+                ws[f"{ci}{idx}"].alignment = align_cw if ci == "C" else align_c
+            ws.merge_cells(f"G{idx}:J{idx}")
+            ws[f"G{idx}"] = r[6]
+            for c in "GHIJ":
+                ws[f"{c}{idx}"].font, ws[f"{c}{idx}"].border = font_body, thin_border
+            ws[f"G{idx}"].alignment = align_c
 
         # 2. 업무 현황
         ws['A12'] = "2. 업무 현황"
-        ws['A12'].font = font_sec_hdr
-        for i, h in enumerate(["작업 내용","1근","2근","3근","주간","야간","합계","월합계"], start=1):
-            cell = ws[f"{get_column_letter(i)}13"]
-            cell.value, cell.font, cell.fill, cell.alignment, cell.border = h, font_tbl_hdr, fill_gray, align_c, thin_border
+        ws['A12'].font = font_sec
+        ws.merge_cells('A13:C13')
+        ws['A13'] = "작업 내용"
+        ws['A13'].font, ws['A13'].fill, ws['A13'].alignment, ws['A13'].border = font_hdr, fill_gray, align_c, thin_border
+        for c in "BC":
+            ws[f"{c}13"].fill, ws[f"{c}13"].border = fill_gray, thin_border
+        for col_l, hdr in zip("DEFGHIJ", ["1근","2근","3근","주간","야간","합계","월합계"]):
+            ws[f"{col_l}13"] = hdr
+            ws[f"{col_l}13"].font, ws[f"{col_l}13"].fill, ws[f"{col_l}13"].alignment, ws[f"{col_l}13"].border = font_hdr, fill_gray, align_c, thin_border
 
         for idx, item in enumerate(work_items, start=14):
             ws.row_dimensions[idx].height = 20
+            ws.merge_cells(f"A{idx}:C{idx}")
             ws[f"A{idx}"] = item["name"]
-            ws[f"A{idx}"].font, ws[f"A{idx}"].alignment, ws[f"A{idx}"].border = font_tbl_bold, align_c, thin_border
-            ws[f"B{idx}"], ws[f"C{idx}"], ws[f"D{idx}"] = item["s1"] or "", item["s2"] or "", item["s3"] or ""
-            ws[f"E{idx}"], ws[f"F{idx}"] = item["day"] or "", item["night"] or ""
-            for cl in "BCDEF":
-                ws[f"{cl}{idx}"].font, ws[f"{cl}{idx}"].alignment, ws[f"{cl}{idx}"].border = font_tbl_body, align_c, thin_border
-            ws[f"G{idx}"] = f"=SUM(B{idx}:F{idx})"
-            ws[f"G{idx}"].font, ws[f"G{idx}"].alignment, ws[f"G{idx}"].border = font_tbl_bold, align_c, thin_border
-            ws[f"H{idx}"] = item.get("month_total", 0)
-            ws[f"H{idx}"].font, ws[f"H{idx}"].alignment, ws[f"H{idx}"].border = font_tbl_body, align_c, thin_border
+            ws[f"A{idx}"].font, ws[f"A{idx}"].alignment, ws[f"A{idx}"].border = font_bold, align_c, thin_border
+            for c in "BC":
+                ws[f"{c}{idx}"].border = thin_border
+            ws[f"D{idx}"] = item.get("s1") or ""
+            ws[f"E{idx}"] = item.get("s2") or ""
+            ws[f"F{idx}"] = item.get("s3") or ""
+            ws[f"G{idx}"] = item.get("day") or ""
+            ws[f"H{idx}"] = item.get("night") or ""
+            for c in "DEFGH":
+                ws[f"{c}{idx}"].font, ws[f"{c}{idx}"].alignment, ws[f"{c}{idx}"].border = font_body, align_c, thin_border
+            ws[f"I{idx}"] = f"=SUM(D{idx}:H{idx})"
+            ws[f"I{idx}"].font, ws[f"I{idx}"].alignment, ws[f"I{idx}"].border = font_bold, align_c, thin_border
+            ws[f"J{idx}"] = item.get("month_total", 0)
+            ws[f"J{idx}"].font, ws[f"J{idx}"].alignment, ws[f"J{idx}"].border = font_body, align_c, thin_border
 
         # 3. 안전 관리 사항
         ws['A27'] = "3. 안전 관리 사항"
-        ws['A27'].font = font_sec_hdr
+        ws['A27'].font = font_sec
         ws.merge_cells('A28:C28')
         for c in "ABC":
             ws[f"{c}28"].fill, ws[f"{c}28"].border = fill_gray, thin_border
         for pos, txt in [("D28","1근"),("E28","2근"),("F28","3근"),("G28","주간"),("H28","야간")]:
             ws[pos] = txt
-            ws[pos].font, ws[pos].fill, ws[pos].alignment, ws[pos].border = font_tbl_hdr, fill_gray, align_c, thin_border
+            ws[pos].font, ws[pos].fill, ws[pos].alignment, ws[pos].border = font_hdr, fill_gray, align_c, thin_border
+        ws.merge_cells('I28:J28')
+        for c in "IJ":
+            ws[f"{c}28"].fill, ws[f"{c}28"].border = fill_gray, thin_border
 
         for idx, s_row in enumerate(safety_items, start=29):
             ws.row_dimensions[idx].height = 22
             ws.merge_cells(f"A{idx}:C{idx}")
             ws[f"A{idx}"] = s_row["text"]
-            ws[f"A{idx}"].font, ws[f"A{idx}"].alignment, ws[f"A{idx}"].border = font_tbl_bold, align_c, thin_border
-            ws[f"B{idx}"].border, ws[f"C{idx}"].border = thin_border, thin_border
-            for pc, val in [("D",s_row["s1"]),("E",s_row["s2"]),("F",s_row["s3"]),("G",s_row["day"]),("H",s_row["night"])]:
+            ws[f"A{idx}"].font, ws[f"A{idx}"].alignment, ws[f"A{idx}"].border = font_bold, align_c, thin_border
+            for c in "BC":
+                ws[f"{c}{idx}"].border = thin_border
+            for pc, key in [("D","s1"),("E","s2"),("F","s3"),("G","day"),("H","night")]:
                 cell = ws[f"{pc}{idx}"]
-                cell.value = "☑" if val else "□"
+                cell.value = "☑" if s_row.get(key) else "□"
                 cell.font, cell.alignment, cell.border = Font(name="맑은 고딕", size=10), align_c, thin_border
+            ws.merge_cells(f"I{idx}:J{idx}")
+            for c in "IJ":
+                ws[f"{c}{idx}"].border = thin_border
 
         # 4. 특이 사항
         ws['A36'] = "4. 특이 사항"
-        ws['A36'].font = font_sec_hdr
-        ws.merge_cells('A37:H41')
+        ws['A36'].font = font_sec
+        ws.merge_cells('A37:J41')
         ws['A37'] = note_text
-        ws['A37'].font = font_tbl_body
+        ws['A37'].font = font_body
         ws['A37'].alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
         for r in range(37, 42):
-            for c in range(1, 9):
-                cl = get_column_letter(c)
+            for c_idx in range(1, 11):
+                cl = get_column_letter(c_idx)
                 ws[f"{cl}{r}"].border = Border(
-                    top=Side(style='thin', color='000000') if r == 37 else Side(),
-                    bottom=Side(style='thin', color='000000') if r == 41 else Side(),
-                    left=Side(style='thin', color='000000') if c == 1 else Side(),
-                    right=Side(style='thin', color='000000') if c == 8 else Side()
+                    top=_t if r == 37 else Side(),
+                    bottom=_t if r == 41 else Side(),
+                    left=_t if c_idx == 1 else Side(),
+                    right=_t if c_idx == 10 else Side()
                 )
 
+    def generate_work_log_excel(selected_date, shift_data, work_items, safety_items, note_text):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "일일업무보고"
+        _fill_work_log_sheet(ws, selected_date, shift_data, work_items, safety_items, note_text)
         output = io.BytesIO()
         wb.save(output)
         return output.getvalue()
+
+    def generate_monthly_work_log_excel(up_to_date):
+        """당월 1일~up_to_date까지 저장된 작업일지를 날짜별 탭으로 묶어 반환.
+        Returns: (bytes, int) - Excel 바이트, 포함된 날짜 수
+        """
+        import calendar as _cal
+        from utils.sheets import load_monthly_data
+        year, month = up_to_date.year, up_to_date.month
+        work_by_date, detail_by_date = load_monthly_data(year, month)
+
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+
+        last_day = min(up_to_date.day, _cal.monthrange(year, month)[1])
+        added = 0
+        for day in range(1, last_day + 1):
+            date_obj = datetime.date(year, month, day)
+            date_str = date_obj.strftime("%Y-%m-%d")
+            if date_str not in work_by_date and date_str not in detail_by_date:
+                continue
+            detail = detail_by_date.get(date_str, {})
+            ws_new = wb.create_sheet(title=f"{month}월{day}일")
+            _fill_work_log_sheet(
+                ws_new, date_obj,
+                detail.get("shift", {}),
+                work_by_date.get(date_str, []),
+                detail.get("safety", []),
+                detail.get("note", "")
+            )
+            added += 1
+
+        if added == 0:
+            ws_empty = wb.create_sheet(title="데이터없음")
+            ws_empty['A1'] = "저장된 작업일지가 없습니다."
+
+        output = io.BytesIO()
+        wb.save(output)
+        return output.getvalue(), added
 
     # 휴가 목록 (sheets 연동 — 근무표 메뉴에서 등록)
     if "leave_list" not in st.session_state:
@@ -1411,9 +1477,30 @@ def page_work_log():
         _fn_team = st.secrets.get("company", {}).get("team", "일일업무")
         file_name = f"{_fn_team}_일일업무보고_{selected_date.strftime('%Y%m%d')}.xlsx"
         st.download_button(
-            label="📥 엑셀 다운로드",
+            label="📥 일간 다운로드",
             data=excel_bytes,
             file_name=file_name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+
+    # 월간 통합 다운로드
+    st.markdown("---")
+    _fn_team2 = st.secrets.get("company", {}).get("team", "일일업무")
+    if st.button(f"📊 {selected_date.year}년 {selected_date.month}월 통합 준비 (1일~{selected_date.day}일)", use_container_width=True):
+        with st.spinner(f"{selected_date.month}월 작업일지 통합 중..."):
+            _mbytes, _mcount = generate_monthly_work_log_excel(selected_date)
+        st.session_state["_monthly_bytes"] = _mbytes
+        st.session_state["_monthly_count"] = _mcount
+        st.session_state["_monthly_ym"] = (selected_date.year, selected_date.month)
+        st.rerun()
+
+    if st.session_state.get("_monthly_bytes"):
+        _my, _mm = st.session_state["_monthly_ym"]
+        st.download_button(
+            f"⬇️ {_my}년 {_mm}월 통합 다운로드 ({st.session_state['_monthly_count']}일)",
+            data=st.session_state["_monthly_bytes"],
+            file_name=f"{_fn_team2}_{_my}년{_mm}월_작업일지.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
