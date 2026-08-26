@@ -1564,7 +1564,8 @@ def page_work_log():
                                     msg["To"]         = ", ".join(_recipients)
                                     msg["Subject"]    = Header(_subject, "utf-8").encode()
                                     msg["Date"]       = formatdate(localtime=True)
-                                    msg["Message-ID"] = f"<{uuid.uuid4().hex}@kgsteel.report>"
+                                    _gmail_domain = _email_cfg["gmail_user"].split("@")[-1]
+                                    msg["Message-ID"] = f"<{uuid.uuid4().hex}@{_gmail_domain}>"
 
                                     msg.attach(MIMEText(_body, "plain", "utf-8"))
 
