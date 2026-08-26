@@ -328,16 +328,16 @@ def _shift_for_date_2s2(target_date, team):
     return _2S2_SHIFTS[phase].get(team, "?")
 
 
-# ── 4조2교대 (4팀, 연속 교대, 4일 사이클: 주간→야간→휴무→휴무) ──
-_4S2_REF = datetime.date(2026, 7, 27)  # 기준일: A조=주간
-_4S2_CYCLE = ["주간", "야간", "휴무", "휴무"]
-_4S2_OFFSET = {"A": 0, "B": 1, "C": 2, "D": 3}
+# ── 4조2교대 (4팀, 연속 교대, 8일 사이클: 주주→휴휴→야야→휴휴) ──
+_4S2_REF = datetime.date(2026, 7, 27)  # 기준일
+_4S2_CYCLE = ["주간", "주간", "휴무", "휴무", "야간", "야간", "휴무", "휴무"]
+_4S2_OFFSET = {"A": 4, "B": 0, "C": 6, "D": 2}  # 2026-08-27: D=주간2일, C=야간2일
 
 
 def _shift_for_date_4s2(target_date, team):
     days_since = (target_date - _4S2_REF).days
     offset = _4S2_OFFSET.get(team, 0)
-    phase = (days_since + offset) % 4
+    phase = (days_since + offset) % 8
     return _4S2_CYCLE[phase]
 
 
