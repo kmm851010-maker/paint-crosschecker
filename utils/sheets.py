@@ -310,13 +310,14 @@ def load_monthly_data(year, month):
     work_by_date = {}
     detail_by_date = {}
 
+    _work_dicts = {}  # {date_str: {item_name: item_dict}} — 중복 시 마지막 행 우선
     try:
         ws_work = _retry(lambda: _get_or_create_sheet("업무현황"))
         for row in ws_work.get_all_values()[1:]:
             if row and row[0].startswith(month_prefix):
                 d = row[0]
                 try:
-                    work_by_date.setdefault(d, []).append({
+                    _work_dicts.setdefault(d, {})[row[1]] = {
                         "name": row[1],
                         "s1": int(float(row[2])) if len(row) > 2 and row[2] else 0,
                         "s2": int(float(row[3])) if len(row) > 3 and row[3] else 0,
@@ -324,11 +325,12 @@ def load_monthly_data(year, month):
                         "day": int(float(row[5])) if len(row) > 5 and row[5] else 0,
                         "night": int(float(row[6])) if len(row) > 6 and row[6] else 0,
                         "month_total": int(float(row[8])) if len(row) > 8 and row[8] else 0,
-                    })
+                    }
                 except (ValueError, IndexError):
                     pass
     except Exception:
         pass
+    work_by_date = {d: list(items.values()) for d, items in _work_dicts.items()}
 
     try:
         ws_detail = _retry(lambda: _get_or_create_sheet("일지상세"))
