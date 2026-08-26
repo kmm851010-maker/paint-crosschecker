@@ -214,11 +214,29 @@ _team = st.secrets.get("company", {}).get("team", "")
 st.sidebar.caption(f"{_dept}\n{_team} 업무도우미" if _dept else "KG스틸 업무도우미")
 st.sidebar.markdown("---")
 
-menu = st.sidebar.radio(
-    "메뉴 선택",
-    ["🔍 생산계획 vs 입고 교차검증", "📋 일일 작업일지 작성", "📈 근무 통계", "📅 근무 일정표", "📦 재고 관리"],
-    label_visibility="collapsed",
-)
+_VALID_PAGES = {"근무표", "근무 통계", "일일 작업 일지", "재고 현황", "입고 관리", "반품 관리"}
+if st.session_state.get("page") not in _VALID_PAGES:
+    st.session_state["page"] = "근무표"
+
+def _nav(label, key):
+    is_active = st.session_state["page"] == key
+    if st.sidebar.button(label, use_container_width=True, key=f"nav_{key}",
+                         type="primary" if is_active else "secondary"):
+        st.session_state["page"] = key
+        st.rerun()
+
+st.sidebar.markdown("**👥 근태 관리**")
+_nav("📅 근무표", "근무표")
+_nav("📈 근무 통계", "근무 통계")
+st.sidebar.markdown("---")
+_nav("📋 일일 작업 일지", "일일 작업 일지")
+st.sidebar.markdown("---")
+st.sidebar.markdown("**📦 재고 관리**")
+_nav("📊 재고 현황", "재고 현황")
+_nav("📥 입고 관리", "입고 관리")
+_nav("↩️ 반품 관리", "반품 관리")
+
+page = st.session_state["page"]
 
 st.sidebar.markdown("---")
 _uname = st.session_state.get("username", "")
@@ -910,9 +928,13 @@ def page_work_log():
         wb.save(output)
         return output.getvalue()
 
-    # 휴가/대근 사전등록 저장소
+    # 휴가 목록 (sheets 연동 — 근무표 메뉴에서 등록)
     if "leave_list" not in st.session_state:
-        st.session_state["leave_list"] = []
+        try:
+            from utils.sheets import load_leaves as _ll
+            st.session_state["leave_list"] = _ll()
+        except Exception:
+            st.session_state["leave_list"] = []
 
     ALL_MEMBERS = list(MEMBERS.values())
 
@@ -977,88 +999,7 @@ def page_work_log():
     </style>
     """, unsafe_allow_html=True)
 
-    # 휴가/대근 사전등록
-    with st.expander("📝 휴가·대휴·휴직 사전등록", expanded=False):
-        rc1, rc2, rc3, rc4, rc5 = st.columns(5)
-        with rc1:
-            leave_name = st.selectbox("대상자", ALL_MEMBERS, key="leave_name")
-        with rc2:
-            leave_type = st.selectbox("구분", ["정기휴가", "연차", "특별휴가", "명휴", "생일휴가", "공가", "공상휴업", "산재", "휴직", "대휴", "교육", "결근", "조퇴", "외출", "청원휴가", "공휴"], key="leave_type")
-        with rc3:
-            leave_start = st.date_input("시작일", datetime.date.today(), key="leave_start")
-        with rc4:
-            leave_end = st.date_input("종료일", datetime.date.today(), key="leave_end")
-        with rc5:
-            leave_sub = st.selectbox("대근자", [""] + ALL_MEMBERS, key="leave_sub")
-
-        # 공휴 검증: 한국 법정공휴일(국경일·명절·대체공휴일)이 아닌 날 감지
-        _gonghu_nonholiday = []
-        if leave_type == "공휴":
-            try:
-                import holidays as _hol
-                _cur = leave_start
-                _weekday_names = ["월", "화", "수", "목", "금", "토", "일"]
-                while _cur <= leave_end:
-                    _kr = _hol.SouthKorea(years=_cur.year)
-                    if _cur not in _kr:
-                        _gonghu_nonholiday.append(
-                            f"{_cur.strftime('%m/%d')}({_weekday_names[_cur.weekday()]})"
-                        )
-                    _cur += datetime.timedelta(days=1)
-            except Exception:
-                pass  # holidays 라이브러리 없으면 검증 생략
-
-        if _gonghu_nonholiday:
-            st.warning(
-                "⚠️ **공휴는 국경일·명절·대체공휴일에만 적용 가능합니다.**  \n"
-                f"선택 기간 중 법정공휴일이 아닌 날: **{', '.join(_gonghu_nonholiday)}**  \n"
-                "그래도 등록하려면 아래를 체크하세요."
-            )
-            _gonghu_confirmed = st.checkbox("⚠️ 비공휴일 포함을 확인하고 등록합니다.", key="gonghu_confirm")
-        else:
-            _gonghu_confirmed = True
-
-        if st.button("✅ 등록", use_container_width=True, key="add_leave"):
-            if leave_start > leave_end:
-                st.error("시작일이 종료일보다 늦습니다.")
-            elif _gonghu_nonholiday and not _gonghu_confirmed:
-                st.error("⛔ 비공휴일 포함 시 확인 체크가 필요합니다.")
-            else:
-                st.session_state["leave_list"].append({
-                    "name": leave_name,
-                    "type": leave_type,
-                    "start": leave_start.isoformat(),
-                    "end": leave_end.isoformat(),
-                    "sub": leave_sub,
-                })
-                try:
-                    from utils.sheets import save_leaves
-                    save_leaves(st.session_state["leave_list"])
-                except Exception:
-                    pass
-                st.rerun()
-
-        # 등록된 목록 표시
-        if st.session_state["leave_list"]:
-            st.markdown("**등록된 일정:**")
-            for i, lv in enumerate(st.session_state["leave_list"]):
-                col_t, col_d = st.columns([4, 1])
-                with col_t:
-                    st.write(f"{lv['name']} | {lv['type']} | {lv['start']} ~ {lv['end']} | 대근: {lv.get('sub','없음')}")
-                with col_d:
-                    if st.button("삭제", key=f"del_leave_{i}"):
-                        deleted_lv = st.session_state["leave_list"].pop(i)
-                        try:
-                            from utils.sheets import save_leaves, delete_daily_details_for_leave
-                            save_leaves(st.session_state["leave_list"])
-                            reset_cnt = delete_daily_details_for_leave(deleted_lv)
-                            if reset_cnt > 0:
-                                st.toast(f"휴가 삭제 완료 — 관련 저장 일지 {reset_cnt}일 초기화 (통계 자동 재계산)", icon="♻️")
-                        except Exception:
-                            pass
-                        st.rerun()
-
-    st.markdown("---")
+    st.info("💡 휴가신청은 **근무표** 메뉴에서 등록하세요.")
     st.subheader("🗓 작업 일자 선택")
     today_kst = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
     selected_date = st.date_input("날짜를 클릭하세요", today_kst,
@@ -2010,10 +1951,94 @@ def page_my_schedule():
 </style>
 """, unsafe_allow_html=True)
 
-    st.markdown("## 📅 근무 일정표")
+    st.markdown("## 📅 근무표")
 
     MEMBERS = dict(st.secrets.get("members", {'A': '직원A', 'B': '직원B', 'C': '직원C', 'D': '직원D'}))
     ALL_MEMBERS = list(MEMBERS.values())
+
+    # ── 휴가신청서 작성 ──
+    if "leave_list" not in st.session_state:
+        try:
+            from utils.sheets import load_leaves as _ll
+            st.session_state["leave_list"] = _ll()
+        except Exception:
+            st.session_state["leave_list"] = []
+
+    with st.expander("📝 휴가신청서 작성", expanded=False):
+        _rc1, _rc2, _rc3, _rc4, _rc5 = st.columns(5)
+        with _rc1:
+            _lv_name = st.selectbox("대상자", ALL_MEMBERS, key="leave_name")
+        with _rc2:
+            _lv_type = st.selectbox("구분", ["정기휴가", "연차", "특별휴가", "명휴", "생일휴가", "공가", "공상휴업", "산재", "휴직", "대휴", "교육", "결근", "조퇴", "외출", "청원휴가", "공휴"], key="leave_type")
+        with _rc3:
+            _lv_start = st.date_input("시작일", datetime.date.today(), key="leave_start")
+        with _rc4:
+            _lv_end = st.date_input("종료일", datetime.date.today(), key="leave_end")
+        with _rc5:
+            _lv_sub = st.selectbox("대근자", [""] + ALL_MEMBERS, key="leave_sub")
+
+        _gonghu_nonholiday = []
+        if _lv_type == "공휴":
+            try:
+                import holidays as _hol
+                _cur = _lv_start
+                _wday = ["월", "화", "수", "목", "금", "토", "일"]
+                while _cur <= _lv_end:
+                    _kr = _hol.SouthKorea(years=_cur.year)
+                    if _cur not in _kr:
+                        _gonghu_nonholiday.append(f"{_cur.strftime('%m/%d')}({_wday[_cur.weekday()]})")
+                    _cur += datetime.timedelta(days=1)
+            except Exception:
+                pass
+
+        if _gonghu_nonholiday:
+            st.warning(
+                "⚠️ **공휴는 국경일·명절·대체공휴일에만 적용 가능합니다.**  \n"
+                f"선택 기간 중 법정공휴일이 아닌 날: **{', '.join(_gonghu_nonholiday)}**  \n"
+                "그래도 등록하려면 아래를 체크하세요."
+            )
+            _gonghu_confirmed = st.checkbox("⚠️ 비공휴일 포함을 확인하고 등록합니다.", key="gonghu_confirm")
+        else:
+            _gonghu_confirmed = True
+
+        if st.button("✅ 등록", use_container_width=True, key="add_leave"):
+            if _lv_start > _lv_end:
+                st.error("시작일이 종료일보다 늦습니다.")
+            elif _gonghu_nonholiday and not _gonghu_confirmed:
+                st.error("⛔ 비공휴일 포함 시 확인 체크가 필요합니다.")
+            else:
+                st.session_state["leave_list"].append({
+                    "name": _lv_name, "type": _lv_type,
+                    "start": _lv_start.isoformat(), "end": _lv_end.isoformat(),
+                    "sub": _lv_sub,
+                })
+                try:
+                    from utils.sheets import save_leaves
+                    save_leaves(st.session_state["leave_list"])
+                except Exception:
+                    pass
+                st.rerun()
+
+        if st.session_state["leave_list"]:
+            st.markdown("**등록된 일정:**")
+            for _i, _lv in enumerate(st.session_state["leave_list"]):
+                _ct, _cd = st.columns([4, 1])
+                with _ct:
+                    st.write(f"{_lv['name']} | {_lv['type']} | {_lv['start']} ~ {_lv['end']} | 대근: {_lv.get('sub','없음')}")
+                with _cd:
+                    if st.button("삭제", key=f"del_leave_{_i}"):
+                        _deleted = st.session_state["leave_list"].pop(_i)
+                        try:
+                            from utils.sheets import save_leaves, delete_daily_details_for_leave
+                            save_leaves(st.session_state["leave_list"])
+                            _rcnt = delete_daily_details_for_leave(_deleted)
+                            if _rcnt > 0:
+                                st.toast(f"휴가 삭제 — 관련 저장 일지 {_rcnt}일 초기화", icon="♻️")
+                        except Exception:
+                            pass
+                        st.rerun()
+
+    st.markdown("---")
 
     today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
 
@@ -2566,7 +2591,7 @@ def page_inventory():
     import pandas as _pd
 
     BACKEND = "https://kgcounter.up.railway.app"
-    st.subheader("📦 재고 현황")
+    st.subheader("📊 재고 현황")
     st.caption("스캔/등록은 모바일 앱에서 진행하세요.")
 
     col_refresh, col_sort = st.columns([1, 5])
@@ -2574,20 +2599,23 @@ def page_inventory():
         if st.button("🔄 새로고침", key="inv_refresh"):
             st.rerun()
     with col_sort:
-        sort_mode = st.radio("정렬", ["섹터별", "제조사별", "품목별", "LOT순"], horizontal=True, key="inv_sort", label_visibility="collapsed")
+        sort_mode = st.radio("정렬", ["섹터별", "제조사별", "품목별", "LOT순", "등록시간순"], horizontal=True, key="inv_sort", label_visibility="collapsed")
 
-    # 반품 필터 탭
-    _rf_cols = st.columns([1, 1, 1, 4])
-    _rf_opts = {"": "전체", "불량": "🔴 불량반품", "기술": "🟡 기술반품", "무상": "🔵 무상반품"}
-    if "inv_return_filter" not in st.session_state:
-        st.session_state["inv_return_filter"] = ""
-    for _i, (_rf_key, _rf_label) in enumerate(list(_rf_opts.items())[1:]):
-        with _rf_cols[_i]:
-            _active = st.session_state["inv_return_filter"] == _rf_key
-            if st.button(_rf_label, key=f"rfbtn_{_rf_key}", type="primary" if _active else "secondary", use_container_width=True):
-                st.session_state["inv_return_filter"] = "" if _active else _rf_key
-                st.rerun()
-    return_filter = st.session_state["inv_return_filter"]
+    # 등록시간순 선택 시 기간 선택기 표시
+    _inv_dt_from = None
+    _inv_dt_to = None
+    if sort_mode == "등록시간순":
+        _tc1, _tc2 = st.columns(2)
+        with _tc1:
+            _inv_d_from = st.date_input("시작일", datetime.date.today() - datetime.timedelta(days=7), key="inv_d_from")
+            _inv_h_from = st.selectbox("시작 시각", [f"{h:02d}:00" for h in range(24)], index=0, key="inv_h_from")
+        with _tc2:
+            _inv_d_to = st.date_input("종료일", datetime.date.today(), key="inv_d_to")
+            _inv_h_to = st.selectbox("종료 시각", [f"{h:02d}:59" for h in range(24)], index=23, key="inv_h_to")
+        _inv_dt_from = datetime.datetime.combine(_inv_d_from, datetime.time(int(_inv_h_from[:2]), 0))
+        _inv_dt_to = datetime.datetime.combine(_inv_d_to, datetime.time(int(_inv_h_to[:2]), 59))
+
+    return_filter = ""
 
     try:
         resp = _req.get(f"{BACKEND}/api/inventory/sectors", timeout=10)
@@ -2625,17 +2653,26 @@ def page_inventory():
     else:
         df_filtered = df_all.copy()
 
-    # 반품 필터 활성 시: 해당 반품 항목 상단 정렬 키 부여
-    if return_filter:
-        df_filtered["_rsort"] = df_filtered["returnStatus"].apply(lambda rs: 0 if rs == return_filter else 1)
-    else:
-        df_filtered["_rsort"] = 0
+    df_filtered["_rsort"] = 0
+
+    # 등록시간 파싱 및 기간 필터
+    if sort_mode == "등록시간순":
+        df_filtered["_reg_dt"] = _pd.to_datetime(df_filtered["registered"], errors="coerce")
+        if _inv_dt_from and _inv_dt_to:
+            _from_ts = _pd.Timestamp(_inv_dt_from)
+            _to_ts = _pd.Timestamp(_inv_dt_to)
+            _mask_dt = (df_filtered["_reg_dt"] >= _from_ts) & (df_filtered["_reg_dt"] <= _to_ts)
+            df_filtered = df_filtered[_mask_dt]
 
     # 그룹 키 + 정렬
     if sort_mode == "LOT순":
         group_col = "_all"
         df_filtered["_all"] = "전체 (LOT순)"
         df_filtered = df_filtered.sort_values(["_rsort", "lot"])
+    elif sort_mode == "등록시간순":
+        group_col = "_all"
+        df_filtered["_all"] = "전체 (등록시간순)"
+        df_filtered = df_filtered.sort_values("_reg_dt", ascending=False, na_position="last")
     else:
         group_col = {"섹터별": "sector", "제조사별": "maker", "품목별": "product"}[sort_mode]
         df_filtered = df_filtered.sort_values(["_rsort", group_col, "lot"])
@@ -2742,21 +2779,11 @@ def page_inventory():
 
     st.markdown("---")
 
-    # 반품 필터 활성 시 안내 + 전체선택 (제조사 정렬이 아닐 때만)
-    if return_filter:
-        rf_drums = df_filtered[df_filtered["returnStatus"] == return_filter]
-        rf_lots = rf_drums["lot"].tolist()
-        _info_cols = st.columns([2, 1, 1, 3])
-        _info_cols[0].info(f"{_rf_opts[return_filter]} {len(rf_lots)}건 필터 중")
-        if sort_mode != "제조사별" and rf_lots:
-            if _info_cols[1].button("전체선택", key="rf_selall", use_container_width=True):
-                for _l in rf_lots:
-                    st.session_state[f"chk_{_l}"] = True
-                st.rerun()
-        if _info_cols[2].button("선택해제", key="rf_desel", use_container_width=True):
-            for _l in df_all["lot"].tolist():
-                st.session_state[f"chk_{_l}"] = False
-            st.rerun()
+    # 선택 해제 버튼
+    if st.button("선택 해제", key="inv_desel", use_container_width=False):
+        for _l in df_all["lot"].tolist():
+            st.session_state[f"chk_{_l}"] = False
+        st.rerun()
 
     # 드럼별 체크박스 선택
     selected_lots = set()
@@ -2892,16 +2919,191 @@ def page_inventory():
                     st.error(f"오류: {e}")
 
 
+# ══════════════════════════════════════
+# 반품 관리 페이지
+# ══════════════════════════════════════
+def page_inventory_return():
+    import requests as _req
+    import pandas as _pd
+
+    BACKEND = "https://kgcounter.up.railway.app"
+    st.subheader("↩️ 반품 관리")
+    st.caption("기술·불량·무상 반품 드럼 현황 및 처리")
+
+    col_refresh, col_sort = st.columns([1, 5])
+    with col_refresh:
+        if st.button("🔄 새로고침", key="ret_refresh"):
+            st.rerun()
+    with col_sort:
+        sort_mode = st.radio("정렬", ["섹터별", "제조사별", "품목별", "LOT순", "등록시간순"], horizontal=True, key="ret_sort", label_visibility="collapsed")
+
+    # 등록시간순 선택 시 기간 선택기
+    _ret_dt_from = None
+    _ret_dt_to = None
+    if sort_mode == "등록시간순":
+        _rtc1, _rtc2 = st.columns(2)
+        with _rtc1:
+            _ret_d_from = st.date_input("시작일", datetime.date.today() - datetime.timedelta(days=30), key="ret_d_from")
+            _ret_h_from = st.selectbox("시작 시각", [f"{h:02d}:00" for h in range(24)], index=0, key="ret_h_from")
+        with _rtc2:
+            _ret_d_to = st.date_input("종료일", datetime.date.today(), key="ret_d_to")
+            _ret_h_to = st.selectbox("종료 시각", [f"{h:02d}:59" for h in range(24)], index=23, key="ret_h_to")
+        _ret_dt_from = datetime.datetime.combine(_ret_d_from, datetime.time(int(_ret_h_from[:2]), 0))
+        _ret_dt_to = datetime.datetime.combine(_ret_d_to, datetime.time(int(_ret_h_to[:2]), 59))
+
+    # 반품 필터 버튼
+    _rf_opts = {"": "전체", "불량": "🔴 불량반품", "기술": "🟡 기술반품", "무상": "🔵 무상반품"}
+    if "ret_return_filter" not in st.session_state:
+        st.session_state["ret_return_filter"] = ""
+    _rfc = st.columns([1, 1, 1, 4])
+    for _i, (_rfk, _rfl) in enumerate(list(_rf_opts.items())[1:]):
+        with _rfc[_i]:
+            _act = st.session_state["ret_return_filter"] == _rfk
+            if st.button(_rfl, key=f"retbtn_{_rfk}", type="primary" if _act else "secondary", use_container_width=True):
+                st.session_state["ret_return_filter"] = "" if _act else _rfk
+                st.rerun()
+    return_filter = st.session_state["ret_return_filter"]
+
+    try:
+        resp = _req.get(f"{BACKEND}/api/inventory/sectors", timeout=10)
+        if not resp.ok:
+            st.error(f"조회 실패: {resp.status_code}")
+            return
+        sectors_raw = resp.json().get("sectors", {})
+    except Exception as e:
+        st.error(f"연결 오류: {e}")
+        return
+
+    all_drums = []
+    for sector, drums in sectors_raw.items():
+        for d in drums:
+            all_drums.append({**d, "sector": sector})
+
+    # 반품 항목만 필터
+    return_drums = [d for d in all_drums if d.get("returnStatus")]
+    if not return_drums:
+        st.info("반품 드럼 없음")
+        return
+
+    df_all = _pd.DataFrame(return_drums)
+    total = len(df_all)
+
+    col_lbl, col_inp, col_cap = st.columns([0.6, 3, 1.5])
+    col_lbl.markdown("**검색**")
+    search = col_inp.text_input("검색", placeholder="품명 또는 LOT 일부...", key="ret_search", label_visibility="collapsed")
+    col_cap.caption(f"반품 **{total}드럼**")
+
+    if search.strip():
+        s = search.strip().upper()
+        mask = df_all["lot"].str.upper().str.contains(s, na=False) | df_all["product"].str.upper().str.contains(s, na=False)
+        df_filtered = df_all[mask].copy()
+    else:
+        df_filtered = df_all.copy()
+
+    # 반품 유형 필터
+    if return_filter:
+        df_filtered = df_filtered[df_filtered["returnStatus"] == return_filter].copy()
+
+    # 등록시간 파싱 및 기간 필터
+    if sort_mode == "등록시간순":
+        df_filtered["_reg_dt"] = _pd.to_datetime(df_filtered["registered"], errors="coerce")
+        if _ret_dt_from and _ret_dt_to:
+            _from_ts = _pd.Timestamp(_ret_dt_from)
+            _to_ts = _pd.Timestamp(_ret_dt_to)
+            df_filtered = df_filtered[(df_filtered["_reg_dt"] >= _from_ts) & (df_filtered["_reg_dt"] <= _to_ts)]
+
+    # 그룹 키 + 정렬
+    if sort_mode == "LOT순":
+        group_col = "_all"
+        df_filtered["_all"] = "전체 (LOT순)"
+        df_filtered = df_filtered.sort_values("lot")
+    elif sort_mode == "등록시간순":
+        group_col = "_all"
+        df_filtered["_all"] = "전체 (등록시간순)"
+        df_filtered = df_filtered.sort_values("_reg_dt", ascending=False, na_position="last")
+    else:
+        group_col = {"섹터별": "sector", "제조사별": "maker", "품목별": "product"}[sort_mode]
+        df_filtered = df_filtered.sort_values([group_col, "lot"])
+
+    if df_filtered.empty:
+        st.info("해당 조건의 반품 드럼 없음")
+        return
+
+    st.markdown("---")
+
+    # 드럼 목록
+    selected_lots = set()
+    for group_key, group_df in df_filtered.groupby(group_col, sort=False):
+        cnt = len(group_df)
+        with st.expander(f"**{group_key}** — {cnt}드럼", expanded=True):
+            h1, h2, h3, h4, h5, h6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+            h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
+            h4.markdown("**제조사**"); h5.markdown("**섹터**"); h6.markdown("**등록시간**")
+            for _, row in group_df.iterrows():
+                rs = row.get("returnStatus", "")
+                emoji = "🔴" if rs == "불량" else "🟡" if rs == "기술" else "🔵" if rs == "무상" else ""
+                c1, c2, c3, c4, c5, c6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+                if c1.checkbox("", key=f"ret_chk_{row['lot']}", label_visibility="collapsed"):
+                    selected_lots.add(row["lot"])
+                c2.markdown(f"{emoji} **{row.get('product','')}**")
+                c3.text(row.get("lot", ""))
+                c4.text(row.get("maker", ""))
+                c5.text(row.get("sector", ""))
+                c6.text(row.get("registered", ""))
+
+    # 액션 버튼
+    if selected_lots:
+        st.markdown("---")
+        selected_drums_list = [d for d in return_drums if d["lot"] in selected_lots]
+        st.warning(f"**{len(selected_lots)}드럼** 선택됨")
+        ba, bb, bc = st.columns(3)
+        if ba.button(f"↩️ 반품완료 ({len(selected_lots)})", type="primary", key="ret_done"):
+            try:
+                res = _req.post(f"{BACKEND}/api/inventory/register",
+                                json={"drums": selected_drums_list, "sector": "반품완료"}, timeout=15)
+                if res.ok:
+                    st.success(f"{len(selected_drums_list)}드럼 반품완료!")
+                    st.rerun()
+                else:
+                    st.error(f"실패: {res.text}")
+            except Exception as e:
+                st.error(f"오류: {e}")
+        if bb.button(f"🔓 반품 해제 ({len(selected_lots)})", key="ret_cancel"):
+            try:
+                res = _req.post(f"{BACKEND}/api/inventory/return-status",
+                                json={"drums": selected_drums_list, "status": ""}, timeout=15)
+                if res.ok:
+                    st.success(f"{len(selected_drums_list)}드럼 반품 해제!")
+                    st.rerun()
+                else:
+                    st.error(f"실패: {res.text}")
+            except Exception as e:
+                st.error(f"오류: {e}")
+        if bc.button(f"🚚 라인입고 ({len(selected_lots)})", key="ret_checkout"):
+            try:
+                res = _req.post(f"{BACKEND}/api/inventory/register",
+                                json={"drums": selected_drums_list, "sector": "라인입고"}, timeout=15)
+                if res.ok:
+                    st.success(f"{len(selected_drums_list)}드럼 라인입고 완료!")
+                    st.rerun()
+                else:
+                    st.error(f"실패: {res.text}")
+            except Exception as e:
+                st.error(f"오류: {e}")
+
+
 # ──────────────────────────────────────
 # 메뉴 라우팅
 # ──────────────────────────────────────
-if menu == "🔍 생산계획 vs 입고 교차검증":
-    page_cross_check()
-elif menu == "📋 일일 작업일지 작성":
-    page_work_log()
-elif menu == "📈 근무 통계":
-    page_statistics()
-elif menu == "📅 근무 일정표":
+if page == "근무표":
     page_my_schedule()
-elif menu == "📦 재고 관리":
+elif page == "근무 통계":
+    page_statistics()
+elif page == "일일 작업 일지":
+    page_work_log()
+elif page == "재고 현황":
     page_inventory()
+elif page == "입고 관리":
+    page_cross_check()
+elif page == "반품 관리":
+    page_inventory_return()
