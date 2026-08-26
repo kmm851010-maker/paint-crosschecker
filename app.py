@@ -1111,7 +1111,6 @@ def page_work_log():
     </style>
     """, unsafe_allow_html=True)
 
-    st.info("💡 휴가신청은 **근무표** 메뉴에서 등록하세요.")
     st.subheader("🗓 작업 일자 선택")
     today_kst = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
     selected_date = st.date_input("날짜를 클릭하세요", today_kst,
