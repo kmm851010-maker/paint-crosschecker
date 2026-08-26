@@ -248,12 +248,14 @@ def _nav(label, key):
         st.session_state["page"] = key
         st.rerun()
 
+_div = "<div style='margin:6px 0;border-top:1px solid rgba(255,255,255,0.15);'></div>"
+
 st.sidebar.markdown("**👥 근태 관리**")
 _nav("📅 근무표", "근무표")
 _nav("📈 근무 통계", "근무 통계")
-st.sidebar.markdown("---")
+st.sidebar.markdown(_div, unsafe_allow_html=True)
 _nav("📋 일일 작업 일지", "일일 작업 일지")
-st.sidebar.markdown("---")
+st.sidebar.markdown(_div, unsafe_allow_html=True)
 st.sidebar.markdown("**📦 재고 관리**")
 _nav("📊 재고 현황", "재고 현황")
 _nav("📥 입고 관리", "입고 관리")
