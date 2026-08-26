@@ -2067,7 +2067,9 @@ def page_my_schedule():
                 for _i, _lv in _shown:
                     _ct, _cd = st.columns([4, 1])
                     with _ct:
-                        st.write(f"{_lv['name']} | {_lv['type']} | {_lv['start']} ~ {_lv['end']} | 대근: {_lv.get('sub','없음')}")
+                        _sub = _lv.get('sub', '')
+                        _sub_txt = f" | 대근: {_sub}" if _sub else ""
+                        st.write(f"{_lv['name']} | {_lv['type']} | {_lv['start']} ~ {_lv['end']}{_sub_txt}")
                     with _cd:
                         if st.button("삭제", key=f"del_leave_{_i}"):
                             _deleted = st.session_state["leave_list"].pop(_i)
