@@ -512,51 +512,36 @@ def page_cross_check():
             col_names.append("비고")
         incoming_df.columns = col_names
         incoming_df = incoming_df.reset_index(drop=True)
-        n = len(incoming_df)
 
-        # 편집 칼럼 초기값 (행 수 바뀌면 리셋)
-        for _k, _def in [("cc_already_in", 0), ("cc_new_in", 0), ("cc_remark", "")]:
-            if _k not in st.session_state or len(st.session_state[_k]) != n:
-                st.session_state[_k] = [_def] * n
-
-        # 칼럼 순서: 품목코드 | 제조사 | 기입고수량 | 입고예정수량 | 신규입고수량 | 비고
-        incoming_df.insert(incoming_df.columns.get_loc("입고예정수량"), "기입고수량", st.session_state["cc_already_in"])
-        incoming_df["신규입고수량"] = st.session_state["cc_new_in"]
+        # 편집 가능 칼럼: 기입고수량(입고예정수량 앞), 비고
+        incoming_df.insert(incoming_df.columns.get_loc("입고예정수량"), "기입고수량", 0)
+        incoming_df["기입고수량"] = incoming_df["기입고수량"].astype(int)
+        incoming_df["입고예정수량"] = incoming_df["입고예정수량"].astype(int)
         if not has_remark:
-            incoming_df["비고"] = st.session_state["cc_remark"]
+            incoming_df["비고"] = ""
         else:
-            # 기존 비고 유지하되 편집 가능하게
             incoming_df["비고"] = incoming_df["비고"].fillna("").astype(str)
 
-        col_cfg = {
-            "품목코드":   st.column_config.TextColumn(disabled=True),
-            "제조사":     st.column_config.TextColumn(disabled=True),
-            "기입고수량": st.column_config.NumberColumn("기입고수량", min_value=0, step=1, help="오늘 이전 이미 입고된 수량"),
-            "입고예정수량": st.column_config.NumberColumn(disabled=True),
-            "신규입고수량": st.column_config.NumberColumn("신규입고수량", min_value=0, step=1, help="오늘 입고할 수량"),
-            "비고":       st.column_config.TextColumn("비고"),
-        }
-
+        _editor_key = f"cc_editor_{st.session_state.get('cc_plan_name', '')}_{len(incoming_df)}"
         edited_df = st.data_editor(
-            incoming_df[["품목코드","제조사","기입고수량","입고예정수량","신규입고수량","비고"]],
-            column_config=col_cfg,
+            incoming_df[["품목코드", "제조사", "기입고수량", "입고예정수량", "비고"]],
+            column_config={
+                "품목코드":     st.column_config.TextColumn(disabled=True),
+                "제조사":       st.column_config.TextColumn(disabled=True),
+                "기입고수량":   st.column_config.NumberColumn("기입고수량", min_value=0, step=1, help="오늘 이전 기입고 수량"),
+                "입고예정수량": st.column_config.NumberColumn(disabled=True),
+                "비고":         st.column_config.TextColumn("비고"),
+            },
             use_container_width=True,
             hide_index=False,
             num_rows="fixed",
-            key="cc_incoming_editor",
+            key=_editor_key,
         )
-        st.session_state["cc_already_in"] = edited_df["기입고수량"].tolist()
-        st.session_state["cc_new_in"]     = edited_df["신규입고수량"].tolist()
-        st.session_state["cc_remark"]     = edited_df["비고"].tolist()
 
         _total_plan    = int(edited_df["입고예정수량"].sum())
         _total_already = int(edited_df["기입고수량"].fillna(0).sum())
-        _total_new     = int(edited_df["신규입고수량"].fillna(0).sum())
-        _total_remain  = _total_plan - _total_already - _total_new
-        st.success(
-            f"총 {n}개 품목 | 입고예정: {_total_plan}개 | "
-            f"기입고: {_total_already}개 | 신규입고: {_total_new}개 | 잔여: {_total_remain}개"
-        )
+        _total_remain  = _total_plan - _total_already
+        st.success(f"총 {len(edited_df)}개 품목 | 입고예정: {_total_plan}개 | 기입고: {_total_already}개 | 잔여: {_total_remain}개")
 
         incoming_df = edited_df.copy()
         incoming_df.index += 1
