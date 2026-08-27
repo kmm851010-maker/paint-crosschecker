@@ -2031,12 +2031,6 @@ def page_statistics():
             mc7.metric("휴가(월)", f"{s['휴가일수']}일")
 
             total_daegeun_h = sum(d["시간"] for d in s["대근내역"])
-            st.caption(
-                f"대근 {s['대근횟수']}회 ({_fh(total_daegeun_h)}H) | "
-                f"총 연장 {_fh(total_ot)}H (주간 {_fh(s['연장근로_주간'])}H + 야간 {_fh(s['연장근로_야간'])}H + 대근 {_fh(s['연장근로_대근'])}H) | "
-                f"총 근로 {_fh(s['기본근로'] + total_ot)}H | "
-                f"올해 휴가 총 {len(yr_leaves)}일"
-            )
 
             # 대근 상세 내역
             if s["대근내역"]:
@@ -2069,6 +2063,114 @@ def page_statistics():
                     st.markdown(_render_salary_table(_salary_rows), unsafe_allow_html=True)
                 else:
                     st.info("저장된 근무 데이터가 없습니다.")
+
+            # 교대주기별 연장 시간
+            with st.expander("⏱ 교대주기별 연장 시간", expanded=False):
+                st.caption("조회월 기준 해당 근무조 교대 주기(연속 근무 5일)별 연장 현황. 주기당 최대 12H — 초과 시 빨간색 경고.")
+                _OT_LIMIT = 12
+                _team_key = next((k for k, v in MEMBERS.items() if v == name), None)
+                if _team_key is None:
+                    st.info("조 코드 미매핑")
+                else:
+                    _m_start = datetime.date(year, month, 1)
+                    _next_m = datetime.date(year, month + 1, 1) if month < 12 else datetime.date(year + 1, 1, 1)
+                    _m_end = _next_m - datetime.timedelta(days=1)
+                    _scan_start = _m_start - datetime.timedelta(days=6)
+                    _scan_end = _m_end + datetime.timedelta(days=6)
+
+                    _work_seq = []
+                    _d = _scan_start
+                    while _d <= _scan_end:
+                        _idx = (_d - _BASE_DATE).days % 20
+                        _s1, _s2, _s3, _off = _CYCLE_20[_idx]
+                        if _team_key in (_s1, _s2, _s3):
+                            _ds = _d.strftime("%Y-%m-%d")
+                            _ot = 0
+                            if _ds in daily_details:
+                                _sh = daily_details[_ds].get("shift", {})
+                                if _sh.get("is_2person"):
+                                    for _sk, _ok in [("1근_근무자", "1근"), ("2근_근무자", "2근")]:
+                                        if _sh.get(_sk) == name:
+                                            _ot = _sf(_sh.get(f"{_ok}_연장", 0))
+                                            break
+                                else:
+                                    for _sk, _ok in [("1근_근무자", "1근"), ("2근_근무자", "2근"), ("3근_근무자", "3근")]:
+                                        if _sh.get(_sk) == name:
+                                            _ot = _sf(_sh.get(f"{_ok}_연장", 0))
+                                            break
+                            _work_seq.append((_d, _ot))
+                        _d += datetime.timedelta(days=1)
+
+                    _blocks = []
+                    if _work_seq:
+                        _cur = [_work_seq[0]]
+                        for _i in range(1, len(_work_seq)):
+                            if (_work_seq[_i][0] - _work_seq[_i - 1][0]).days == 1:
+                                _cur.append(_work_seq[_i])
+                            else:
+                                _blocks.append(_cur)
+                                _cur = [_work_seq[_i]]
+                        _blocks.append(_cur)
+
+                    _month_blocks = [b for b in _blocks if b[-1][0] >= _m_start and b[0][0] <= _m_end]
+
+                    if not _month_blocks:
+                        st.info("해당 월 교대 주기 없음")
+                    else:
+                        _n = len(_month_blocks)
+                        _TH = "background:#374151;color:#D1D5DB;padding:5px 4px;border:1px solid #4B5563;text-align:center;font-size:12px;"
+                        _TD_BASE = "padding:6px 4px;border:1px solid #4B5563;text-align:center;font-size:13px;"
+                        _TD_GRAY = _TD_BASE + "background:#1F2937;color:#9CA3AF;"
+                        _TD_OK   = _TD_BASE + "background:#1F2937;color:#E5E7EB;font-weight:600;"
+                        _TD_RED  = _TD_BASE + "background:#DC2626;color:#fff;font-weight:700;"
+                        _TD_WARN = _TD_BASE + "background:#78350F;color:#FDE68A;font-weight:600;"
+
+                        _date_hdr = "".join(
+                            '<th colspan="3" style="' + _TH + '">' +
+                            b[0][0].strftime("%m/%d") + "~" + b[-1][0].strftime("%m/%d") + "</th>"
+                            for b in _month_blocks
+                        )
+                        _col_sub = (
+                            '<th style="' + _TH + '">연장(발생)</th>' +
+                            '<th style="' + _TH + '">연장(잔여)</th>' +
+                            '<th style="' + _TH + '">탄력근로 사용</th>'
+                        ) * _n
+
+                        _data_cells = ""
+                        _any_warn = False
+                        for _b in _month_blocks:
+                            _b_ot = int(sum(_x[1] for _x in _b))
+                            _remain = max(0, _OT_LIMIT - _b_ot)
+                            _is_over = _b_ot >= _OT_LIMIT
+                            _is_near = not _is_over and _b_ot >= _OT_LIMIT - 2
+                            _any_warn = _any_warn or _is_over
+                            _cell_style = _TD_RED if _is_over else (_TD_WARN if _is_near else _TD_OK)
+                            _data_cells += (
+                                '<td style="' + _cell_style + '">' + str(_b_ot) + '</td>' +
+                                '<td style="' + _TD_GRAY + '">' + str(_remain) + '</td>' +
+                                '<td style="' + _TD_GRAY + '">0</td>'
+                            )
+
+                        _html_ot = (
+                            '<div style="overflow-x:auto;margin-top:8px;">'
+                            '<table style="border-collapse:collapse;font-size:12px;min-width:100%;">'
+                            '<thead>'
+                            '<tr><th style="' + _TH + 'min-width:90px;">구분</th>' + _date_hdr + '</tr>'
+                            '<tr><th style="' + _TH + '"></th>' + _col_sub + '</tr>'
+                            '</thead>'
+                            '<tbody>'
+                            '<tr><td style="' + _TH + 'text-align:left;white-space:nowrap;">연장/잔여(H)</td>' + _data_cells + '</tr>'
+                            '</tbody></table></div>'
+                        )
+                        st.markdown(_html_ot, unsafe_allow_html=True)
+
+                        if _any_warn:
+                            _warn_list = [
+                                b[0][0].strftime("%m/%d") + "~" + b[-1][0].strftime("%m/%d") +
+                                " (" + str(int(sum(_x[1] for _x in b))) + "H)"
+                                for b in _month_blocks if int(sum(_x[1] for _x in b)) >= _OT_LIMIT
+                            ]
+                            st.error("⚠️ 주 52시간 위배 주기: " + ", ".join(_warn_list))
 
 
 # ══════════════════════════════════════
@@ -2817,12 +2919,12 @@ def page_inventory():
     BACKEND = "https://kgcounter.up.railway.app"
     st.subheader("재고 현황")
 
-    col_refresh, col_sort = st.columns([1, 5])
-    with col_refresh:
-        if st.button("🔄 새로고침", key="inv_refresh"):
-            st.rerun()
-    with col_sort:
+    _c_inv_sort, _c_inv_ref = st.columns([5, 0.8])
+    with _c_inv_sort:
         sort_mode = st.radio("정렬", ["섹터별", "제조사별", "품목별", "LOT순", "등록시간순"], horizontal=True, key="inv_sort", label_visibility="collapsed")
+    with _c_inv_ref:
+        if st.button("🔄", key="inv_refresh", use_container_width=True, help="새로고침"):
+            st.rerun()
 
     # 등록시간순 선택 시 기간 선택기 표시
     _inv_dt_from = None
