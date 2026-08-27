@@ -430,6 +430,14 @@ export default function InventoryScreen() {
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
+                style={[styles.doneSmallBtn, { backgroundColor: torchMode !== "off" ? "#FFD600" : "#333", borderWidth: 1.5, borderColor: torchMode !== "off" ? "#FFD600" : "#888", minWidth: 44 }]}
+                onPress={() => setTorchMode(m => m === "off" ? "auto" : m === "auto" ? "on" : "off")}
+              >
+                <Text style={[styles.doneSmallBtnText, { color: torchMode !== "off" ? "#111" : "#aaa", fontSize: 13 }]}>
+                  {torchMode === "on" ? "🔦ON" : torchMode === "auto" ? `🔆${autoTorchActive ? "●" : "○"}` : "🔦"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 style={[styles.doneSmallBtn, { backgroundColor: "#555" }]}
                 onPress={() => setEditingItem({ index: -1, lot: "", product: "" })}
               >
@@ -494,18 +502,7 @@ export default function InventoryScreen() {
               <Text style={{ color: "#4AFF91", fontSize: 12, fontWeight: "600" }}>화면 터치로 인식</Text>
             </View>
           )}
-          {/* 토치 버튼 */}
-          <TouchableOpacity
-            style={styles.torchBtn}
-            onPress={() => setTorchMode(m => m === "off" ? "auto" : m === "auto" ? "on" : "off")}
-          >
-            <Text style={styles.torchIcon}>
-              {torchMode === "on" ? "🔦" : torchMode === "auto" ? "🔆" : "🔦"}
-            </Text>
-            <Text style={[styles.torchLabel, torchMode !== "off" && styles.torchLabelActive]}>
-              {torchMode === "on" ? "ON" : torchMode === "auto" ? `AUTO${autoTorchActive ? "🟡" : "⚪"}` : "OFF"}
-            </Text>
-          </TouchableOpacity>
+
         </TouchableOpacity>
 
         {/* 취소 버튼 */}
