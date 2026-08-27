@@ -2814,7 +2814,6 @@ def page_inventory():
 
     BACKEND = "https://kgcounter.up.railway.app"
     st.subheader("📊 재고 현황")
-    st.caption("스캔/등록은 모바일 앱에서 진행하세요.")
 
     col_refresh, col_sort = st.columns([1, 5])
     with col_refresh:
@@ -2899,107 +2898,6 @@ def page_inventory():
         group_col = {"섹터별": "sector", "제조사별": "maker", "품목별": "product"}[sort_mode]
         df_filtered = df_filtered.sort_values(["_rsort", group_col, "lot"])
 
-    # ─── 반품 리스트 자동 매칭 ───────────────────────────────────
-    with st.expander("📋 반품 리스트 자동 매칭 (이미지/엑셀 업로드)", expanded=False):
-        st.caption("기술·무상·불량 반품 리스트를 업로드하면 현재 재고와 자동 매칭 후 반품상태를 일괄 적용합니다.")
-        rl_files = st.file_uploader(
-            "반품 리스트 파일 선택 (여러 장 동시 업로드 가능)",
-            type=["jpg", "jpeg", "png", "xlsx", "xls", "csv"],
-            key="rl_upload",
-            accept_multiple_files=True,
-        )
-        if rl_files:
-            st.caption(f"{len(rl_files)}개 파일 선택됨: " + ", ".join(f.name for f in rl_files))
-            col_rl_btn, _ = st.columns([1, 3])
-            if col_rl_btn.button("🔍 리스트 분석", key="btn_rl_parse", use_container_width=True):
-                import base64 as _b64
-                all_items, parse_errors = [], []
-                seen_lots = set()
-                for _fi, rl_file in enumerate(rl_files):
-                    with st.spinner(f"분석 중... ({_fi+1}/{len(rl_files)}) {rl_file.name}"):
-                        file_b64 = _b64.b64encode(rl_file.read()).decode()
-                        try:
-                            res_rl = _req.post(
-                                f"{BACKEND}/api/inventory/parse-return-list",
-                                json={"file_data": file_b64, "filename": rl_file.name, "api_key": ""},
-                                timeout=90,
-                            )
-                            if res_rl.ok:
-                                for item in res_rl.json().get("items", []):
-                                    if item["lot_no"] not in seen_lots:
-                                        seen_lots.add(item["lot_no"])
-                                        all_items.append(item)
-                            else:
-                                parse_errors.append(f"{rl_file.name}: {res_rl.text}")
-                        except Exception as _e:
-                            parse_errors.append(f"{rl_file.name}: {_e}")
-                if parse_errors:
-                    for _err in parse_errors:
-                        st.error(f"분석 실패 — {_err}")
-                if all_items:
-                    st.session_state["rl_parsed"] = all_items
-                    st.session_state.pop("rl_matched", None)
-
-        if st.session_state.get("rl_parsed"):
-            parsed = st.session_state["rl_parsed"]
-            # 현재 재고 lot 맵
-            lot_map = {d["lot"]: d for d in all_drums}
-            matched, unmatched = [], []
-            for item in parsed:
-                lot = item["lot_no"]
-                if lot in lot_map:
-                    matched.append({**lot_map[lot], "new_return_type": item["return_type"]})
-                else:
-                    unmatched.append(item)
-
-            type_label = {"기술": "🟡 기술반품", "무상": "🔵 무상반품", "불량": "🔴 불량반품"}
-            st.success(f"**추출 {len(parsed)}건** | 재고 매칭 **{len(matched)}건** | 미매칭 {len(unmatched)}건")
-
-            if matched:
-                import pandas as _pd2
-                df_m = _pd2.DataFrame(matched)[["product", "lot", "sector", "new_return_type"]]
-                df_m["반품유형"] = df_m["new_return_type"].map(type_label).fillna(df_m["new_return_type"])
-                st.dataframe(df_m[["product", "lot", "sector", "반품유형"]], use_container_width=True, hide_index=True)
-
-                if st.button(f"✅ {len(matched)}드럼 반품상태 일괄 적용", type="primary", key="btn_rl_apply"):
-                    groups = {"기술": [], "무상": [], "불량": []}
-                    for d in matched:
-                        rt = d.get("new_return_type", "무상")
-                        groups.setdefault(rt, []).append(d)
-                    ok_count, errs = 0, []
-                    for status, grp in groups.items():
-                        if not grp:
-                            continue
-                        try:
-                            r = _req.post(
-                                f"{BACKEND}/api/inventory/return-status",
-                                json={"drums": grp, "status": status},
-                                timeout=30,
-                            )
-                            if r.ok:
-                                ok_count += len(grp)
-                            else:
-                                errs.append(f"{status}: {r.text}")
-                        except Exception as _e2:
-                            errs.append(str(_e2))
-                    if errs:
-                        st.error(f"일부 오류: {errs}")
-                    else:
-                        st.success(f"{ok_count}드럼 반품상태 적용 완료!")
-                        st.session_state.pop("rl_parsed", None)
-                        st.rerun()
-
-            if unmatched:
-                st.warning(
-                    f"⚠️ 아래 **{len(unmatched)}건**은 현재 재고에 없어 적용에서 제외됩니다.",
-                    icon=None,
-                )
-                import pandas as _pd3
-                df_um = _pd3.DataFrame(unmatched)[["product", "lot_no", "return_type"]]
-                df_um.columns = ["품명", "LOT-NO", "반품유형"]
-                st.dataframe(df_um, use_container_width=True, hide_index=True)
-
-    st.markdown("---")
 
     # 선택 해제 버튼
     if st.button("선택 해제", key="inv_desel", use_container_width=False):
@@ -3200,6 +3098,151 @@ def page_inventory_return():
     for sector, drums in sectors_raw.items():
         for d in drums:
             all_drums.append({**d, "sector": sector})
+
+    # ─── 반품 리스트 자동 매칭 ───────────────────────────────────
+    with st.expander("📋 반품 리스트 자동 매칭 (이미지/엑셀 업로드)", expanded=False):
+        st.caption("기술·무상·불량 반품 리스트를 업로드하면 일반 재고와 자동 매칭 후 반품대기 상태로 전환합니다.")
+        rl_files = st.file_uploader(
+            "반품 리스트 파일 선택 (여러 장 동시 업로드 가능)",
+            type=["jpg", "jpeg", "png", "xlsx", "xls", "csv"],
+            key="ret_rl_upload",
+            accept_multiple_files=True,
+        )
+        if rl_files:
+            st.caption(f"{len(rl_files)}개 파일 선택됨: " + ", ".join(f.name for f in rl_files))
+            col_rl_btn, _ = st.columns([1, 3])
+            if col_rl_btn.button("🔍 리스트 분석", key="ret_btn_rl_parse", use_container_width=True):
+                import base64 as _b64
+                all_items, parse_errors = [], []
+                seen_lots = set()
+                for _fi, rl_file in enumerate(rl_files):
+                    with st.spinner(f"분석 중... ({_fi+1}/{len(rl_files)}) {rl_file.name}"):
+                        file_b64 = _b64.b64encode(rl_file.read()).decode()
+                        try:
+                            res_rl = _req.post(
+                                f"{BACKEND}/api/inventory/parse-return-list",
+                                json={"file_data": file_b64, "filename": rl_file.name, "api_key": ""},
+                                timeout=90,
+                            )
+                            if res_rl.ok:
+                                for item in res_rl.json().get("items", []):
+                                    if item["lot_no"] not in seen_lots:
+                                        seen_lots.add(item["lot_no"])
+                                        all_items.append(item)
+                            else:
+                                parse_errors.append(f"{rl_file.name}: {res_rl.text}")
+                        except Exception as _e:
+                            parse_errors.append(f"{rl_file.name}: {_e}")
+                if parse_errors:
+                    for _err in parse_errors:
+                        st.error(f"분석 실패 — {_err}")
+                if all_items:
+                    st.session_state["ret_rl_parsed"] = all_items
+                    st.session_state.pop("ret_rl_sel", None)
+                    st.session_state.pop("ret_rl_confirm_pending", None)
+
+        if st.session_state.get("ret_rl_parsed"):
+            parsed = st.session_state["ret_rl_parsed"]
+            normal_drums = [d for d in all_drums if not d.get("returnStatus")]
+            lot_map = {d["lot"]: d for d in normal_drums}
+            matched, unmatched = [], []
+            for item in parsed:
+                lot = item["lot_no"]
+                if lot in lot_map:
+                    matched.append({**lot_map[lot], "new_return_type": item["return_type"]})
+                else:
+                    unmatched.append(item)
+
+            type_label = {"기술": "🟡 기술반품", "무상": "🔵 무상반품", "불량": "🔴 불량반품"}
+            st.success(f"**추출 {len(parsed)}건** | 일반 재고 매칭 **{len(matched)}건** | 미매칭 {len(unmatched)}건")
+
+            if matched:
+                import pandas as _pdm
+                df_m = _pdm.DataFrame(matched)
+
+                ret_rl_sort = st.radio("정렬", ["제조사별", "품목별", "LOT순"], horizontal=True, key="ret_rl_sort")
+                if ret_rl_sort == "제조사별":
+                    df_m = df_m.sort_values(["maker", "lot"])
+                elif ret_rl_sort == "품목별":
+                    df_m = df_m.sort_values(["product", "lot"])
+                else:
+                    df_m = df_m.sort_values("lot")
+
+                if "ret_rl_sel" not in st.session_state:
+                    st.session_state["ret_rl_sel"] = {row["lot"]: True for _, row in df_m.iterrows()}
+
+                c_toggle, c_cnt = st.columns([1.5, 3])
+                all_checked = all(st.session_state["ret_rl_sel"].get(row["lot"], True) for _, row in df_m.iterrows())
+                if c_toggle.button("전체 선택 해제" if all_checked else "전체 선택", key="ret_rl_all_toggle"):
+                    st.session_state["ret_rl_sel"] = {row["lot"]: not all_checked for _, row in df_m.iterrows()}
+                    st.rerun()
+
+                h1, h2, h3, h4, h5 = st.columns([0.5, 1.5, 2, 1.5, 1.5])
+                h1.markdown("**✓**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
+                h4.markdown("**제조사**"); h5.markdown("**반품유형**")
+
+                sel_map = st.session_state.get("ret_rl_sel", {})
+                for _, row in df_m.iterrows():
+                    c1, c2, c3, c4, c5 = st.columns([0.5, 1.5, 2, 1.5, 1.5])
+                    checked = c1.checkbox("", key=f"ret_rl_chk_{row['lot']}", value=sel_map.get(row["lot"], True), label_visibility="collapsed")
+                    st.session_state["ret_rl_sel"][row["lot"]] = checked
+                    c2.text(row.get("product", ""))
+                    c3.text(row.get("lot", ""))
+                    c4.text(row.get("maker", ""))
+                    c5.markdown(type_label.get(row.get("new_return_type", ""), row.get("new_return_type", "")))
+
+                selected_for_apply = [row for _, row in df_m.iterrows() if st.session_state.get("ret_rl_sel", {}).get(row["lot"], True)]
+                c_cnt.caption(f"선택: {len(selected_for_apply)} / {len(matched)}건")
+
+                if selected_for_apply:
+                    if st.button(f"🔄 선택 {len(selected_for_apply)}드럼 → 반품대기 전환", type="primary", key="ret_btn_rl_confirm"):
+                        st.session_state["ret_rl_confirm_pending"] = True
+                        st.rerun()
+
+                    if st.session_state.get("ret_rl_confirm_pending"):
+                        st.warning(f"⚠️ 선택된 **{len(selected_for_apply)}드럼**을 반품대기 상태로 전환하시겠습니까?")
+                        cy, cn = st.columns(2)
+                        if cy.button("✅ 예, 전환합니다", type="primary", key="ret_rl_yes"):
+                            groups = {}
+                            for d in selected_for_apply:
+                                rt = d.get("new_return_type", "무상")
+                                groups.setdefault(rt, []).append(d)
+                            ok_count, errs = 0, []
+                            for status, grp in groups.items():
+                                if not grp:
+                                    continue
+                                try:
+                                    r = _req.post(
+                                        f"{BACKEND}/api/inventory/return-status",
+                                        json={"drums": [dict(d) for d in grp], "status": status},
+                                        timeout=30,
+                                    )
+                                    if r.ok:
+                                        ok_count += len(grp)
+                                    else:
+                                        errs.append(f"{status}: {r.text}")
+                                except Exception as _e2:
+                                    errs.append(str(_e2))
+                            if errs:
+                                st.error(f"일부 오류: {errs}")
+                            else:
+                                st.success(f"{ok_count}드럼 반품대기 전환 완료!")
+                                st.session_state.pop("ret_rl_parsed", None)
+                                st.session_state.pop("ret_rl_sel", None)
+                                st.session_state.pop("ret_rl_confirm_pending", None)
+                                st.rerun()
+                        if cn.button("❌ 취소", key="ret_rl_no"):
+                            st.session_state.pop("ret_rl_confirm_pending", None)
+                            st.rerun()
+
+            if unmatched:
+                import pandas as _pdum
+                st.warning(f"⚠️ 아래 **{len(unmatched)}건**은 일반 재고에 없어 제외됩니다.")
+                df_um = _pdum.DataFrame(unmatched)[["product", "lot_no", "return_type"]]
+                df_um.columns = ["품명", "LOT-NO", "반품유형"]
+                st.dataframe(df_um, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
 
     # 반품 항목만 필터
     return_drums = [d for d in all_drums if d.get("returnStatus")]

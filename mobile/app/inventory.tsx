@@ -157,9 +157,13 @@ export default function InventoryScreen() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const flashAnim = useRef(new Animated.Value(0)).current;
   const torchModeRef = useRef<"off" | "auto" | "on">("off");
+  const editingRef = useRef(false); // 편집 모달 열림 여부 (runOcr 내 클로저용)
 
   // torchModeRef를 torchMode와 동기화
   useEffect(() => { torchModeRef.current = torchMode; }, [torchMode]);
+
+  // editingRef를 editingItem과 동기화 (편집 중 OCR 일시 중단)
+  useEffect(() => { editingRef.current = editingItem !== null; }, [editingItem]);
 
   // 오토 모드: LightSensor (Android) 조도 구독
   useEffect(() => {
@@ -230,7 +234,7 @@ export default function InventoryScreen() {
   };
 
   const runOcr = async () => {
-    if (cooldownRef.current || processingRef.current || !cameraRef.current || !scanActiveRef.current) return;
+    if (cooldownRef.current || processingRef.current || !cameraRef.current || !scanActiveRef.current || editingRef.current) return;
     processingRef.current = true;
     let uri: string | undefined;
     try {
