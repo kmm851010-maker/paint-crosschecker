@@ -2078,6 +2078,22 @@ def page_statistics():
                     _scan_start = _m_start - datetime.timedelta(days=6)
                     _scan_end = _m_end + datetime.timedelta(days=6)
 
+                    # 날짜별 연장시간 맵: 대근내역(이미 정확히 계산됨) + 일지 저장 주간/야간 연장
+                    _ot_by_date = {}
+                    for _dk in s.get("대근내역", []):
+                        _ot_by_date[_dk["날짜"]] = _ot_by_date.get(_dk["날짜"], 0) + _dk["시간"]
+                    for _ds2, _dd2 in daily_details.items():
+                        if _ds2 in _ot_by_date:
+                            continue
+                        _sh2 = _dd2.get("shift", {})
+                        if not _sh2.get("is_2person"):
+                            for _sk2, _ok2 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                                if _sh2.get(_sk2) == name:
+                                    _ot2 = _sf(_sh2.get(f"{_ok2}_연장", 0))
+                                    if _ot2 > 0:
+                                        _ot_by_date[_ds2] = _ot2
+                                    break
+
                     _work_seq = []
                     _d = _scan_start
                     while _d <= _scan_end:
@@ -2085,19 +2101,7 @@ def page_statistics():
                         _s1, _s2, _s3, _off = _CYCLE_20[_idx]
                         if _team_key in (_s1, _s2, _s3):
                             _ds = _d.strftime("%Y-%m-%d")
-                            _ot = 0
-                            if _ds in daily_details:
-                                _sh = daily_details[_ds].get("shift", {})
-                                if _sh.get("is_2person"):
-                                    for _sk, _ok in [("1근_근무자", "1근"), ("2근_근무자", "2근")]:
-                                        if _sh.get(_sk) == name:
-                                            _ot = _sf(_sh.get(f"{_ok}_연장", 0))
-                                            break
-                                else:
-                                    for _sk, _ok in [("1근_근무자", "1근"), ("2근_근무자", "2근"), ("3근_근무자", "3근")]:
-                                        if _sh.get(_sk) == name:
-                                            _ot = _sf(_sh.get(f"{_ok}_연장", 0))
-                                            break
+                            _ot = _ot_by_date.get(_ds, 0)
                             _work_seq.append((_d, _ot))
                         _d += datetime.timedelta(days=1)
 
