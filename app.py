@@ -1817,7 +1817,6 @@ def page_statistics():
     # 통계 표시
     st.markdown("---")
     st.subheader(f"📊 {year}년 {month}월 직원별 근무 통계")
-    st.caption(f"저장된 일지: {saved_days}일분 / 나머지 {days_in_month - saved_days}일은 교대 스케줄 기반 예측값")
 
     def _fh(v):
         """float/int 시간값을 깔끔하게 표시 (4.0 → 4, 5.5 → 5.5)"""
@@ -3050,12 +3049,22 @@ def page_inventory_return():
     st.subheader("↩️ 반품 관리")
     st.caption("기술·불량·무상 반품 드럼 현황 및 처리")
 
-    col_refresh, col_sort = st.columns([1, 5])
-    with col_refresh:
-        if st.button("🔄 새로고침", key="ret_refresh"):
-            st.rerun()
-    with col_sort:
+    # 정렬 + 반품 필터 + 새로고침 한 줄
+    if "ret_return_filter" not in st.session_state:
+        st.session_state["ret_return_filter"] = ""
+    _c_sort, _c_bad, _c_tech, _c_free, _c_ref = st.columns([4, 1, 1, 1, 0.8])
+    with _c_sort:
         sort_mode = st.radio("정렬", ["섹터별", "제조사별", "품목별", "LOT순", "등록시간순"], horizontal=True, key="ret_sort", label_visibility="collapsed")
+    for _rfk, _rfl, _col in [("불량", "🔴 불량", _c_bad), ("기술", "🟡 기술", _c_tech), ("무상", "🔵 무상", _c_free)]:
+        _act = st.session_state["ret_return_filter"] == _rfk
+        with _col:
+            if st.button(_rfl, key=f"retbtn_{_rfk}", type="primary" if _act else "secondary", use_container_width=True):
+                st.session_state["ret_return_filter"] = "" if _act else _rfk
+                st.rerun()
+    with _c_ref:
+        if st.button("🔄", key="ret_refresh", use_container_width=True, help="새로고침"):
+            st.rerun()
+    return_filter = st.session_state["ret_return_filter"]
 
     # 등록시간순 선택 시 기간 선택기
     _ret_dt_from = None
@@ -3070,19 +3079,6 @@ def page_inventory_return():
             _ret_h_to = st.selectbox("종료 시각", [f"{h:02d}:59" for h in range(24)], index=23, key="ret_h_to")
         _ret_dt_from = datetime.datetime.combine(_ret_d_from, datetime.time(int(_ret_h_from[:2]), 0))
         _ret_dt_to = datetime.datetime.combine(_ret_d_to, datetime.time(int(_ret_h_to[:2]), 59))
-
-    # 반품 필터 버튼
-    _rf_opts = {"": "전체", "불량": "🔴 불량반품", "기술": "🟡 기술반품", "무상": "🔵 무상반품"}
-    if "ret_return_filter" not in st.session_state:
-        st.session_state["ret_return_filter"] = ""
-    _rfc = st.columns([1, 1, 1, 4])
-    for _i, (_rfk, _rfl) in enumerate(list(_rf_opts.items())[1:]):
-        with _rfc[_i]:
-            _act = st.session_state["ret_return_filter"] == _rfk
-            if st.button(_rfl, key=f"retbtn_{_rfk}", type="primary" if _act else "secondary", use_container_width=True):
-                st.session_state["ret_return_filter"] = "" if _act else _rfk
-                st.rerun()
-    return_filter = st.session_state["ret_return_filter"]
 
     try:
         resp = _req.get(f"{BACKEND}/api/inventory/sectors", timeout=10)
