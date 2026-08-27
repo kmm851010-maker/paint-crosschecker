@@ -17,7 +17,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -217,6 +217,15 @@ class DrumItem(BaseModel):
     product: str
     maker: str
     scanDisabled: bool = False
+
+    @field_validator("scanDisabled", mode="before")
+    @classmethod
+    def _parse_scan_disabled(cls, v):
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v == "Y"
+        return bool(v)
 
 
 class InventoryRegisterRequest(BaseModel):
