@@ -1112,7 +1112,9 @@ def page_work_log():
     """, unsafe_allow_html=True)
 
     st.subheader("작업 일자 선택")
-    today_kst = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
+    _now_kst = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
+    # 06:30 이전이면 전날 일지로 취급 (하루 기준 시각 06:30)
+    today_kst = (_now_kst - datetime.timedelta(hours=6, minutes=30)).date()
     selected_date = st.date_input("날짜를 클릭하세요", today_kst,
                                    min_value=datetime.date(2026, 1, 1),
                                    max_value=datetime.date(2100, 12, 31),
