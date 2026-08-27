@@ -216,6 +216,7 @@ class DrumItem(BaseModel):
     lot: str
     product: str
     maker: str
+    scanDisabled: bool = False
 
 
 class InventoryRegisterRequest(BaseModel):
@@ -246,6 +247,23 @@ async def inventory_register(req: InventoryRegisterRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"success": True, "count": len(drums), "sector": req.sector}
+
+
+class ScanDisabledRequest(BaseModel):
+    drums: list[DrumItem]
+    disabled: bool
+
+
+@app.post("/api/inventory/scan-disabled")
+async def set_scan_disabled_endpoint(req: ScanDisabledRequest):
+    """스캔불가 플래그 설정/해제"""
+    from utils.inventory_sheets import set_scan_disabled
+    drums = [d.model_dump() for d in req.drums]
+    try:
+        set_scan_disabled(drums, req.disabled)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, "count": len(drums), "disabled": req.disabled}
 
 
 class ReturnStatusRequest(BaseModel):

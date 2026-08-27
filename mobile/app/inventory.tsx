@@ -126,7 +126,7 @@ function filterAndProceed(
 
 const SECTORS = [
   "입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리",
-  "8번자리", "9번자리", "반품자리", "CW2", "CP5", "창고뒤", "창고사이", "하차장", "롤반 앞", "믹싱룸",
+  "8번자리", "9번자리", "반품자리", "창고주위",
 ];
 const CHECKOUT = "라인입고";
 type Mode = "idle" | "scanning" | "sectorPick" | "status";
@@ -144,6 +144,8 @@ export default function InventoryScreen() {
   const [returnFilter, setReturnFilter] = useState<"무상"|"기술"|"불량"|"">(""); 
   const [selectedLots, setSelectedLots] = useState<Set<string>>(new Set());
   const [scanManual, setScanManual] = useState(false);
+  const [ingoScanDisabled, setIngoScanDisabled] = useState(false);
+  const [showIngoPrompt, setShowIngoPrompt] = useState(false);
 
   // 토치: "off" | "auto" | "on"
   const [torchMode, setTorchMode] = useState<"off" | "auto" | "on">("off");
@@ -273,14 +275,24 @@ export default function InventoryScreen() {
   };
 
   // ── 섹터 선택 후 저장 ──
-  const handleSectorSelect = async (sector: string) => {
+  const handleSectorSelect = async (sector: string, scanDis?: boolean) => {
     if (batch.length === 0) return;
+    // 입고존 선택 시 스캔불가 여부 확인 프롬프트
+    if (sector === "입고존" && scanDis === undefined) {
+      setShowIngoPrompt(true);
+      return;
+    }
+    setShowIngoPrompt(false);
     setMode("scanning");
     setLoading(true);
     try {
-      await registerDrums(batch, sector);
+      const drumsToSend = sector === "입고존"
+        ? batch.map(d => ({ ...d, scanDisabled: scanDis ?? false }))
+        : batch;
+      await registerDrums(drumsToSend, sector);
       const count = batch.length;
       setBatch([]);
+      setIngoScanDisabled(false);
       Alert.alert(
         "저장 완료",
         sector === CHECKOUT ? `${count}드럼 라인입고 처리 완료` : `${count}드럼 → ${sector} 등록 완료\n계속 스캔할 수 있습니다.`
@@ -387,20 +399,50 @@ export default function InventoryScreen() {
     <Modal visible={mode === "sectorPick"} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
         <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>{batch.length}드럼 → 섹터 선택</Text>
-          <ScrollView>
-            {SECTORS.map((s) => (
-              <TouchableOpacity key={s} style={styles.sectorBtn} onPress={() => handleSectorSelect(s)}>
-                <Text style={styles.sectorBtnText}>{s}</Text>
+          {showIngoPrompt ? (
+            <>
+              <Text style={styles.modalTitle}>입고존 등록 옵션</Text>
+              <Text style={{ color: "#ccc", marginBottom: 16, textAlign: "center" }}>
+                {batch.length}드럼을 입고존에 등록합니다.{"\n"}스캔불가 드럼인 경우 아래를 선택하세요.
+              </Text>
+              <TouchableOpacity
+                style={[styles.sectorBtn, { backgroundColor: ingoScanDisabled ? "#EF4444" : "#374151", marginBottom: 8 }]}
+                onPress={() => setIngoScanDisabled(v => !v)}
+              >
+                <Text style={[styles.sectorBtnText, { color: ingoScanDisabled ? "#fff" : "#aaa" }]}>
+                  {ingoScanDisabled ? "✔ 스캔불가" : "스캔불가 (선택)"}
+                </Text>
               </TouchableOpacity>
-            ))}
-            <TouchableOpacity style={[styles.sectorBtn, styles.checkoutBtn]} onPress={() => handleSectorSelect(CHECKOUT)}>
-              <Text style={[styles.sectorBtnText, { color: "#fff" }]}>{CHECKOUT}</Text>
-            </TouchableOpacity>
-          </ScrollView>
-          <TouchableOpacity style={[styles.modalCancelBtn, { paddingBottom: 14 + insets.bottom }]} onPress={() => setMode("scanning")}>
-            <Text style={styles.modalCancelText}>돌아가기</Text>
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.sectorBtn, { backgroundColor: "#2563EB", marginTop: 8 }]}
+                onPress={() => handleSectorSelect("입고존", ingoScanDisabled)}
+              >
+                <Text style={[styles.sectorBtnText, { color: "#fff" }]}>
+                  {ingoScanDisabled ? "스캔불가로 입고존 등록" : "일반 입고존 등록"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalCancelBtn, { paddingBottom: 14 + insets.bottom }]} onPress={() => setShowIngoPrompt(false)}>
+                <Text style={styles.modalCancelText}>← 섹터 선택으로</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <Text style={styles.modalTitle}>{batch.length}드럼 → 섹터 선택</Text>
+              <ScrollView>
+                {SECTORS.map((s) => (
+                  <TouchableOpacity key={s} style={styles.sectorBtn} onPress={() => handleSectorSelect(s)}>
+                    <Text style={styles.sectorBtnText}>{s}</Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity style={[styles.sectorBtn, styles.checkoutBtn]} onPress={() => handleSectorSelect(CHECKOUT)}>
+                  <Text style={[styles.sectorBtnText, { color: "#fff" }]}>{CHECKOUT}</Text>
+                </TouchableOpacity>
+              </ScrollView>
+              <TouchableOpacity style={[styles.modalCancelBtn, { paddingBottom: 14 + insets.bottom }]} onPress={() => setMode("scanning")}>
+                <Text style={styles.modalCancelText}>돌아가기</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </View>
     </Modal>

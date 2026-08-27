@@ -3110,14 +3110,15 @@ def page_inventory():
                 # 행
                 for _, row in group_df.iterrows():
                     rs = row.get("returnStatus", "")
+                    sd = row.get("scanDisabled", "")
                     return_emoji = "🔴" if rs == "불량" else "🟡" if rs == "기술" else "🔵" if rs == "무상" else ""
-                    _row_bg = ""
+                    scan_badge = " `스캔불가`" if sd == "Y" else ""
                     c1, c2, c3, c4, c5, c6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
                     checked = c1.checkbox("", key=f"chk_{row['lot']}", label_visibility="collapsed")
                     if checked:
                         selected_lots.add(row["lot"])
-                    product_label = f"{return_emoji} **{row.get('product','')}**" if return_emoji else f"**{row.get('product','')}**"
-                    c2.markdown(product_label)
+                    _pfx = f"{return_emoji} " if return_emoji else ""
+                    c2.markdown(f"{_pfx}**{row.get('product','')}**{scan_badge}")
                     c3.text(row.get("lot", ""))
                     c4.text(row.get("maker", ""))
                     if sort_mode not in ("섹터별",):
@@ -3168,6 +3169,34 @@ def page_inventory():
                     except Exception as e:
                         st.error(f"오류: {e}")
             else:
+                # 입고존 드럼이 포함된 경우 스캔불가 토글 표시
+                _sel_ingo = [d for d in selected_drums_list if d.get("sector") == "입고존"]
+                _sel_ingo_dis = [d for d in _sel_ingo if d.get("scanDisabled") == "Y"]
+                if _sel_ingo:
+                    _sd_cols = st.columns([2, 2, 4])
+                    if _sd_cols[0].button(f"스캔불가 설정 ({len(_sel_ingo)})", key="btn_sd_on"):
+                        try:
+                            res = _req.post(f"{BACKEND}/api/inventory/scan-disabled",
+                                            json={"drums": _sel_ingo, "disabled": True}, timeout=15)
+                            if res.ok:
+                                st.success(f"{len(_sel_ingo)}드럼 스캔불가 설정!")
+                                st.rerun()
+                            else:
+                                st.error(f"실패: {res.text}")
+                        except Exception as e:
+                            st.error(f"오류: {e}")
+                    if _sel_ingo_dis and _sd_cols[1].button(f"스캔불가 해제 ({len(_sel_ingo_dis)})", key="btn_sd_off"):
+                        try:
+                            res = _req.post(f"{BACKEND}/api/inventory/scan-disabled",
+                                            json={"drums": _sel_ingo_dis, "disabled": False}, timeout=15)
+                            if res.ok:
+                                st.success(f"{len(_sel_ingo_dis)}드럼 스캔불가 해제!")
+                                st.rerun()
+                            else:
+                                st.error(f"실패: {res.text}")
+                        except Exception as e:
+                            st.error(f"오류: {e}")
+
                 # 일반 항목 선택: 라인입고 + 반품 3종
                 ca, cb, cc, cd = st.columns(4)
                 if ca.button(f"라인입고 ({len(selected_lots)})", type="primary", key="btn_checkout"):

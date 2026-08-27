@@ -143,6 +143,7 @@ export interface DrumItem {
   product: string;
   maker: string;
   returnStatus?: string;
+  scanDisabled?: boolean;
 }
 
 export interface SectorInventory {
@@ -179,6 +180,18 @@ export async function getSectorInventory(): Promise<SectorInventory> {
   if (!response.ok) throw new Error("재고 조회 실패");
   const data = await response.json();
   return data.sectors;
+}
+
+export async function setScanDisabled(drums: DrumItem[], disabled: boolean): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/inventory/scan-disabled`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ drums, disabled }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "처리 실패" }));
+    throw new Error(error.detail || `서버 오류 (${response.status})`);
+  }
 }
 
 export async function setDrumReturnStatus(drums: DrumItem[], status: "불량" | "기술" | "무상" | ""): Promise<void> {

@@ -33,7 +33,7 @@ MAKERS = {
 
 SECTORS = [
     "입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리",
-    "8번자리", "9번자리", "반품자리", "CW2", "CP5", "창고뒤", "창고사이", "하차장", "롤반 앞", "믹싱룸",
+    "8번자리", "9번자리", "반품자리", "창고주위",
 ]
 CHECKOUT_SECTOR = "라인입고"
 RETURN_SECTOR = "반품완료"
@@ -92,7 +92,7 @@ def parse_barcode(raw_text: str):
 
 
 def _load_status_map(ws):
-    """재고현황 시트에서 LOT → {idx, sector, return_status} 맵 반환"""
+    """재고현황 시트에서 LOT → {idx, sector, return_status, scan_disabled} 맵 반환"""
     all_data = ws.get_all_values()
     lot_map = {}
     for i, row in enumerate(all_data[1:], start=2):
@@ -101,6 +101,7 @@ def _load_status_map(ws):
                 "idx": i,
                 "sector": row[3] if len(row) > 3 else "",
                 "return_status": row[6] if len(row) > 6 else "",
+                "scan_disabled": row[7] if len(row) > 7 else "",
             }
     return lot_map
 
@@ -110,12 +111,12 @@ def _kst_now() -> str:
 
 
 def save_drums_to_sector(drums: list, sector: str):
-    """드럼 목록을 지정 섹터에 보관 등록 또는 이동 (반품상태는 유지)"""
+    """드럼 목록을 지정 섹터에 보관 등록 또는 이동 (반품상태는 유지, 스캔불가는 drum별 설정)"""
     now = _kst_now()
 
     ws_status = _get_or_create_sheet(
         "재고현황",
-        ["LOT", "품명", "제조사", "섹터", "등록일시", "최종변경", "반품상태"],
+        ["LOT", "품명", "제조사", "섹터", "등록일시", "최종변경", "반품상태", "스캔불가"],
     )
     ws_history = _get_or_create_sheet(
         "재고이력",
@@ -129,16 +130,18 @@ def save_drums_to_sector(drums: list, sector: str):
         lot = drum["lot"]
         product = drum["product"]
         maker = drum["maker"]
+        scan_dis = "Y" if drum.get("scanDisabled") else ""
 
         if lot in lot_map:
             prev_sector = lot_map[lot]["sector"]
             row_idx = lot_map[lot]["idx"]
-            # 섹터만 변경, 반품상태(G열)는 보존
+            # 섹터 변경, 반품상태(G열) 보존, 스캔불가(H열) 업데이트
             ws_status.update([[sector]], f"D{row_idx}")
             ws_status.update([[now]], f"F{row_idx}")
+            ws_status.update([[scan_dis]], f"H{row_idx}")
             history_rows.append([lot, product, maker, prev_sector, sector, now])
         else:
-            ws_status.append_row([lot, product, maker, sector, now, now, ""])
+            ws_status.append_row([lot, product, maker, sector, now, now, "", scan_dis])
             history_rows.append([lot, product, maker, "", sector, now])
 
     if history_rows:
@@ -188,7 +191,7 @@ def checkout_drums(drums: list):
 
 
 def get_sector_inventory():
-    """섹터별 보관 드럼 현황 반환 (returnStatus 포함)"""
+    """섹터별 보관 드럼 현황 반환 (returnStatus, scanDisabled 포함)"""
     ws = _get_or_create_sheet("재고현황")
     all_data = ws.get_all_values()
 
@@ -206,9 +209,28 @@ def get_sector_inventory():
             "registered": row[4] if len(row) > 4 else "",
             "updated": row[5] if len(row) > 5 else "",
             "returnStatus": row[6] if len(row) > 6 else "",
+            "scanDisabled": row[7] if len(row) > 7 else "",
         })
 
     return sectors
+
+
+def set_scan_disabled(drums: list, disabled: bool):
+    """스캔불가 플래그 설정/해제 (disabled=True → 'Y', False → '')"""
+    now = _kst_now()
+    ws_status = _get_or_create_sheet(
+        "재고현황",
+        ["LOT", "품명", "제조사", "섹터", "등록일시", "최종변경", "반품상태", "스캔불가"],
+    )
+    lot_map = _load_status_map(ws_status)
+    val = "Y" if disabled else ""
+    for drum in drums:
+        lot = drum["lot"]
+        if lot in lot_map:
+            row_idx = lot_map[lot]["idx"]
+            ws_status.update([[val]], f"H{row_idx}")
+            ws_status.update([[now]], f"F{row_idx}")
+    return True
 
 
 def get_inventory_history(date_str: str):
