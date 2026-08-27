@@ -211,6 +211,48 @@ def get_sector_inventory():
     return sectors
 
 
+def get_inventory_history(date_str: str):
+    """재고이력 시트에서 특정 날짜(YYYY-MM-DD) 항목 반환.
+    각 항목: lot, product, maker, from_sector, to_sector, timestamp, action
+    action: '신규등록' | '라인입고' | '반품완료' | '이동'
+    """
+    ws = _get_or_create_sheet(
+        "재고이력",
+        ["LOT", "품명", "제조사", "이전섹터", "새섹터", "일시"],
+    )
+    all_data = ws.get_all_values()
+    rows = all_data[1:] if len(all_data) > 1 else []
+
+    result = []
+    for row in rows:
+        if len(row) < 6:
+            continue
+        timestamp = row[5]
+        if not timestamp.startswith(date_str):
+            continue
+        from_sector = row[3]
+        to_sector = row[4]
+        if to_sector == CHECKOUT_SECTOR:
+            action = "라인입고"
+        elif to_sector == RETURN_SECTOR:
+            action = "반품완료"
+        elif from_sector == "":
+            action = "신규등록"
+        else:
+            action = "이동"
+        result.append({
+            "lot": row[0],
+            "product": row[1],
+            "maker": row[2],
+            "from_sector": from_sector,
+            "to_sector": to_sector,
+            "timestamp": timestamp,
+            "action": action,
+        })
+
+    return result
+
+
 def set_return_status(drums: list, status: str):
     """반품상태 플래그 설정 (status='Y' → 반품대기, status='' → 해제). 섹터는 변경하지 않음."""
     now = _kst_now()

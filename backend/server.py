@@ -276,6 +276,20 @@ async def get_inventory_sectors():
     return {"success": True, "sectors": sectors}
 
 
+@app.get("/api/inventory/history")
+async def get_inventory_history_endpoint(date: str = ""):
+    """날짜별 재고 이력 조회 (date: YYYY-MM-DD, 기본값 오늘 KST)"""
+    from utils.inventory_sheets import get_inventory_history
+    import datetime as _dt
+    if not date:
+        date = (_dt.datetime.utcnow() + _dt.timedelta(hours=9)).strftime("%Y-%m-%d")
+    try:
+        history = get_inventory_history(date)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, "date": date, "history": history}
+
+
 class ParseReturnListRequest(BaseModel):
     file_data: str  # base64
     filename: str
