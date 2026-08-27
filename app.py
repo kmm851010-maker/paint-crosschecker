@@ -262,13 +262,13 @@ page = st.session_state["page"]
 st.sidebar.markdown("---")
 _uname = st.session_state.get("username", "")
 if _uname:
-    st.sidebar.caption(f"👤 {_uname}")
+    st.sidebar.caption(f"{_uname}")
 if st.sidebar.button("🚪 로그아웃", use_container_width=True):
     st.query_params.clear()
     st.session_state.clear()
     st.rerun()
 st.sidebar.markdown("---")
-st.sidebar.markdown("📱 **모바일 앱**")
+st.sidebar.markdown("**모바일 앱**")
 st.sidebar.markdown(
     '<a href="https://expo.dev/artifacts/eas/tIdrGk_6wRdddQVkWyes08SN9WQG7oCuLdUiabWdu48.apk" '
     'style="display:block;text-align:center;padding:10px;background:#F5A623;color:#1A1A2E;'
@@ -1129,7 +1129,7 @@ def page_work_log():
             f"2인 근무 체계 (주간/야간 12시간) 자동 전환"
         )
         st.success(
-            f"📅 **{selected_date.strftime('%Y년 %m월 %d일')}** 2인 근무\n\n"
+            f"**{selected_date.strftime('%Y년 %m월 %d일')}** 2인 근무\n\n"
             f"주간(06:30-18:30): **{shift_auto['주간_조']}조 {shift_auto['주간_근무자']}** | "
             f"야간(18:30-06:30): **{shift_auto['야간_조']}조 {shift_auto['야간_근무자']}** | "
             f"휴가: **{shift_auto['leave_person']}** | "
@@ -1137,7 +1137,7 @@ def page_work_log():
         )
     else:
         st.success(
-            f"📅 **{selected_date.strftime('%Y년 %m월 %d일')}** 근무 매칭 완료\n\n"
+            f"**{selected_date.strftime('%Y년 %m월 %d일')}** 근무 매칭 완료\n\n"
             f"1근: **{shift_auto['1근_조']}조 {shift_auto['1근_근무자']}** | "
             f"2근: **{shift_auto['2근_조']}조 {shift_auto['2근_근무자']}** | "
             f"3근: **{shift_auto['3근_조']}조 {shift_auto['3근_근무자']}** | "
@@ -2040,7 +2040,7 @@ def page_statistics():
 
             # 이번 달 휴가 내역
             if s["휴가내역"]:
-                with st.expander(f"📅 {month}월 휴가 내역 ({s['휴가일수']}일)"):
+                with st.expander(f"{month}월 휴가 내역 ({s['휴가일수']}일)"):
                     for h in s["휴가내역"]:
                         st.write(h)
 
@@ -2253,7 +2253,7 @@ def page_my_schedule():
 </style>
 """, unsafe_allow_html=True)
 
-    st.markdown("## 📅 근무표")
+    st.markdown("## 근무표")
 
     MEMBERS = dict(st.secrets.get("members", {'A': '직원A', 'B': '직원B', 'C': '직원C', 'D': '직원D'}))
     ALL_MEMBERS = list(MEMBERS.values())
@@ -3083,7 +3083,7 @@ def page_inventory():
                         st.error(f"실패: {res.text}")
                 except Exception as e:
                     st.error(f"오류: {e}")
-            if bc.button(f"🚚 라인입고 ({len(selected_lots)})", key="btn_checkout_r"):
+            if bc.button(f"라인입고 ({len(selected_lots)})", key="btn_checkout_r"):
                 try:
                     res = _req.post(f"{BACKEND}/api/inventory/register",
                                     json={"drums": selected_drums_list, "sector": "라인입고"}, timeout=15)
@@ -3097,7 +3097,7 @@ def page_inventory():
         else:
             # 일반 항목 선택: 라인입고 + 반품 3종
             ca, cb, cc, cd = st.columns(4)
-            if ca.button(f"🚚 라인입고 ({len(selected_lots)})", type="primary", key="btn_checkout"):
+            if ca.button(f"라인입고 ({len(selected_lots)})", type="primary", key="btn_checkout"):
                 try:
                     res = _req.post(f"{BACKEND}/api/inventory/register",
                                     json={"drums": selected_drums_list, "sector": "라인입고"}, timeout=15)
@@ -3445,7 +3445,7 @@ def page_inventory_return():
                     st.error(f"실패: {res.text}")
             except Exception as e:
                 st.error(f"오류: {e}")
-        if bc.button(f"🚚 라인입고 ({len(selected_lots)})", key="ret_checkout"):
+        if bc.button(f"라인입고 ({len(selected_lots)})", key="ret_checkout"):
             try:
                 res = _req.post(f"{BACKEND}/api/inventory/register",
                                 json={"drums": selected_drums_list, "sector": "라인입고"}, timeout=15)
