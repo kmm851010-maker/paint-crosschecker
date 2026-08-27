@@ -248,14 +248,14 @@ def _nav(label, key):
         st.session_state["page"] = key
         st.rerun()
 
-st.sidebar.markdown("**👥 근태 관리**")
-_nav("📅 근무표", "근무표")
-_nav("📈 근무 통계", "근무 통계")
-_nav("📋 일일 작업 일지", "일일 작업 일지")
-st.sidebar.markdown("**📦 재고 관리**")
-_nav("📊 재고 현황", "재고 현황")
-_nav("📥 입고 관리", "입고 관리")
-_nav("↩️ 반품 관리", "반품 관리")
+st.sidebar.markdown("**KG 근태관리**")
+_nav("근무표", "근무표")
+_nav("근무 통계", "근무 통계")
+_nav("일일 작업 일지", "일일 작업 일지")
+st.sidebar.markdown("**KG 재고관리**")
+_nav("재고 현황", "재고 현황")
+_nav("입고 관리", "입고 관리")
+_nav("반품 관리", "반품 관리")
 
 page = st.session_state["page"]
 
@@ -391,7 +391,7 @@ def page_cross_check():
     from modules.excel_generator import generate_report
     from utils.formatter import style_result_table, format_summary
 
-    st.title("🔍 생산계획 vs 입고 교차검증")
+    st.title("생산계획 vs 입고 교차검증")
     st.caption("① 생산계획서 첨부 → 입고 리스트 확인 → ② 입고 완료 후 ERP 첨부 → 검증")
 
     # ── STEP 1: 생산계획서 첨부 → 입고 예정 리스트 ──
@@ -450,7 +450,7 @@ def page_cross_check():
         # 엑셀 변환 전체 표 (이미지 첨부 시에만)
         table_data = st.session_state.get("cc_table_data")
         if table_data and table_data.get("headers") and table_data.get("rows"):
-            st.subheader("📊 생산계획서 전체 변환 결과")
+            st.subheader("생산계획서 전체 변환 결과")
             headers = table_data["headers"]
             rows = table_data["rows"]
             # 중복 헤더 처리
@@ -500,7 +500,7 @@ def page_cross_check():
 
             st.markdown("---")
 
-        st.subheader("📦 입고 예정 품목 리스트")
+        st.subheader("입고 예정 품목 리스트")
 
         cols = ["색상코드", "제조사", "신규"]
         has_remark = "비고" in plan_df.columns
@@ -626,7 +626,7 @@ def page_cross_check():
             plan_name = st.session_state["cc_plan_name"]
 
             st.markdown("---")
-            st.subheader("✅ 교차검증 결과")
+            st.subheader("교차검증 결과")
 
             if not result_df.empty:
                 summary = format_summary(result_df)
@@ -674,7 +674,7 @@ def page_cross_check():
 
                 # 상세 결과 표
                 st.markdown("---")
-                st.subheader("📊 교차검증 상세 결과")
+                st.subheader("교차검증 상세 결과")
                 styled = style_result_table(result_df)
                 st.dataframe(styled, use_container_width=True, hide_index=True)
 
@@ -725,7 +725,7 @@ def page_image_to_excel():
     from modules.table_extractor import extract_table_from_image
     from modules.excel_converter import convert_to_excel
 
-    st.title("📊 캡처 이미지 → 엑셀 파일 변환기")
+    st.title("캡처 이미지 → 엑셀 파일 변환기")
     st.caption("ERP 화면 캡처, 표 이미지를 서식 적용된 엑셀(.xlsx)로 즉시 변환합니다.")
 
     capture_file = st.file_uploader(
@@ -769,7 +769,7 @@ def page_image_to_excel():
             st.stop()
 
         st.markdown("---")
-        st.subheader("✅ 변환 결과")
+        st.subheader("변환 결과")
 
         col_img, col_table = st.columns(2)
         with col_img:
@@ -1101,7 +1101,7 @@ def page_work_log():
 
     # ── UI ──
     _title_team = st.secrets.get("company", {}).get("team", "")
-    st.title(f"📋 {_title_team} 일일 업무 보고 작성" if _title_team else "📋 일일 업무 보고 작성")
+    st.title(f"{_title_team} 일일 업무 보고 작성" if _title_team else "일일 업무 보고 작성")
 
     # 달력 크게 표시
     st.markdown("""
@@ -1111,7 +1111,7 @@ def page_work_log():
     </style>
     """, unsafe_allow_html=True)
 
-    st.subheader("🗓 작업 일자 선택")
+    st.subheader("작업 일자 선택")
     today_kst = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
     selected_date = st.date_input("날짜를 클릭하세요", today_kst,
                                    min_value=datetime.date(2026, 1, 1),
@@ -1297,9 +1297,10 @@ def page_work_log():
             if work_items:
                 _item_names = [
                     "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
-                    "신나 하차 수량", "신나 공급 수량", "논크롬 공급 수량",
+                    "신나 하차 수량", "신나 공급 수량", "크롬 공급 수량",
                     "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
-                    "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수"
+                    "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수",
+                    "AGV 입/출고 작업 수량"
                 ]
                 _shift_labels = ["1근", "2근", "3근"]
                 _load_keys = ["s1", "s2", "s3"]
@@ -1318,9 +1319,10 @@ def page_work_log():
         if st.button("🆕 새로 작성 (저장 데이터 무시)", key="new_write"):
             _item_names = [
                 "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
-                "신나 하차 수량", "신나 공급 수량", "논크롬 공급 수량",
+                "신나 하차 수량", "신나 공급 수량", "크롬 공급 수량",
                 "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
-                "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수"
+                "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수",
+                    "AGV 입/출고 작업 수량"
             ]
             for idx in range(len(_item_names)):
                 for label in ["1근", "2근", "3근", "주간", "야간"]:
@@ -1334,9 +1336,10 @@ def page_work_log():
     st.subheader("2. 업무 현황 입력")
     item_names = [
         "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
-        "신나 하차 수량", "신나 공급 수량", "논크롬 공급 수량",
+        "신나 하차 수량", "신나 공급 수량", "크롬 공급 수량",
         "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
-        "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수"
+        "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수",
+                    "AGV 입/출고 작업 수량"
     ]
     # Google Sheets에서 월누계 자동 로드
     try:
@@ -1603,7 +1606,7 @@ def page_statistics():
     import datetime
     import calendar
 
-    st.title("📈 월별 근무 통계")
+    st.title("월별 근무 통계")
 
     MEMBERS = dict(st.secrets.get("members", {'A': '직원A', 'B': '직원B', 'C': '직원C', 'D': '직원D'}))
     ALL_MEMBERS = list(MEMBERS.values())
@@ -1816,7 +1819,7 @@ def page_statistics():
 
     # 통계 표시
     st.markdown("---")
-    st.subheader(f"📊 {year}년 {month}월 직원별 근무 통계")
+    st.subheader(f"{year}년 {month}월 직원별 근무 통계")
 
     def _fh(v):
         """float/int 시간값을 깔끔하게 표시 (4.0 → 4, 5.5 → 5.5)"""
@@ -2812,7 +2815,7 @@ def page_inventory():
     import pandas as _pd
 
     BACKEND = "https://kgcounter.up.railway.app"
-    st.subheader("📊 재고 현황")
+    st.subheader("재고 현황")
 
     col_refresh, col_sort = st.columns([1, 5])
     with col_refresh:
@@ -3046,7 +3049,7 @@ def page_inventory_return():
     import pandas as _pd
 
     BACKEND = "https://kgcounter.up.railway.app"
-    st.subheader("↩️ 반품 관리")
+    st.subheader("반품 관리")
     st.caption("기술·불량·무상 반품 드럼 현황 및 처리")
 
     # 정렬 + 반품 필터 + 새로고침 한 줄
