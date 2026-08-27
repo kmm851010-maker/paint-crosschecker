@@ -154,21 +154,32 @@ def checkout_drums(drums: list):
     ws_status = _get_or_create_sheet("재고현황")
     ws_history = _get_or_create_sheet("재고이력")
 
-    lot_map = _load_status_map(ws_status)
+    # Read all data once
+    all_data = ws_status.get_all_values()
+    header = all_data[0] if all_data else ["LOT", "품명", "제조사", "섹터", "등록일시", "최종변경", "반품상태"]
+    rows = all_data[1:] if len(all_data) > 1 else []
+
+    # Build lot → row index map (1-based, offset by header)
+    lot_to_row = {row[0]: row for row in rows if row and row[0]}
+
+    checkout_lots = {drum["lot"] for drum in drums}
     history_rows = []
-    rows_to_delete = []
 
     for drum in drums:
         lot = drum["lot"]
-        if lot in lot_map:
-            prev_sector = lot_map[lot]["sector"]
-            rows_to_delete.append(lot_map[lot]["idx"])
+        if lot in lot_to_row:
+            row = lot_to_row[lot]
+            prev_sector = row[3] if len(row) > 3 else ""
             history_rows.append([lot, drum["product"], drum["maker"], prev_sector, CHECKOUT_SECTOR, now])
         else:
             history_rows.append([lot, drum["product"], drum["maker"], "미등록", CHECKOUT_SECTOR, now])
 
-    for idx in sorted(rows_to_delete, reverse=True):
-        ws_status.delete_rows(idx)
+    # Filter remaining rows (exclude checked-out lots) and rewrite sheet in one batch
+    remaining = [row for row in rows if row and row[0] not in checkout_lots]
+    ws_status.clear()
+    ws_status.append_row(header)
+    if remaining:
+        ws_status.append_rows(remaining)
 
     if history_rows:
         ws_history.append_rows(history_rows)
