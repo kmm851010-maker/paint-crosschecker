@@ -2930,23 +2930,44 @@ def page_inventory():
     # ── 날짜별 이력 탭 ──────────────────────────────────────────────────────
     with _tab_history:
         _now_kst_h = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
-        _default_hist_date = (_now_kst_h - datetime.timedelta(hours=6, minutes=30)).date()
-        _hist_date = st.date_input("날짜 선택", _default_hist_date, key="hist_date",
-                                   min_value=datetime.date(2026, 1, 1),
-                                   max_value=datetime.date(2100, 12, 31))
+        _default_date = (_now_kst_h - datetime.timedelta(hours=6, minutes=30)).date()
+        _half_hours = [f"{h:02d}:{m:02d}" for h in range(24) for m in (0, 30)]
+
+        _hd_c1, _hd_c2 = st.columns(2)
+        with _hd_c1:
+            st.caption("시작")
+            _hd_from_date = st.date_input("시작일", _default_date, key="hd_from_date",
+                                           min_value=datetime.date(2026, 1, 1),
+                                           max_value=datetime.date(2100, 12, 31),
+                                           label_visibility="collapsed")
+            _hd_from_time = st.selectbox("시작시간", _half_hours, index=0, key="hd_from_time",
+                                          label_visibility="collapsed")
+        with _hd_c2:
+            st.caption("종료")
+            _hd_to_date = st.date_input("종료일", _default_date, key="hd_to_date",
+                                         min_value=datetime.date(2026, 1, 1),
+                                         max_value=datetime.date(2100, 12, 31),
+                                         label_visibility="collapsed")
+            _hd_to_time = st.selectbox("종료시간", _half_hours, index=len(_half_hours)-1, key="hd_to_time",
+                                        label_visibility="collapsed")
+
+        _hist_from_dt = f"{_hd_from_date} {_hd_from_time}"
+        _hist_to_dt   = f"{_hd_to_date} {_hd_to_time}"
+
         if st.button("조회", key="hist_fetch"):
-            st.session_state["hist_data"] = None  # 강제 재조회
+            st.session_state["hist_data"] = None
 
         _hist_data = st.session_state.get("hist_data", None)
-        _hist_loaded_date = st.session_state.get("hist_loaded_date", None)
-        if _hist_data is None or _hist_loaded_date != str(_hist_date):
+        _hist_loaded_key = st.session_state.get("hist_loaded_key", None)
+        _hist_key = f"{_hist_from_dt}~{_hist_to_dt}"
+        if _hist_data is None or _hist_loaded_key != _hist_key:
             try:
                 _hr = _req.get(f"{BACKEND}/api/inventory/history",
-                               params={"date": str(_hist_date)}, timeout=15)
+                               params={"from_dt": _hist_from_dt, "to_dt": _hist_to_dt}, timeout=15)
                 if _hr.ok:
                     _hist_data = _hr.json().get("history", [])
                     st.session_state["hist_data"] = _hist_data
-                    st.session_state["hist_loaded_date"] = str(_hist_date)
+                    st.session_state["hist_loaded_key"] = _hist_key
                 else:
                     st.error(f"조회 실패: {_hr.status_code}")
                     _hist_data = []

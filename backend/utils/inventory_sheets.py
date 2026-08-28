@@ -233,9 +233,9 @@ def set_scan_disabled(drums: list, disabled: bool):
     return True
 
 
-def get_inventory_history(date_str: str):
-    """재고이력 시트에서 특정 날짜(YYYY-MM-DD) 항목 반환.
-    각 항목: lot, product, maker, from_sector, to_sector, timestamp, action
+def get_inventory_history(from_dt: str, to_dt: str):
+    """재고이력 시트에서 datetime 범위 내 항목 반환.
+    from_dt, to_dt: 'YYYY-MM-DD HH:MM' 형식 (포함)
     action: '신규등록' | '라인입고' | '반품완료' | '이동'
     """
     ws = _get_or_create_sheet(
@@ -250,7 +250,8 @@ def get_inventory_history(date_str: str):
         if len(row) < 6:
             continue
         timestamp = row[5]
-        if not timestamp.startswith(date_str):
+        # 문자열 사전순 비교 (YYYY-MM-DD HH:MM 형식은 정렬 가능)
+        if timestamp < from_dt or timestamp > to_dt:
             continue
         from_sector = row[3]
         to_sector = row[4]

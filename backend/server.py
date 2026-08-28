@@ -304,17 +304,20 @@ async def get_inventory_sectors():
 
 
 @app.get("/api/inventory/history")
-async def get_inventory_history_endpoint(date: str = ""):
-    """날짜별 재고 이력 조회 (date: YYYY-MM-DD, 기본값 오늘 KST)"""
+async def get_inventory_history_endpoint(from_dt: str = "", to_dt: str = ""):
+    """재고 이력 조회 (from_dt/to_dt: 'YYYY-MM-DD HH:MM', 기본값 오늘 KST 00:00~23:59)"""
     from utils.inventory_sheets import get_inventory_history
     import datetime as _dt
-    if not date:
-        date = (_dt.datetime.utcnow() + _dt.timedelta(hours=9)).strftime("%Y-%m-%d")
+    _today = (_dt.datetime.utcnow() + _dt.timedelta(hours=9)).strftime("%Y-%m-%d")
+    if not from_dt:
+        from_dt = f"{_today} 00:00"
+    if not to_dt:
+        to_dt = f"{_today} 23:59"
     try:
-        history = get_inventory_history(date)
+        history = get_inventory_history(from_dt, to_dt)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return {"success": True, "date": date, "history": history}
+    return {"success": True, "from_dt": from_dt, "to_dt": to_dt, "history": history}
 
 
 class ParseReturnListRequest(BaseModel):
