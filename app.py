@@ -3176,13 +3176,14 @@ def page_inventory():
             grp_all_rf_selected = bool(grp_rf_lots) and all(st.session_state.get(f"chk_{_l}", False) for _l in grp_rf_lots)
 
             with st.expander(f"**{group_key}** — {cnt}드럼", expanded=False):
-                # 그룹별 전체선택 버튼 (반품필터 활성 + 해당 그룹에 반품 항목 있을 때)
-                if grp_rf_lots:
-                    _gbtn_label = f"선택해제 ({len(grp_rf_lots)})" if grp_all_rf_selected else f"{'제조사별 ' if sort_mode=='제조사별' else ''}전체선택 {len(grp_rf_lots)}건"
-                    if st.button(_gbtn_label, key=f"grpsel_{group_key}", type="secondary"):
-                        _new_val = not grp_all_rf_selected
-                        for _l in grp_rf_lots:
-                            st.session_state[f"chk_{_l}"] = _new_val
+                # 그룹별 전체선택 버튼 (섹터별/제조사별/품목별)
+                if sort_mode in ("섹터별", "제조사별", "품목별"):
+                    _grp_lots = group_df["lot"].tolist()
+                    _grp_all_sel = all(st.session_state.get(f"chk_{_l}", False) for _l in _grp_lots)
+                    _grp_btn_label = f"선택해제 ({cnt})" if _grp_all_sel else f"전체선택 ({cnt})"
+                    if st.button(_grp_btn_label, key=f"grpsel_{group_key}", type="secondary"):
+                        for _l in _grp_lots:
+                            st.session_state[f"chk_{_l}"] = not _grp_all_sel
                         st.rerun()
 
                 # 헤더
