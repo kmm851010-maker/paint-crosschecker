@@ -292,6 +292,22 @@ async def set_return_status_endpoint(req: ReturnStatusRequest):
     return {"success": True, "count": len(drums), "status": req.status}
 
 
+@app.get("/api/debug/inventory-sheet")
+async def debug_inventory_sheet():
+    """재고현황 시트 원시 데이터 진단용"""
+    import os as _os
+    from utils.inventory_sheets import _retry, _get_spreadsheet
+    sp = _retry(_get_spreadsheet)
+    sid = _os.getenv("SPREADSHEET_ID", "MISSING")
+    sheets = [ws.title for ws in sp.worksheets()]
+    try:
+        ws = sp.worksheet("재고현황")
+        data = ws.get_all_values()
+        return {"spreadsheet_id": sid, "sheets": sheets, "row_count": len(data), "preview": data[:6]}
+    except Exception as e:
+        return {"spreadsheet_id": sid, "sheets": sheets, "error": str(e)}
+
+
 @app.get("/api/inventory/sectors")
 async def get_inventory_sectors():
     """섹터별 보관 드럼 현황 조회"""
