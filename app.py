@@ -3057,12 +3057,60 @@ def page_inventory():
                 if show_from: _r5.text(_hi["from_sector"])
                 elif show_to: _r5.text(_hi["to_sector"])
 
+        def _hist_to_excel(items, sector_key):
+            import io, openpyxl
+            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "이력"
+            headers = ["시각", "LOT번호", "품명", "제조사", "섹터", "비고"]
+            purple = PatternFill("solid", fgColor="4B2D8E")
+            thin = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
+            for ci, h in enumerate(headers, 1):
+                c = ws.cell(row=1, column=ci, value=h)
+                c.font = Font(bold=True, color="FFFFFF")
+                c.fill = purple
+                c.alignment = Alignment(horizontal="center")
+                c.border = thin
+            for ri, item in enumerate(items, 2):
+                sector_val = item.get(sector_key, "")
+                ts = item.get("timestamp", "")
+                row_vals = [ts[11:] if len(ts) > 10 else ts, item.get("lot",""), item.get("product",""), item.get("maker",""), sector_val, ""]
+                fill = PatternFill("solid", fgColor="F5F0FF") if ri % 2 == 0 else PatternFill("solid", fgColor="FFFFFF")
+                for ci, val in enumerate(row_vals, 1):
+                    c = ws.cell(row=ri, column=ci, value=val)
+                    c.border = thin
+                    c.fill = fill
+            ws.column_dimensions["F"].width = 20
+            for col in ws.columns:
+                if col[0].column_letter == "F":
+                    continue
+                max_len = max((len(str(c.value or "")) for c in col), default=0)
+                ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 30)
+            buf = io.BytesIO()
+            wb.save(buf)
+            return buf.getvalue()
+
+        _fd = str(_hd_from_date)
+        _td = str(_hd_to_date)
         with _hc1:
             _render_hist_table(_act_new, show_to=True)
+            if _act_new:
+                st.download_button("📥 엑셀 다운로드", data=_hist_to_excel(_act_new, "to_sector"),
+                    file_name=f"신규등록_{_fd}_{_td}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
         with _hc2:
             _render_hist_table(_act_line, show_from=True)
+            if _act_line:
+                st.download_button("📥 엑셀 다운로드", data=_hist_to_excel(_act_line, "from_sector"),
+                    file_name=f"라인입고_{_fd}_{_td}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
         with _hc3:
             _render_hist_table(_act_ret, show_from=True)
+            if _act_ret:
+                st.download_button("📥 엑셀 다운로드", data=_hist_to_excel(_act_ret, "from_sector"),
+                    file_name=f"반품완료_{_fd}_{_td}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
     # ── 섹터별 현황 탭 ──────────────────────────────────────────────────────
     with _tab_sector:
