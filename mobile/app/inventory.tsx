@@ -146,6 +146,7 @@ export default function InventoryScreen() {
   const [scanManual, setScanManual] = useState(false);
   const [ingoScanDisabled, setIngoScanDisabled] = useState(false);
   const [showIngoPrompt, setShowIngoPrompt] = useState(false);
+  const [expandedSectors, setExpandedSectors] = useState<Set<string>>(new Set());
 
   // 토치: "off" | "auto" | "on"
   const [torchMode, setTorchMode] = useState<"off" | "auto" | "on">("off");
@@ -705,7 +706,15 @@ export default function InventoryScreen() {
             ) : (
               groupKeys.map((key) => (
                 <View key={key} style={styles.sectorCard}>
-                  <View style={styles.sectorHeader}>
+                  <TouchableOpacity
+                    style={styles.sectorHeader}
+                    onPress={() => setExpandedSectors(prev => {
+                      const next = new Set(prev);
+                      if (next.has(key)) next.delete(key); else next.add(key);
+                      return next;
+                    })}
+                    activeOpacity={0.7}
+                  >
                     <Text style={styles.sectorName}>{key}</Text>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                       {/* 반품필터 + 제조사 정렬 시 그룹별 전체선택 (토글) */}
@@ -733,45 +742,49 @@ export default function InventoryScreen() {
                         );
                       })()}
                       <Text style={styles.sectorCount}>{grouped[key].length}드럼</Text>
+                      <Text style={{ color: "#9CA3AF", fontSize: 14 }}>{expandedSectors.has(key) ? "▲" : "▼"}</Text>
                     </View>
-                  </View>
-                  {/* 테이블 헤더 */}
-                  <View style={styles.tableHeader}>
-                    <View style={{ width: 28 }} />
-                    <Text style={[styles.thCell, { flex: 1.5 }]}>품명</Text>
-                    <Text style={[styles.thCell, { flex: 2 }]}>LOT</Text>
-                    <Text style={[styles.thCell, { flex: 1.5 }]}>제조사</Text>
-                    {sortMode !== "sector" && sortMode !== "lot" && <Text style={[styles.thCell, { flex: 1.2 }]}>섹터</Text>}
-                    <Text style={[styles.thCell, { flex: 1.8 }]}>등록시간</Text>
-                  </View>
-                  {grouped[key].map((drum: any, i: number) => {
-                    const isSelected = selectedLots.has(drum.lot);
-                    const returnBg = drum.returnStatus === "불량" ? "#FEE2E2"
-                      : drum.returnStatus === "기술" ? "#FEF9C3"
-                      : drum.returnStatus === "무상" ? "#DBEAFE"
-                      : undefined;
-                    return (
-                      <TouchableOpacity
-                        key={i}
-                        style={[styles.statusDrumRow, i % 2 === 1 && styles.drumRowAlt, returnBg ? { backgroundColor: returnBg } : null, isSelected && styles.drumRowSelected]}
-                        onPress={() => setSelectedLots(prev => {
-                          const next = new Set(prev);
-                          if (next.has(drum.lot)) next.delete(drum.lot);
-                          else next.add(drum.lot);
-                          return next;
-                        })}
-                      >
-                        <Text style={styles.checkBox}>{isSelected ? "☑" : "☐"}</Text>
-                        <Text style={styles.statusProduct}>{drum.product}</Text>
-                        <Text style={styles.statusLot}>{drum.lot}</Text>
-                        <Text style={[styles.drumMaker, { flex: 1.5 }]}>{drum.maker}</Text>
-                        {sortMode !== "sector" && sortMode !== "lot" && (
-                          <Text style={[styles.drumMaker, { flex: 1.2, color: COLORS.primary }]}>{drum.sector}</Text>
-                        )}
-                        <Text style={[styles.drumMaker, { flex: 1.8, fontSize: 10 }]}>{drum.registered}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+                  </TouchableOpacity>
+                  {expandedSectors.has(key) && (
+                    <>
+                      <View style={styles.tableHeader}>
+                        <View style={{ width: 28 }} />
+                        <Text style={[styles.thCell, { flex: 1.5 }]}>품명</Text>
+                        <Text style={[styles.thCell, { flex: 2 }]}>LOT</Text>
+                        <Text style={[styles.thCell, { flex: 1.5 }]}>제조사</Text>
+                        {sortMode !== "sector" && sortMode !== "lot" && <Text style={[styles.thCell, { flex: 1.2 }]}>섹터</Text>}
+                        <Text style={[styles.thCell, { flex: 1.8 }]}>등록시간</Text>
+                      </View>
+                      {grouped[key].map((drum: any, i: number) => {
+                        const isSelected = selectedLots.has(drum.lot);
+                        const returnBg = drum.returnStatus === "불량" ? "#FEE2E2"
+                          : drum.returnStatus === "기술" ? "#FEF9C3"
+                          : drum.returnStatus === "무상" ? "#DBEAFE"
+                          : undefined;
+                        return (
+                          <TouchableOpacity
+                            key={i}
+                            style={[styles.statusDrumRow, i % 2 === 1 && styles.drumRowAlt, returnBg ? { backgroundColor: returnBg } : null, isSelected && styles.drumRowSelected]}
+                            onPress={() => setSelectedLots(prev => {
+                              const next = new Set(prev);
+                              if (next.has(drum.lot)) next.delete(drum.lot);
+                              else next.add(drum.lot);
+                              return next;
+                            })}
+                          >
+                            <Text style={styles.checkBox}>{isSelected ? "☑" : "☐"}</Text>
+                            <Text style={styles.statusProduct}>{drum.product}</Text>
+                            <Text style={styles.statusLot}>{drum.lot}</Text>
+                            <Text style={[styles.drumMaker, { flex: 1.5 }]}>{drum.maker}</Text>
+                            {sortMode !== "sector" && sortMode !== "lot" && (
+                              <Text style={[styles.drumMaker, { flex: 1.2, color: COLORS.primary }]}>{drum.sector}</Text>
+                            )}
+                            <Text style={[styles.drumMaker, { flex: 1.8, fontSize: 10 }]}>{drum.registered}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </>
+                  )}
                 </View>
               ))
             )}
