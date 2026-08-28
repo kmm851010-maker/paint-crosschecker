@@ -2036,7 +2036,7 @@ def page_statistics():
 
             # 대근 상세 내역
             if s["대근내역"]:
-                with st.expander(f"🔄 대근 내역 ({s['대근횟수']}회 · 계 {_fh(total_daegeun_h)}H)"):
+                with st.expander(f"대근 내역 ({s['대근횟수']}회 · 계 {_fh(total_daegeun_h)}H)"):
                     for d in s["대근내역"]:
                         st.write(f"{d['날짜']} | {d['구분']} | {d['휴가자']} {d['휴가구분']}으로 대근 | {_fh(d['시간'])}H")
 
@@ -2048,7 +2048,7 @@ def page_statistics():
 
             # 올해 전체 휴가 내역
             if yr_leaves:
-                with st.expander(f"📋 {year}년 전체 휴가 내역 ({len(yr_leaves)}일)"):
+                with st.expander(f"{year}년 전체 휴가 내역 ({len(yr_leaves)}일)"):
                     # 유형별 집계
                     type_count = {}
                     for lv in yr_leaves:
@@ -2059,7 +2059,7 @@ def page_statistics():
                         st.write(f"{lv['날짜']} — {lv['구분']}")
 
             # 급여시간표
-            with st.expander(f"📊 {month}월 급여시간표 자세히보기"):
+            with st.expander(f"{month}월 급여시간표 자세히보기"):
                 _salary_rows = _build_salary_rows(name)
                 if _salary_rows:
                     st.markdown(_render_salary_table(_salary_rows), unsafe_allow_html=True)
@@ -2067,7 +2067,7 @@ def page_statistics():
                     st.info("저장된 근무 데이터가 없습니다.")
 
             # 교대주기별 연장 시간
-            with st.expander("⏱ 교대주기별 연장 시간", expanded=False):
+            with st.expander("교대주기별 연장 시간", expanded=False):
                 st.caption("조회월 기준 해당 근무조 교대 주기(연속 근무 5일)별 연장 현황. 주기당 최대 12H — 초과 시 빨간색 경고.")
                 _OT_LIMIT = 12
                 _team_key = next((k for k, v in MEMBERS.items() if v == name), None)
