@@ -3043,14 +3043,14 @@ def page_inventory():
             if not items:
                 st.info("해당 항목 없음")
                 return
-            _hh1, _hh2, _hh3, _hh4, _hh5 = st.columns([1.8, 2, 1.5, 2, 1.5])
-            _hh1.markdown("**시각**"); _hh2.markdown("**LOT**")
+            _hh1, _hh2, _hh3, _hh4, _hh5 = st.columns([2.8, 2, 1.5, 2, 1.5])
+            _hh1.markdown("**일시**"); _hh2.markdown("**LOT**")
             _hh3.markdown("**품명**"); _hh4.markdown("**제조사**")
             if show_from: _hh5.markdown("**이전섹터**")
             elif show_to: _hh5.markdown("**섹터**")
             for _hi in items:
-                _r1, _r2, _r3, _r4, _r5 = st.columns([1.8, 2, 1.5, 2, 1.5])
-                _r1.text(_hi["timestamp"][11:] if len(_hi["timestamp"]) > 10 else _hi["timestamp"])
+                _r1, _r2, _r3, _r4, _r5 = st.columns([2.8, 2, 1.5, 2, 1.5])
+                _r1.text(_hi["timestamp"][:16] if len(_hi["timestamp"]) >= 16 else _hi["timestamp"])
                 _r2.text(_hi["lot"])
                 _r3.text(_hi["product"])
                 _r4.text(_hi["maker"])

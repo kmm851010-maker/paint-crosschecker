@@ -331,6 +331,9 @@ def get_inventory_history(from_dt: str, to_dt: str):
                 continue
             from_sector = row[3]
             to_sector   = row[4]
+            # 미등록 라인입고(재고에 없던 드럼의 잘못된 checkout 기록) 제외
+            if from_sector == "미등록":
+                continue
             if to_sector == CHECKOUT_SECTOR:
                 action = "라인입고"
             elif to_sector == RETURN_SECTOR:
