@@ -46,7 +46,8 @@
       ],
       "expo-asset",
       "expo-font",
-      "expo-sharing"
+      "expo-sharing",
+      "./plugins/withBouncyCastleFix"
     ],
     "extra": {
       "router": {},
