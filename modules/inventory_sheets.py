@@ -185,30 +185,53 @@ def checkout_drums(drums: list):
     ws_status = _get_or_create_sheet("재고현황")
     ws_history = _get_or_create_sheet(_history_sheet_name(), ["LOT", "품명", "제조사", "이전섹터", "새섹터", "일시"])
 
-    # Read all data once
     all_data = ws_status.get_all_values()
-    header = all_data[0] if all_data else ["LOT", "품명", "제조사", "섹터", "등록일시", "최종변경", "반품상태"]
-    rows = all_data[1:] if len(all_data) > 1 else []
+    # 첫 행이 헤더면 건너뜀, 아니면 데이터행 포함
+    has_header = all_data and all_data[0] and all_data[0][0] == "LOT"
+    rows = all_data[1:] if has_header else all_data
 
-    # Build lot → row index map (1-based, offset by header)
-    lot_to_row = {row[0]: row for row in rows if row and row[0]}
+    # LOT → (정규화된 행, 이전섹터) 맵 — 열 오프셋 무관하게 처리
+    lot_to_info = {}
+    for row in rows:
+        col = _lot_col(row)
+        if col < 0:
+            continue
+        r = row[col:]
+        lot_to_info[r[0]] = {"sector": r[3] if len(r) > 3 else ""}
 
     checkout_lots = {drum["lot"] for drum in drums}
     history_rows = []
 
     for drum in drums:
         lot = drum["lot"]
-        if lot in lot_to_row:
-            row = lot_to_row[lot]
-            prev_sector = row[3] if len(row) > 3 else ""
-            history_rows.append([lot, drum["product"], drum["maker"], prev_sector, CHECKOUT_SECTOR, now])
-        else:
-            history_rows.append([lot, drum["product"], drum["maker"], "미등록", CHECKOUT_SECTOR, now])
+        prev_sector = lot_to_info[lot]["sector"] if lot in lot_to_info else "미등록"
+        history_rows.append([lot, drum["product"], drum["maker"], prev_sector, CHECKOUT_SECTOR, now])
 
-    # Filter remaining rows (exclude checked-out lots) and rewrite sheet in one batch
-    remaining = [row for row in rows if row and row[0] not in checkout_lots]
+    # 라인입고 드럼 제외한 나머지만 남겨 시트 재작성 (열 정렬도 함께 수정)
+    _HEADERS = ["LOT", "품명", "제조사", "섹터", "등록일시", "최종변경", "반품상태", "스캔불가"]
+    remaining = []
+    for row in rows:
+        col = _lot_col(row)
+        if col < 0:
+            continue
+        r = row[col:]
+        lot = r[0]
+        if lot in checkout_lots:
+            continue
+        # 정렬된 8컬럼으로 재구성
+        remaining.append([
+            lot,
+            r[1] if len(r) > 1 else "",
+            r[2] if len(r) > 2 else "",
+            r[3] if len(r) > 3 else "",
+            r[4] if len(r) > 4 else "",
+            r[5] if len(r) > 5 else "",
+            r[6] if len(r) > 6 else "",
+            r[7] if len(r) > 7 else "",
+        ])
+
     ws_status.clear()
-    ws_status.append_row(header)
+    ws_status.append_row(_HEADERS)
     if remaining:
         ws_status.append_rows(remaining)
 
