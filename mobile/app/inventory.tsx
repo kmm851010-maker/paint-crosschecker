@@ -24,7 +24,7 @@ import TextRecognition, { type TextBlock } from "@react-native-ml-kit/text-recog
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LightSensor } from "expo-sensors";
 
-import { COLORS } from "../src/constants/config";
+import { COLORS, API_BASE_URL } from "../src/constants/config";
 import { registerDrums, getSectorInventory, setDrumReturnStatus, type DrumItem } from "../src/services/api";
 
 // ── 제조사 코드 ──
@@ -147,6 +147,31 @@ export default function InventoryScreen() {
   const [ingoScanDisabled, setIngoScanDisabled] = useState(false);
   const [showIngoPrompt, setShowIngoPrompt] = useState(false);
   const [expandedSectors, setExpandedSectors] = useState<Set<string>>(new Set());
+  const [statusTab, setStatusTab] = useState<"sector"|"history">("sector");
+  const [histFromDate, setHistFromDate] = useState(() => {
+    const n = new Date(Date.now() + 9 * 3600000);
+    return n.toISOString().slice(0, 10);
+  });
+  const [histFromTime, setHistFromTime] = useState("00:00");
+  const [histToDate, setHistToDate] = useState(() => {
+    const n = new Date(Date.now() + 9 * 3600000);
+    return n.toISOString().slice(0, 10);
+  });
+  const [histToTime, setHistToTime] = useState("23:30");
+  const [histData, setHistData] = useState<any[]>([]);
+  const [histLoading, setHistLoading] = useState(false);
+  const [histActionTab, setHistActionTab] = useState<"신규등록"|"라인입고"|"반품완료">("신규등록");
+
+  const HALF_HOURS = Array.from({ length: 48 }, (_, i) => {
+    const h = Math.floor(i / 2).toString().padStart(2, "0");
+    const m = i % 2 === 0 ? "00" : "30";
+    return `${h}:${m}`;
+  });
+  const stepTime = (cur: string, dir: 1 | -1, setter: (v: string) => void) => {
+    const idx = HALF_HOURS.indexOf(cur);
+    const next = (idx + dir + 48) % 48;
+    setter(HALF_HOURS[next]);
+  };
 
   // 토치: "off" | "auto" | "on"
   const [torchMode, setTorchMode] = useState<"off" | "auto" | "on">("off");
@@ -627,6 +652,106 @@ export default function InventoryScreen() {
             <Text style={styles.totalCount}>전체 {totalCount}드럼</Text>
           </View>
 
+          {/* 메인 탭: 섹터별 현황 / 날짜별 이력 */}
+          <View style={{ flexDirection: "row", backgroundColor: "#1F2937", marginHorizontal: 0 }}>
+            {(["sector", "history"] as const).map(t => (
+              <TouchableOpacity key={t} style={{ flex: 1, paddingVertical: 10, alignItems: "center", borderBottomWidth: 2, borderBottomColor: statusTab === t ? COLORS.primary : "transparent" }} onPress={() => setStatusTab(t)}>
+                <Text style={{ color: statusTab === t ? COLORS.primary : "#9CA3AF", fontWeight: "600", fontSize: 13 }}>
+                  {t === "sector" ? "섹터별 현황" : "날짜별 이력"}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* ── 날짜별 이력 뷰 ── */}
+          {statusTab === "history" && (
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 10 }}>
+              {/* 기간 선택 */}
+              {[
+                { label: "시작", date: histFromDate, setDate: setHistFromDate, time: histFromTime, setTime: setHistFromTime },
+                { label: "종료", date: histToDate,   setDate: setHistToDate,   time: histToTime,   setTime: setHistToTime   },
+              ].map(({ label, date, setDate, time, setTime }) => (
+                <View key={label} style={{ backgroundColor: "#1F2937", borderRadius: 8, padding: 10 }}>
+                  <Text style={{ color: "#9CA3AF", fontSize: 11, marginBottom: 6 }}>{label}</Text>
+                  <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                    <TextInput
+                      style={{ flex: 1, backgroundColor: "#374151", color: "#fff", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 7, fontSize: 14 }}
+                      value={date}
+                      onChangeText={setDate}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor="#6B7280"
+                      keyboardType="numeric"
+                    />
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <TouchableOpacity onPress={() => stepTime(time, -1, setTime)} style={{ backgroundColor: "#374151", borderRadius: 5, paddingHorizontal: 8, paddingVertical: 7 }}>
+                        <Text style={{ color: "#fff" }}>◀</Text>
+                      </TouchableOpacity>
+                      <Text style={{ color: "#fff", fontSize: 14, minWidth: 44, textAlign: "center" }}>{time}</Text>
+                      <TouchableOpacity onPress={() => stepTime(time, 1, setTime)} style={{ backgroundColor: "#374151", borderRadius: 5, paddingHorizontal: 8, paddingVertical: 7 }}>
+                        <Text style={{ color: "#fff" }}>▶</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              ))}
+              <TouchableOpacity
+                style={{ backgroundColor: COLORS.primary, borderRadius: 8, paddingVertical: 11, alignItems: "center" }}
+                disabled={histLoading}
+                onPress={async () => {
+                  setHistLoading(true);
+                  try {
+                    const res = await fetch(`${API_BASE_URL}/api/inventory/history?from_dt=${encodeURIComponent(histFromDate + " " + histFromTime)}&to_dt=${encodeURIComponent(histToDate + " " + histToTime)}`);
+                    const json = await res.json();
+                    setHistData(json.history ?? []);
+                  } catch { Alert.alert("오류", "이력 조회 실패"); }
+                  finally { setHistLoading(false); }
+                }}
+              >
+                {histLoading ? <ActivityIndicator color="#fff" /> : <Text style={{ color: "#fff", fontWeight: "700" }}>조회</Text>}
+              </TouchableOpacity>
+
+              {/* 액션 탭 */}
+              {histData.length > 0 && (
+                <>
+                  <View style={{ flexDirection: "row", backgroundColor: "#1F2937", borderRadius: 8, overflow: "hidden" }}>
+                    {(["신규등록", "라인입고", "반품완료"] as const).map(a => {
+                      const cnt = histData.filter(h => h.action === a).length;
+                      return (
+                        <TouchableOpacity key={a} style={{ flex: 1, paddingVertical: 9, alignItems: "center", backgroundColor: histActionTab === a ? "#374151" : "transparent" }} onPress={() => setHistActionTab(a)}>
+                          <Text style={{ color: histActionTab === a ? "#fff" : "#9CA3AF", fontSize: 12, fontWeight: "600" }}>{a} ({cnt})</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  {histData.filter(h => h.action === histActionTab).length === 0 ? (
+                    <Text style={{ color: "#6B7280", textAlign: "center", marginTop: 12 }}>해당 항목 없음</Text>
+                  ) : (
+                    <>
+                      <View style={{ flexDirection: "row", paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#374151" }}>
+                        <Text style={{ color: "#9CA3AF", fontSize: 11, width: 44 }}>시각</Text>
+                        <Text style={{ color: "#9CA3AF", fontSize: 11, flex: 1.8 }}>LOT</Text>
+                        <Text style={{ color: "#9CA3AF", fontSize: 11, flex: 1.2 }}>품명</Text>
+                        <Text style={{ color: "#9CA3AF", fontSize: 11, flex: 1.5 }}>제조사</Text>
+                        <Text style={{ color: "#9CA3AF", fontSize: 11, flex: 1.2 }}>섹터</Text>
+                      </View>
+                      {histData.filter(h => h.action === histActionTab).map((h, i) => (
+                        <View key={i} style={{ flexDirection: "row", paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: "#1F2937", backgroundColor: i % 2 === 0 ? "transparent" : "#111827" }}>
+                          <Text style={{ color: "#9CA3AF", fontSize: 11, width: 44 }}>{h.timestamp?.slice(11) ?? ""}</Text>
+                          <Text style={{ color: "#E5E7EB", fontSize: 11, flex: 1.8 }}>{h.lot}</Text>
+                          <Text style={{ color: "#E5E7EB", fontSize: 11, flex: 1.2 }}>{h.product}</Text>
+                          <Text style={{ color: "#9CA3AF", fontSize: 11, flex: 1.5 }}>{h.maker}</Text>
+                          <Text style={{ color: COLORS.primary, fontSize: 11, flex: 1.2 }}>{histActionTab === "신규등록" ? h.to_sector : h.from_sector}</Text>
+                        </View>
+                      ))}
+                    </>
+                  )}
+                </>
+              )}
+            </ScrollView>
+          )}
+
+          {/* ── 섹터별 현황 뷰 ── */}
+          {statusTab === "sector" && <>
           {/* 검색창 */}
           <View style={styles.searchRow}>
             <TextInput
@@ -789,9 +914,10 @@ export default function InventoryScreen() {
               ))
             )}
           </ScrollView>
+          </>}
 
-          {/* 액션 버튼바 */}
-          {selectedLots.size > 0 && (
+          {/* 액션 버튼바 (섹터별 현황에서만) */}
+          {statusTab === "sector" && selectedLots.size > 0 && (
             <View style={[styles.checkoutBar, { paddingBottom: 12 + insets.bottom, flexWrap: "wrap", gap: 6 }]}>
               <Text style={[styles.checkoutBarText, { width: "100%", marginBottom: 2 }]}>{selectedLots.size}드럼 선택됨</Text>
               {/* 반품 항목만 선택됐을 때: 반품완료 / 반품 해제 / 라인입고 */}
