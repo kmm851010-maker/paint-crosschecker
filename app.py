@@ -1376,8 +1376,9 @@ def page_work_log():
     st.markdown("""<style>
     /* 업무현황 */
     .work-section p, .work-section span, .work-section strong{font-size:11px !important; line-height:1.2 !important;}
-    .work-section input{font-size:11px !important; padding:1px 4px !important; height:28px !important; border:1.5px solid #C4B5E8 !important; border-radius:4px !important; background:#FDFCFF !important;}
-    .work-section input:focus{border-color:#4B2D8E !important; box-shadow:0 0 0 2px rgba(75,45,142,0.15) !important; background:#fff !important;}
+    .work-section input{font-size:11px !important; padding:1px 4px !important; height:28px !important;}
+    div[data-testid="stTextInput"] input{border:1.5px solid #C4B5E8 !important; border-radius:4px !important; background:#FDFCFF !important;}
+    div[data-testid="stTextInput"] input:focus{border-color:#4B2D8E !important; box-shadow:0 0 0 2px rgba(75,45,142,0.15) !important; background:#fff !important;}
     .work-section .stTextInput > div{min-height:0 !important;}
     .work-section .stTextInput{margin-bottom:0 !important; padding-bottom:0 !important;}
     .work-section [data-testid="stVerticalBlock"] > div{gap:0.15rem !important;}
