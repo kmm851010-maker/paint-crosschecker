@@ -27,6 +27,7 @@
     "expo-router": "~57.0.17",
     "expo-sensors": "~57.0.2",
     "expo-sharing": "~57.0.16",
+    "expo-splash-screen": "~57.0.8",
     "expo-status-bar": "~57.0.1",
     "expo-updates": "~57.0.19",
     "react": "19.2.3",
@@ -42,7 +43,9 @@
   "expo": {
     "doctor": {
       "reactNativeDirectoryCheck": {
-        "exclude": ["@react-native-ml-kit/text-recognition"]
+        "exclude": [
+          "@react-native-ml-kit/text-recognition"
+        ]
       }
     }
   }
