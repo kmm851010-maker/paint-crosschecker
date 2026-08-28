@@ -111,10 +111,12 @@ def _kst_now() -> str:
 
 
 def _history_sheet_name(dt: datetime.datetime = None) -> str:
-    """월별 이력 시트 이름. ex) '재고이력_2026-08'"""
+    """월별 이력 시트 이름. ex) '재고이력_2026-08'
+    06:30 기준: 00:00~06:29는 전날(전월) 소속."""
     if dt is None:
         dt = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
-    return f"재고이력_{dt.strftime('%Y-%m')}"
+    adjusted = dt - datetime.timedelta(hours=6, minutes=30)
+    return f"재고이력_{adjusted.strftime('%Y-%m')}"
 
 
 def save_drums_to_sector(drums: list, sector: str):
