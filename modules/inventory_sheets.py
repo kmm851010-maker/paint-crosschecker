@@ -91,18 +91,34 @@ def parse_barcode(raw_text: str):
     return {"lot": lot, "product": product, "maker": maker}
 
 
+def _lot_col(row):
+    """행에서 LOT(9자리 영문자+숫자)가 있는 열 인덱스 반환. 없으면 -1."""
+    for i, v in enumerate(row):
+        if v and len(v) == 9 and v[0].isalpha() and v != "LOT번호":
+            return i
+    return -1
+
+
 def _load_status_map(ws):
-    """재고현황 시트에서 LOT → {idx, sector, return_status, scan_disabled} 맵 반환"""
+    """재고현황 시트에서 LOT → {idx, sector, return_status, scan_disabled} 맵 반환
+    열 오프셋이 맞지 않는 레거시 행도 처리."""
     all_data = ws.get_all_values()
     lot_map = {}
-    for i, row in enumerate(all_data[1:], start=2):
-        if row and row[0]:
-            lot_map[row[0]] = {
-                "idx": i,
-                "sector": row[3] if len(row) > 3 else "",
-                "return_status": row[6] if len(row) > 6 else "",
-                "scan_disabled": row[7] if len(row) > 7 else "",
-            }
+    # 첫 행이 헤더("LOT")이면 건너뜀
+    start = 1 if (all_data and all_data[0] and all_data[0][0] == "LOT") else 0
+    for i, row in enumerate(all_data[start:], start=start + 1):
+        if not row:
+            continue
+        col = _lot_col(row)
+        if col < 0:
+            continue
+        r = row[col:]
+        lot_map[r[0]] = {
+            "idx": i,
+            "sector": r[3] if len(r) > 3 else "",
+            "return_status": r[6] if len(r) > 6 else "",
+            "scan_disabled": r[7] if len(r) > 7 else "",
+        }
     return lot_map
 
 
@@ -134,6 +150,7 @@ def save_drums_to_sector(drums: list, sector: str):
 
     lot_map = _load_status_map(ws_status)
     history_rows = []
+    new_status_rows = []
 
     for drum in drums:
         lot = drum["lot"]
@@ -150,9 +167,11 @@ def save_drums_to_sector(drums: list, sector: str):
             ws_status.update([[scan_dis]], f"H{row_idx}")
             history_rows.append([lot, product, maker, prev_sector, sector, now])
         else:
-            ws_status.append_row([lot, product, maker, sector, now, now, "", scan_dis])
+            new_status_rows.append([lot, product, maker, sector, now, now, "", scan_dis])
             history_rows.append([lot, product, maker, "", sector, now])
 
+    if new_status_rows:
+        ws_status.append_rows(new_status_rows)  # 단일 호출로 열 오프셋 버그 방지
     if history_rows:
         ws_history.append_rows(history_rows)
 
@@ -200,25 +219,30 @@ def checkout_drums(drums: list):
 
 
 def get_sector_inventory():
-    """섹터별 보관 드럼 현황 반환 (returnStatus, scanDisabled 포함)"""
+    """섹터별 보관 드럼 현황 반환 (returnStatus, scanDisabled 포함)
+    열 오프셋이 맞지 않는 레거시 행도 _lot_col로 처리."""
     ws = _get_or_create_sheet("재고현황")
     all_data = ws.get_all_values()
 
+    # 첫 행이 헤더("LOT")이면 건너뜀
+    start = 1 if (all_data and all_data[0] and all_data[0][0] == "LOT") else 0
     sectors: dict = {}
-    for row in all_data[1:]:
-        if not row or not row[0]:
+    for row in all_data[start:]:
+        if not row:
             continue
-        sector = row[3] if len(row) > 3 else "미분류"
-        if sector not in sectors:
-            sectors[sector] = []
-        sectors[sector].append({
-            "lot": row[0],
-            "product": row[1] if len(row) > 1 else "",
-            "maker": row[2] if len(row) > 2 else "",
-            "registered": row[4] if len(row) > 4 else "",
-            "updated": row[5] if len(row) > 5 else "",
-            "returnStatus": row[6] if len(row) > 6 else "",
-            "scanDisabled": row[7] if len(row) > 7 else "",
+        col = _lot_col(row)
+        if col < 0:
+            continue
+        r = row[col:]
+        sector = r[3] if len(r) > 3 else "미분류"
+        sectors.setdefault(sector, []).append({
+            "lot": r[0],
+            "product": r[1] if len(r) > 1 else "",
+            "maker": r[2] if len(r) > 2 else "",
+            "registered": r[4] if len(r) > 4 else "",
+            "updated": r[5] if len(r) > 5 else "",
+            "returnStatus": r[6] if len(r) > 6 else "",
+            "scanDisabled": r[7] if len(r) > 7 else "",
         })
 
     return sectors
