@@ -2936,19 +2936,19 @@ def page_inventory():
         _hd_c1, _hd_c2 = st.columns(2)
         with _hd_c1:
             st.caption("시작")
-            _hd_from_date = st.date_input("시작일", _default_date, key="hd_from_date",
+            _hd_from_date = st.date_input("시작일", _default_date, key="inv_hd_from_date",
                                            min_value=datetime.date(2026, 1, 1),
                                            max_value=datetime.date(2100, 12, 31),
                                            label_visibility="collapsed")
-            _hd_from_time = st.selectbox("시작시간", _half_hours, index=0, key="hd_from_time",
+            _hd_from_time = st.selectbox("시작시간", _half_hours, index=0, key="inv_hd_from_time",
                                           label_visibility="collapsed")
         with _hd_c2:
             st.caption("종료")
-            _hd_to_date = st.date_input("종료일", _default_date, key="hd_to_date",
+            _hd_to_date = st.date_input("종료일", _default_date, key="inv_hd_to_date",
                                          min_value=datetime.date(2026, 1, 1),
                                          max_value=datetime.date(2100, 12, 31),
                                          label_visibility="collapsed")
-            _hd_to_time = st.selectbox("종료시간", _half_hours, index=len(_half_hours)-1, key="hd_to_time",
+            _hd_to_time = st.selectbox("종료시간", _half_hours, index=len(_half_hours)-1, key="inv_hd_to_time",
                                         label_visibility="collapsed")
 
         _hist_from_dt = f"{_hd_from_date} {_hd_from_time}"
