@@ -3075,7 +3075,7 @@ def page_inventory():
             for ri, item in enumerate(items, 2):
                 sector_val = item.get(sector_key, "")
                 ts = item.get("timestamp", "")
-                row_vals = [ts[11:] if len(ts) > 10 else ts, item.get("lot",""), item.get("product",""), item.get("maker",""), sector_val, ""]
+                row_vals = [ts[:16] if len(ts) >= 16 else ts, item.get("lot",""), item.get("product",""), item.get("maker",""), sector_val, ""]
                 fill = PatternFill("solid", fgColor="F5F0FF") if ri % 2 == 0 else PatternFill("solid", fgColor="FFFFFF")
                 for ci, val in enumerate(row_vals, 1):
                     c = ws.cell(row=ri, column=ci, value=val)
