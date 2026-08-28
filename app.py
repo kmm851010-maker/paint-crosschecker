@@ -2925,13 +2925,13 @@ def page_inventory():
     BACKEND = "https://kgcounter.up.railway.app"
     st.subheader("재고 현황")
 
+    _half_hours = [f"{h:02d}:{m:02d}" for h in range(24) for m in (0, 30)]
     _tab_sector, _tab_history = st.tabs(["섹터별 현황", "날짜별 이력"])
 
     # ── 날짜별 이력 탭 ──────────────────────────────────────────────────────
     with _tab_history:
         _now_kst_h = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
         _default_date = (_now_kst_h - datetime.timedelta(hours=6, minutes=30)).date()
-        _half_hours = [f"{h:02d}:{m:02d}" for h in range(24) for m in (0, 30)]
 
         _hd_c1, _hd_c2 = st.columns(2)
         with _hd_c1:
@@ -3027,12 +3027,12 @@ def page_inventory():
             _tc1, _tc2 = st.columns(2)
             with _tc1:
                 _inv_d_from = st.date_input("시작일", datetime.date.today() - datetime.timedelta(days=7), key="inv_d_from")
-                _inv_h_from = st.selectbox("시작 시각", [f"{h:02d}:00" for h in range(24)], index=0, key="inv_h_from")
+                _inv_h_from = st.selectbox("시작 시각", _half_hours, index=0, key="inv_h_from")
             with _tc2:
                 _inv_d_to = st.date_input("종료일", datetime.date.today(), key="inv_d_to")
-                _inv_h_to = st.selectbox("종료 시각", [f"{h:02d}:59" for h in range(24)], index=23, key="inv_h_to")
-            _inv_dt_from = datetime.datetime.combine(_inv_d_from, datetime.time(int(_inv_h_from[:2]), 0))
-            _inv_dt_to = datetime.datetime.combine(_inv_d_to, datetime.time(int(_inv_h_to[:2]), 59))
+                _inv_h_to = st.selectbox("종료 시각", _half_hours, index=len(_half_hours)-1, key="inv_h_to")
+            _inv_dt_from = datetime.datetime.combine(_inv_d_from, datetime.time(int(_inv_h_from[:2]), int(_inv_h_from[3:])))
+            _inv_dt_to = datetime.datetime.combine(_inv_d_to, datetime.time(int(_inv_h_to[:2]), int(_inv_h_to[3:])))
 
         return_filter = ""
 
@@ -3274,6 +3274,7 @@ def page_inventory_return():
     import pandas as _pd
 
     BACKEND = "https://kgcounter.up.railway.app"
+    _half_hours = [f"{h:02d}:{m:02d}" for h in range(24) for m in (0, 30)]
     st.subheader("반품 관리")
     st.caption("기술·불량·무상 반품 드럼 현황 및 처리")
 
@@ -3301,12 +3302,12 @@ def page_inventory_return():
         _rtc1, _rtc2 = st.columns(2)
         with _rtc1:
             _ret_d_from = st.date_input("시작일", datetime.date.today() - datetime.timedelta(days=30), key="ret_d_from")
-            _ret_h_from = st.selectbox("시작 시각", [f"{h:02d}:00" for h in range(24)], index=0, key="ret_h_from")
+            _ret_h_from = st.selectbox("시작 시각", _half_hours, index=0, key="ret_h_from")
         with _rtc2:
             _ret_d_to = st.date_input("종료일", datetime.date.today(), key="ret_d_to")
-            _ret_h_to = st.selectbox("종료 시각", [f"{h:02d}:59" for h in range(24)], index=23, key="ret_h_to")
-        _ret_dt_from = datetime.datetime.combine(_ret_d_from, datetime.time(int(_ret_h_from[:2]), 0))
-        _ret_dt_to = datetime.datetime.combine(_ret_d_to, datetime.time(int(_ret_h_to[:2]), 59))
+            _ret_h_to = st.selectbox("종료 시각", _half_hours, index=len(_half_hours)-1, key="ret_h_to")
+        _ret_dt_from = datetime.datetime.combine(_ret_d_from, datetime.time(int(_ret_h_from[:2]), int(_ret_h_from[3:])))
+        _ret_dt_to = datetime.datetime.combine(_ret_d_to, datetime.time(int(_ret_h_to[:2]), int(_ret_h_to[3:])))
 
     try:
         resp = _req.get(f"{BACKEND}/api/inventory/sectors", timeout=10)
