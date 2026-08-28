@@ -895,7 +895,40 @@ export default function InventoryScreen() {
     <>
       <Stack.Screen options={{ title: "KG OPS — 재고 관리" }} />
       <SectorModal />
-      <EditModal />
+      <Modal visible={editingItem !== null} animationType="fade" transparent>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.editCard}>
+              <Text style={styles.editTitle}>{editingItem?.index === -1 ? "수동 등록" : "항목 수정"}</Text>
+              <Text style={styles.editLabel}>품명</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editingItem?.product ?? ""}
+                onChangeText={v => setEditingItem(prev => prev ? { ...prev, product: v.replace(/[-\s]/g, "").toUpperCase() } : prev)}
+                autoCapitalize="characters"
+                placeholder="예) P7Y751Y"
+                autoFocus={editingItem?.index === -1}
+              />
+              <Text style={styles.editLabel}>LOT번호</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editingItem?.lot ?? ""}
+                onChangeText={v => setEditingItem(prev => prev ? { ...prev, lot: v.replace(/[-\s]/g, "").toUpperCase() } : prev)}
+                autoCapitalize="characters"
+                placeholder="예) P26D03917"
+              />
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
+                <TouchableOpacity style={[styles.editBtn, { backgroundColor: "#888" }]} onPress={() => setEditingItem(null)}>
+                  <Text style={styles.editBtnText}>취소</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.editBtn, { flex: 2, backgroundColor: COLORS.primary }]} onPress={handleEditSave}>
+                  <Text style={styles.editBtnText}>저장</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         {batch.length > 0 && (
           <View style={styles.batchCard}>
