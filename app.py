@@ -3620,6 +3620,14 @@ def page_inventory_return():
     for group_key, group_df in df_filtered.groupby(group_col, sort=False):
         cnt = len(group_df)
         with st.expander(f"**{group_key}** — {cnt}드럼", expanded=False):
+            if sort_mode in ("섹터별", "제조사별", "품목별"):
+                _rgrp_lots = group_df["lot"].tolist()
+                _rgrp_all_sel = all(st.session_state.get(f"ret_chk_{_l}", False) for _l in _rgrp_lots)
+                _rgrp_btn_label = f"선택해제 ({cnt})" if _rgrp_all_sel else f"전체선택 ({cnt})"
+                if st.button(_rgrp_btn_label, key=f"ret_grpsel_{group_key}", type="secondary"):
+                    for _l in _rgrp_lots:
+                        st.session_state[f"ret_chk_{_l}"] = not _rgrp_all_sel
+                    st.rerun()
             h1, h2, h3, h4, h5, h6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
             h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
             h4.markdown("**제조사**"); h5.markdown("**섹터**"); h6.markdown("**등록시간**")
