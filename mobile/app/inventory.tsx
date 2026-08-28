@@ -161,17 +161,14 @@ export default function InventoryScreen() {
   const [histData, setHistData] = useState<any[]>([]);
   const [histLoading, setHistLoading] = useState(false);
   const [histActionTab, setHistActionTab] = useState<"신규등록"|"라인입고"|"반품완료">("신규등록");
+  const [showTimeModal, setShowTimeModal] = useState<"from"|"to"|null>(null);
 
   const HALF_HOURS = Array.from({ length: 48 }, (_, i) => {
     const h = Math.floor(i / 2).toString().padStart(2, "0");
     const m = i % 2 === 0 ? "00" : "30";
     return `${h}:${m}`;
   });
-  const stepTime = (cur: string, dir: 1 | -1, setter: (v: string) => void) => {
-    const idx = HALF_HOURS.indexOf(cur);
-    const next = (idx + dir + 48) % 48;
-    setter(HALF_HOURS[next]);
-  };
+
 
   // 토치: "off" | "auto" | "on"
   const [torchMode, setTorchMode] = useState<"off" | "auto" | "on">("off");
@@ -682,15 +679,12 @@ export default function InventoryScreen() {
                       placeholderTextColor="#6B7280"
                       keyboardType="numeric"
                     />
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                      <TouchableOpacity onPress={() => stepTime(time, -1, setTime)} style={{ backgroundColor: "#374151", borderRadius: 5, paddingHorizontal: 8, paddingVertical: 7 }}>
-                        <Text style={{ color: "#fff" }}>◀</Text>
-                      </TouchableOpacity>
-                      <Text style={{ color: "#fff", fontSize: 14, minWidth: 44, textAlign: "center" }}>{time}</Text>
-                      <TouchableOpacity onPress={() => stepTime(time, 1, setTime)} style={{ backgroundColor: "#374151", borderRadius: 5, paddingHorizontal: 8, paddingVertical: 7 }}>
-                        <Text style={{ color: "#fff" }}>▶</Text>
-                      </TouchableOpacity>
-                    </View>
+                    <TouchableOpacity
+                      onPress={() => setShowTimeModal(label === "시작" ? "from" : "to")}
+                      style={{ backgroundColor: "#374151", borderRadius: 6, paddingHorizontal: 16, paddingVertical: 7, minWidth: 72, alignItems: "center" }}
+                    >
+                      <Text style={{ color: "#fff", fontSize: 14 }}>{time}</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
               ))}
@@ -735,7 +729,7 @@ export default function InventoryScreen() {
                         <Text style={{ color: "#9CA3AF", fontSize: 11, flex: 1.2 }}>섹터</Text>
                       </View>
                       {histData.filter(h => h.action === histActionTab).map((h, i) => (
-                        <View key={i} style={{ flexDirection: "row", paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: "#1F2937", backgroundColor: i % 2 === 0 ? "transparent" : "#111827" }}>
+                        <View key={i} style={{ flexDirection: "row", paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: "#1F2937", backgroundColor: i % 2 === 0 ? "#1F2937" : "#243044" }}>
                           <Text style={{ color: "#9CA3AF", fontSize: 11, width: 44 }}>{h.timestamp?.slice(11) ?? ""}</Text>
                           <Text style={{ color: "#E5E7EB", fontSize: 11, flex: 1.8 }}>{h.lot}</Text>
                           <Text style={{ color: "#E5E7EB", fontSize: 11, flex: 1.2 }}>{h.product}</Text>
@@ -842,26 +836,28 @@ export default function InventoryScreen() {
                   >
                     <Text style={styles.sectorName}>{key}</Text>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      {/* 반품필터 + 제조사 정렬 시 그룹별 전체선택 (토글) */}
-                      {returnFilter !== "" && sortMode === "maker" && (() => {
-                        const grpReturn = grouped[key].filter((d: any) => d.returnStatus === returnFilter);
-                        if (grpReturn.length === 0) return null;
-                        const allGrpSelected = grpReturn.every((d: any) => selectedLots.has(d.lot));
+                      {/* 그룹별 전체선택 (토글) */}
+                      {(() => {
+                        const grpDrums = returnFilter !== ""
+                          ? grouped[key].filter((d: any) => d.returnStatus === returnFilter)
+                          : grouped[key];
+                        if (grpDrums.length === 0) return null;
+                        const allGrpSelected = grpDrums.every((d: any) => selectedLots.has(d.lot));
                         return (
                           <TouchableOpacity
                             style={{ paddingHorizontal: 9, paddingVertical: 3, backgroundColor: allGrpSelected ? "#6B7280" : COLORS.primary, borderRadius: 5 }}
                             onPress={() => setSelectedLots(prev => {
                               const next = new Set(prev);
                               if (allGrpSelected) {
-                                grpReturn.forEach((d: any) => next.delete(d.lot));
+                                grpDrums.forEach((d: any) => next.delete(d.lot));
                               } else {
-                                grpReturn.forEach((d: any) => next.add(d.lot));
+                                grpDrums.forEach((d: any) => next.add(d.lot));
                               }
                               return next;
                             })}
                           >
                             <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>
-                              {allGrpSelected ? "선택해제" : `전체선택 ${grpReturn.length}건`}
+                              {allGrpSelected ? "선택해제" : `전체선택 ${grpDrums.length}건`}
                             </Text>
                           </TouchableOpacity>
                         );
@@ -924,16 +920,20 @@ export default function InventoryScreen() {
               {allInReturn && (
                 <>
                   <TouchableOpacity style={[styles.checkoutBarBtn, { backgroundColor: "#6D28D9", flex: 1 }]} disabled={loading}
-                    onPress={async () => {
-                      setLoading(true);
-                      try {
-                        await registerDrums(selectedDrums, "반품완료");
-                        setSelectedLots(new Set());
-                        setSectorData(await getSectorInventory());
-                        Alert.alert("완료", `${selectedDrums.length}드럼 반품완료`);
-                      } catch (e: any) { Alert.alert("실패", (e as any).message); }
-                      finally { setLoading(false); }
-                    }}>
+                    onPress={() => Alert.alert("반품완료 확인", `선택하신 ${selectedDrums.length}드럼을 반품완료 처리합니다.
+목록에서 삭제됩니다. 계속하시겠습니까?`, [
+                      { text: "취소", style: "cancel" },
+                      { text: "확인", style: "destructive", onPress: async () => {
+                        setLoading(true);
+                        try {
+                          await registerDrums(selectedDrums, "반품완료");
+                          setSelectedLots(new Set());
+                          setSectorData(await getSectorInventory());
+                          Alert.alert("완료", `${selectedDrums.length}드럼 반품완료`);
+                        } catch (e: any) { Alert.alert("실패", (e as any).message); }
+                        finally { setLoading(false); }
+                      }},
+                    ])}>
                     <Text style={styles.checkoutBarBtnText}>반품완료</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[styles.checkoutBarBtn, { backgroundColor: "#6B7280", flex: 1 }]} disabled={loading}
@@ -950,16 +950,20 @@ export default function InventoryScreen() {
                     <Text style={styles.checkoutBarBtnText}>반품 해제</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[styles.checkoutBarBtn, { flex: 1 }]} disabled={loading}
-                    onPress={async () => {
-                      setLoading(true);
-                      try {
-                        await registerDrums(selectedDrums, CHECKOUT);
-                        setSelectedLots(new Set());
-                        setSectorData(await getSectorInventory());
-                        Alert.alert("완료", `${selectedDrums.length}드럼 라인입고`);
-                      } catch (e: any) { Alert.alert("실패", (e as any).message); }
-                      finally { setLoading(false); }
-                    }}>
+                    onPress={() => Alert.alert("라인입고 확인", `선택하신 ${selectedDrums.length}드럼을 라인입고 처리합니다.
+목록에서 삭제됩니다. 계속하시겠습니까?`, [
+                      { text: "취소", style: "cancel" },
+                      { text: "확인", style: "destructive", onPress: async () => {
+                        setLoading(true);
+                        try {
+                          await registerDrums(selectedDrums, CHECKOUT);
+                          setSelectedLots(new Set());
+                          setSectorData(await getSectorInventory());
+                          Alert.alert("완료", `${selectedDrums.length}드럼 라인입고`);
+                        } catch (e: any) { Alert.alert("실패", (e as any).message); }
+                        finally { setLoading(false); }
+                      }},
+                    ])}>
                     <Text style={styles.checkoutBarBtnText}>라인입고</Text>
                   </TouchableOpacity>
                 </>
@@ -968,16 +972,20 @@ export default function InventoryScreen() {
               {!allInReturn && (
                 <>
                   <TouchableOpacity style={[styles.checkoutBarBtn, { flex: 1 }]} disabled={loading}
-                    onPress={async () => {
-                      setLoading(true);
-                      try {
-                        await registerDrums(selectedDrums, CHECKOUT);
-                        setSelectedLots(new Set());
-                        setSectorData(await getSectorInventory());
-                        Alert.alert("완료", `${selectedDrums.length}드럼 라인입고`);
-                      } catch (e: any) { Alert.alert("실패", (e as any).message); }
-                      finally { setLoading(false); }
-                    }}>
+                    onPress={() => Alert.alert("라인입고 확인", `선택하신 ${selectedDrums.length}드럼을 라인입고 처리합니다.
+목록에서 삭제됩니다. 계속하시겠습니까?`, [
+                      { text: "취소", style: "cancel" },
+                      { text: "확인", style: "destructive", onPress: async () => {
+                        setLoading(true);
+                        try {
+                          await registerDrums(selectedDrums, CHECKOUT);
+                          setSelectedLots(new Set());
+                          setSectorData(await getSectorInventory());
+                          Alert.alert("완료", `${selectedDrums.length}드럼 라인입고`);
+                        } catch (e: any) { Alert.alert("실패", (e as any).message); }
+                        finally { setLoading(false); }
+                      }},
+                    ])}>
                     <Text style={styles.checkoutBarBtnText}>라인입고</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[styles.checkoutBarBtn, { backgroundColor: "#DC2626", flex: 1 }]} disabled={loading}
@@ -1034,6 +1042,27 @@ export default function InventoryScreen() {
     <>
       <Stack.Screen options={{ title: "KG OPS — 재고 관리" }} />
       <SectorModal />
+      {/* 시간 선택 모달 */}
+      <Modal visible={showTimeModal !== null} transparent animationType="fade">
+        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" }} onPress={() => setShowTimeModal(null)} activeOpacity={1}>
+          <View style={{ backgroundColor: "#1F2937", borderRadius: 12, width: 200, maxHeight: 360, overflow: "hidden" }}>
+            <Text style={{ color: "#fff", textAlign: "center", paddingVertical: 12, fontWeight: "700", fontSize: 14, borderBottomWidth: 1, borderBottomColor: "#374151" }}>
+              {showTimeModal === "from" ? "시작 시간" : "종료 시간"} 선택
+            </Text>
+            <ScrollView>
+              {HALF_HOURS.map((t) => {
+                const isSel = t === (showTimeModal === "from" ? histFromTime : histToTime);
+                return (
+                  <TouchableOpacity key={t} onPress={() => { if (showTimeModal === "from") setHistFromTime(t); else setHistToTime(t); setShowTimeModal(null); }}
+                    style={{ paddingVertical: 11, paddingHorizontal: 16, backgroundColor: isSel ? COLORS.primary : "transparent", alignItems: "center" }}>
+                    <Text style={{ color: isSel ? "#fff" : "#E5E7EB", fontSize: 16 }}>{t}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
       <Modal visible={editingItem !== null} animationType="fade" transparent>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
           <View style={styles.modalOverlay}>
