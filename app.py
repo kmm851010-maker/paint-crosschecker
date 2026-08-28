@@ -2918,7 +2918,7 @@ div[data-testid="stMarkdownContainer"]:has(.ctoday) + div[data-testid="stButton"
 # ──────────────────────────────────────
 # 재고 엑셀 생성 헬퍼
 # ──────────────────────────────────────
-def _make_inventory_excel(df, col_map, sheet_name="재고현황"):
+def _make_inventory_excel(df, col_map, sheet_name="재고현황", notes_col=None):
     import io, openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
@@ -2950,16 +2950,17 @@ def _make_inventory_excel(df, col_map, sheet_name="재고현황"):
             c.alignment = Alignment(vertical="center")
             if row_fill:
                 c.fill = row_fill
-        note = ws.cell(row=ri, column=len(col_map) + 1, value="")
+        note_val = str(row.get(notes_col, "") or "") if notes_col else ""
+        note = ws.cell(row=ri, column=len(col_map) + 1, value=note_val)
         note.border = bd
         if row_fill:
             note.fill = row_fill
 
     col_widths = {"#": 5, "product": 12, "lot": 18, "maker": 12,
-                  "sector": 12, "registered": 16, "returnStatus": 10, "scanDisabled": 10}
+                  "sector": 12, "registered": 16}
     for ci, (_, field) in enumerate(col_map, 1):
         ws.column_dimensions[get_column_letter(ci)].width = col_widths.get(field, 12)
-    ws.column_dimensions[get_column_letter(len(col_map) + 1)].width = 25  # 비고
+    ws.column_dimensions[get_column_letter(len(col_map) + 1)].width = 28  # 비고
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -3150,7 +3151,7 @@ def page_inventory():
 
         _inv_col_map = [
             ("번호", "#"), ("품명", "product"), ("LOT번호", "lot"), ("제조사", "maker"),
-            ("섹터", "sector"), ("등록시간", "registered"), ("반품상태", "returnStatus"), ("스캔불가", "scanDisabled"),
+            ("섹터", "sector"), ("등록시간", "registered"),
         ]
         import datetime as _dt_mod
 
@@ -3210,8 +3211,12 @@ def page_inventory():
 
         # 선택 항목 엑셀 다운로드
         if selected_lots:
-            _sel_df = df_filtered[df_filtered["lot"].isin(selected_lots)]
-            _inv_excel_bytes = _make_inventory_excel(_sel_df, _inv_col_map, "재고현황")
+            _sel_df = df_filtered[df_filtered["lot"].isin(selected_lots)].copy()
+            _sel_df["_notes"] = _sel_df.apply(lambda r: ", ".join(filter(None, [
+                r.get("returnStatus", "") or "",
+                "스캔불가" if r.get("scanDisabled") == "Y" else "",
+            ])), axis=1)
+            _inv_excel_bytes = _make_inventory_excel(_sel_df, _inv_col_map, "재고현황", notes_col="_notes")
             _inv_fname = f"재고현황_{_dt_mod.date.today().strftime('%Y%m%d')}.xlsx"
             st.download_button("📥 선택 항목 엑셀 다운로드", data=_inv_excel_bytes, file_name=_inv_fname,
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -3594,7 +3599,7 @@ def page_inventory_return():
 
     _ret_col_map = [
         ("번호", "#"), ("품명", "product"), ("LOT번호", "lot"), ("제조사", "maker"),
-        ("섹터", "sector"), ("등록시간", "registered"), ("반품유형", "returnStatus"),
+        ("섹터", "sector"), ("등록시간", "registered"),
     ]
     import datetime as _dt_mod2
 
@@ -3631,8 +3636,9 @@ def page_inventory_return():
 
     # 선택 항목 엑셀 다운로드
     if selected_lots:
-        _sel_ret_df = df_filtered[df_filtered["lot"].isin(selected_lots)]
-        _ret_excel_bytes = _make_inventory_excel(_sel_ret_df, _ret_col_map, "반품관리")
+        _sel_ret_df = df_filtered[df_filtered["lot"].isin(selected_lots)].copy()
+        _sel_ret_df["_notes"] = _sel_ret_df["returnStatus"].fillna("").astype(str)
+        _ret_excel_bytes = _make_inventory_excel(_sel_ret_df, _ret_col_map, "반품관리", notes_col="_notes")
         _ret_fname = f"반품관리_{_dt_mod2.date.today().strftime('%Y%m%d')}.xlsx"
         st.download_button("📥 선택 항목 엑셀 다운로드", data=_ret_excel_bytes, file_name=_ret_fname,
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
