@@ -152,22 +152,13 @@ export default function InventoryScreen() {
     const n = new Date(Date.now() + 9 * 3600000);
     return n.toISOString().slice(0, 10);
   });
-  const [histFromTime, setHistFromTime] = useState("00:00");
   const [histToDate, setHistToDate] = useState(() => {
     const n = new Date(Date.now() + 9 * 3600000);
     return n.toISOString().slice(0, 10);
   });
-  const [histToTime, setHistToTime] = useState("23:30");
   const [histData, setHistData] = useState<any[]>([]);
   const [histLoading, setHistLoading] = useState(false);
   const [histActionTab, setHistActionTab] = useState<"신규등록"|"라인입고"|"반품완료">("신규등록");
-  const [showTimeModal, setShowTimeModal] = useState<"from"|"to"|null>(null);
-
-  const HALF_HOURS = Array.from({ length: 48 }, (_, i) => {
-    const h = Math.floor(i / 2).toString().padStart(2, "0");
-    const m = i % 2 === 0 ? "00" : "30";
-    return `${h}:${m}`;
-  });
 
 
   // 토치: "off" | "auto" | "on"
@@ -665,27 +656,19 @@ export default function InventoryScreen() {
             <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: 40 + insets.bottom }}>
               {/* 기간 선택 */}
               {[
-                { label: "시작", date: histFromDate, setDate: setHistFromDate, time: histFromTime, setTime: setHistFromTime },
-                { label: "종료", date: histToDate,   setDate: setHistToDate,   time: histToTime,   setTime: setHistToTime   },
-              ].map(({ label, date, setDate, time, setTime }) => (
+                { label: "시작", date: histFromDate, setDate: setHistFromDate },
+                { label: "종료", date: histToDate,   setDate: setHistToDate   },
+              ].map(({ label, date, setDate }) => (
                 <View key={label} style={{ backgroundColor: "#1F2937", borderRadius: 8, padding: 10 }}>
-                  <Text style={{ color: "#9CA3AF", fontSize: 11, marginBottom: 6 }}>{label}</Text>
-                  <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-                    <TextInput
-                      style={{ flex: 1, backgroundColor: "#374151", color: "#fff", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 7, fontSize: 14 }}
-                      value={date}
-                      onChangeText={setDate}
-                      placeholder="YYYY-MM-DD"
-                      placeholderTextColor="#6B7280"
-                      keyboardType="numeric"
-                    />
-                    <TouchableOpacity
-                      onPress={() => setShowTimeModal(label === "시작" ? "from" : "to")}
-                      style={{ backgroundColor: "#374151", borderRadius: 6, paddingHorizontal: 16, paddingVertical: 7, minWidth: 72, alignItems: "center" }}
-                    >
-                      <Text style={{ color: "#fff", fontSize: 14 }}>{time}</Text>
-                    </TouchableOpacity>
-                  </View>
+                  <Text style={{ color: "#9CA3AF", fontSize: 11, marginBottom: 6 }}>{label} (06:30 기준)</Text>
+                  <TextInput
+                    style={{ backgroundColor: "#374151", color: "#fff", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 7, fontSize: 14 }}
+                    value={date}
+                    onChangeText={setDate}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor="#6B7280"
+                    keyboardType="numeric"
+                  />
                 </View>
               ))}
               <TouchableOpacity
@@ -694,7 +677,10 @@ export default function InventoryScreen() {
                 onPress={async () => {
                   setHistLoading(true);
                   try {
-                    const res = await fetch(`${API_BASE_URL}/api/inventory/history?from_dt=${encodeURIComponent(histFromDate + " " + histFromTime)}&to_dt=${encodeURIComponent(histToDate + " " + histToTime)}`);
+                    const [y, m, d] = histToDate.split("-").map(Number);
+                    const nextDay = new Date(y, m - 1, d + 1);
+                    const toDateStr = `${nextDay.getFullYear()}-${String(nextDay.getMonth()+1).padStart(2,"0")}-${String(nextDay.getDate()).padStart(2,"0")}`;
+                    const res = await fetch(`${API_BASE_URL}/api/inventory/history?from_dt=${encodeURIComponent(histFromDate + " 06:30")}&to_dt=${encodeURIComponent(toDateStr + " 06:30")}`);
                     const json = await res.json();
                     setHistData(json.history ?? []);
                   } catch { Alert.alert("오류", "이력 조회 실패"); }
@@ -1042,27 +1028,7 @@ export default function InventoryScreen() {
     <>
       <Stack.Screen options={{ title: "KG OPS — 재고 관리" }} />
       <SectorModal />
-      {/* 시간 선택 모달 */}
-      <Modal visible={showTimeModal !== null} transparent animationType="fade">
-        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" }} onPress={() => setShowTimeModal(null)} activeOpacity={1}>
-          <View style={{ backgroundColor: "#1F2937", borderRadius: 12, width: 200, maxHeight: 360, overflow: "hidden" }}>
-            <Text style={{ color: "#fff", textAlign: "center", paddingVertical: 12, fontWeight: "700", fontSize: 14, borderBottomWidth: 1, borderBottomColor: "#374151" }}>
-              {showTimeModal === "from" ? "시작 시간" : "종료 시간"} 선택
-            </Text>
-            <ScrollView>
-              {HALF_HOURS.map((t) => {
-                const isSel = t === (showTimeModal === "from" ? histFromTime : histToTime);
-                return (
-                  <TouchableOpacity key={t} onPress={() => { if (showTimeModal === "from") setHistFromTime(t); else setHistToTime(t); setShowTimeModal(null); }}
-                    style={{ paddingVertical: 11, paddingHorizontal: 16, backgroundColor: isSel ? COLORS.primary : "transparent", alignItems: "center" }}>
-                    <Text style={{ color: isSel ? "#fff" : "#E5E7EB", fontSize: 16 }}>{t}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+
       <Modal visible={editingItem !== null} animationType="fade" transparent>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
           <View style={styles.modalOverlay}>
