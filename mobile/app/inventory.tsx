@@ -654,7 +654,7 @@ export default function InventoryScreen() {
             {(["sector", "history"] as const).map(t => (
               <TouchableOpacity key={t} style={{ flex: 1, paddingVertical: 10, alignItems: "center", borderBottomWidth: 2, borderBottomColor: statusTab === t ? COLORS.primary : "transparent" }} onPress={() => setStatusTab(t)}>
                 <Text style={{ color: statusTab === t ? COLORS.primary : "#9CA3AF", fontWeight: "600", fontSize: 13 }}>
-                  {t === "sector" ? "섹터별 현황" : "날짜별 이력"}
+                  {t === "sector" ? "현재 재고" : "날짜별 이력"}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -662,7 +662,7 @@ export default function InventoryScreen() {
 
           {/* ── 날짜별 이력 뷰 ── */}
           {statusTab === "history" && (
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 10 }}>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: 40 + insets.bottom }}>
               {/* 기간 선택 */}
               {[
                 { label: "시작", date: histFromDate, setDate: setHistFromDate, time: histFromTime, setTime: setHistFromTime },
@@ -722,7 +722,7 @@ export default function InventoryScreen() {
                   ) : (
                     <>
                       <View style={{ flexDirection: "row", paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#374151" }}>
-                        <Text style={{ color: "#9CA3AF", fontSize: 11, width: 44 }}>시각</Text>
+                        <Text style={{ color: "#9CA3AF", fontSize: 11, width: 80 }}>일시</Text>
                         <Text style={{ color: "#9CA3AF", fontSize: 11, flex: 1.8 }}>LOT</Text>
                         <Text style={{ color: "#9CA3AF", fontSize: 11, flex: 1.2 }}>품명</Text>
                         <Text style={{ color: "#9CA3AF", fontSize: 11, flex: 1.5 }}>제조사</Text>
@@ -730,7 +730,7 @@ export default function InventoryScreen() {
                       </View>
                       {histData.filter(h => h.action === histActionTab).map((h, i) => (
                         <View key={i} style={{ flexDirection: "row", paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: "#1F2937", backgroundColor: i % 2 === 0 ? "#1F2937" : "#243044" }}>
-                          <Text style={{ color: "#9CA3AF", fontSize: 11, width: 44 }}>{h.timestamp?.slice(11) ?? ""}</Text>
+                          <Text style={{ color: "#9CA3AF", fontSize: 11, width: 80 }}>{h.timestamp?.slice(5, 16) ?? ""}</Text>
                           <Text style={{ color: "#E5E7EB", fontSize: 11, flex: 1.8 }}>{h.lot}</Text>
                           <Text style={{ color: "#E5E7EB", fontSize: 11, flex: 1.2 }}>{h.product}</Text>
                           <Text style={{ color: "#9CA3AF", fontSize: 11, flex: 1.5 }}>{h.maker}</Text>
@@ -1132,7 +1132,7 @@ export default function InventoryScreen() {
         )}
 
         <TouchableOpacity style={[styles.btn, styles.statusBtn]} onPress={loadStatus} disabled={loading}>
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>섹터별 재고 현황</Text>}
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>재고현황</Text>}
         </TouchableOpacity>
       </ScrollView>
     </>
