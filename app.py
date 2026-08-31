@@ -3146,13 +3146,10 @@ def page_inventory():
         return_filter = ""
 
         try:
-            resp = _req.get(f"{BACKEND}/api/inventory/sectors", timeout=10)
-            if not resp.ok:
-                st.error(f"조회 실패: {resp.status_code}")
-                return
-            sectors_raw = resp.json().get("sectors", {})
+            from utils.inv_update import get_sector_inventory as _get_inv
+            sectors_raw = _get_inv()
         except Exception as e:
-            st.error(f"연결 오류: {e}")
+            st.error(f"조회 실패: {e}")
             return
 
         # 전체 드럼 목록 (sector 컬럼 추가)

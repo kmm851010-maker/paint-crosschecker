@@ -90,6 +90,32 @@ def _load_status_map(ws):
     return lot_map
 
 
+def get_sector_inventory() -> dict:
+    """재고현황 시트에서 섹터별 드럼 목록 반환 (백엔드 대체)"""
+    ws = _get_or_create_sheet("재고현황")
+    all_data = ws.get_all_values()
+    start = 1 if (all_data and all_data[0] and all_data[0][0] == "LOT") else 0
+    sectors: dict = {}
+    for row in all_data[start:]:
+        if not row:
+            continue
+        col = _lot_col(row)
+        if col < 0:
+            continue
+        r = row[col:]
+        sector = r[3] if len(r) > 3 else "미분류"
+        sectors.setdefault(sector, []).append({
+            "lot": r[0],
+            "product": r[1] if len(r) > 1 else "",
+            "maker": r[2] if len(r) > 2 else "",
+            "registered": r[4] if len(r) > 4 else "",
+            "updated": r[5] if len(r) > 5 else "",
+            "returnStatus": r[6] if len(r) > 6 else "",
+            "scanDisabled": r[7] if len(r) > 7 else "",
+        })
+    return sectors
+
+
 def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: str, new_sector: str):
     """드럼 정보 수정 (LOT/품명/제조사/섹터). Streamlit 프론트엔드에서 직접 호출."""
     now = _kst_now()
