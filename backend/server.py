@@ -292,6 +292,11 @@ async def set_return_status_endpoint(req: ReturnStatusRequest):
     return {"success": True, "count": len(drums), "status": req.status}
 
 
+@app.get("/api/version")
+async def get_version():
+    return {"version": "20260901-edit-drum"}
+
+
 class UpdateDrumRequest(BaseModel):
     old_lot: str
     new_lot: str
