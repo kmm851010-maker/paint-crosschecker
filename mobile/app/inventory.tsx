@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LightSensor } from "expo-sensors";
 
 import { COLORS, API_BASE_URL } from "../src/constants/config";
+import { APPROVED_PRODUCTS } from "../src/constants/approvedProducts";
 import { registerDrums, getSectorInventory, setDrumReturnStatus, type DrumItem } from "../src/services/api";
 
 // ── 제조사 코드 ──
@@ -40,13 +41,22 @@ const LOT_RE = /[GDKSYP][0-9]{2}[A-L][0-9]{5}/;
 const ITEM_RE = /[A-Z][0-9][A-Z][A-Z0-9][0-9]{2}[A-Z]/;
 const LOT_KEYWORDS = ["DRUM LOT", "LOT.NO", "DRUM NO", "LOT NO", "LOT", "롯트번호"];
 
-function parseOcrBlocks(blocks: TextBlock[]): DrumItem | null {
-  if (!blocks?.length) return null;
+type OcrParseResult = {
+  lot: string;
+  product: string;
+  maker: string;
+  lotFound: boolean;
+  productFound: boolean;
+};
+
+function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
+  const empty: OcrParseResult = { lot: "", product: "", maker: "", lotFound: false, productFound: false };
+  if (!blocks?.length) return empty;
   const allText = blocks.map(b => b.text).join("\n");
   // 공백·하이픈 제거 + 대문자 통일
   const flat = allText.replace(/[-\s]/g, "").toUpperCase();
 
-  // 1. LOT 추출 — 패턴 우선
+  // 1. LOT 추출 — 패턴 우선, 키워드 보조
   let lot = "";
   const lotMatch = flat.match(LOT_RE);
   if (lotMatch) {
@@ -62,21 +72,17 @@ function parseOcrBlocks(blocks: TextBlock[]): DrumItem | null {
       }
     }
   }
-  if (!lot) return null;
 
-  // 2. 품명 추출 — 패턴 우선, 실패 시 가장 큰 바운딩 박스 블록
+  // 2. 품명 추출 — 엄격한 패턴만 적용 (fallback 없음)
+  // 패턴: 영문1 + 숫자1 + 영문1 + (영문|숫자)1 + 숫자2 + 영문1 = 7자
   let product = "";
   const itemMatch = flat.match(ITEM_RE);
   if (itemMatch) {
     product = itemMatch[0];
-  } else {
-    const sorted = [...blocks]
-      .filter(b => b.frame?.width && b.frame?.height)
-      .sort((a, b_) => (b_.frame!.width * b_.frame!.height) - (a.frame!.width * a.frame!.height));
-    if (sorted.length > 0) product = sorted[0].text.replace(/[-\s]/g, "").toUpperCase();
   }
 
-  return { lot, product: product.replace(/[-\s]/g, ""), maker: MAKER_MAP[lot[0]] ?? lot[0] };
+  const maker = lot ? (MAKER_MAP[lot[0]] ?? lot[0]) : "";
+  return { lot, product, maker, lotFound: lot.length > 0, productFound: product.length > 0 };
 }
 
 // ── 형식 검증 ──
@@ -164,9 +170,17 @@ export default function InventoryScreen() {
   // 토치: "off" | "auto" | "on"
   const [torchMode, setTorchMode] = useState<"off" | "auto" | "on">("off");
   const [autoTorchActive, setAutoTorchActive] = useState(false);
+  const [lastScanResult, setLastScanResult] = useState<{
+    type: "noLot" | "noProduct" | "duplicate" | "error";
+    detail: string;
+  } | null>(null);
+  const [scanLog, setScanLog] = useState<{ type: string; detail: string; time: string }[]>([]);
+  const [showScanLog, setShowScanLog] = useState(false);
+  const lastScanResultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cameraRef = useRef<CameraView>(null);
   const batchRef = useRef<DrumItem[]>([]);
+  const sectorDataRef = useRef<Record<string, any[]>>({});
   const processingRef = useRef(false);
   const cooldownRef = useRef(false);
   const scanActiveRef = useRef(false);
@@ -200,6 +214,8 @@ export default function InventoryScreen() {
 
   // batchRef를 batch와 동기화 (클로저 stale 방지)
   useEffect(() => { batchRef.current = batch; }, [batch]);
+  // sectorDataRef 동기화 (runOcr 내 클로저에서 최신 재고 참조)
+  useEffect(() => { sectorDataRef.current = sectorData; }, [sectorData]);
 
   // 권한 자동 요청
   useEffect(() => {
@@ -249,6 +265,17 @@ export default function InventoryScreen() {
     ]).start();
   };
 
+  const _setScanError = (result: { type: "noLot" | "noProduct" | "duplicate" | "error"; detail: string } | null) => {
+    if (lastScanResultTimerRef.current) clearTimeout(lastScanResultTimerRef.current);
+    setLastScanResult(result);
+    if (result) {
+      const now = new Date(Date.now() + 9 * 3600000);
+      const time = now.toISOString().slice(11, 19);
+      setScanLog(prev => [{ type: result.type, detail: result.detail, time }, ...prev].slice(0, 50));
+      lastScanResultTimerRef.current = setTimeout(() => setLastScanResult(null), 3500);
+    }
+  };
+
   const runOcr = async () => {
     if (cooldownRef.current || processingRef.current || !cameraRef.current || !scanActiveRef.current || editingRef.current) return;
     processingRef.current = true;
@@ -274,14 +301,31 @@ export default function InventoryScreen() {
       const result = await TextRecognition.recognize(uri);
       const parsed = parseOcrBlocks(result.blocks ?? []);
 
-      if (parsed && !batchRef.current.some(d => d.lot === parsed.lot)) {
+      if (!parsed.lotFound && !parsed.productFound) {
+        _setScanError({ type: "noLot", detail: "LOT · 품명 모두 미인식 — 라벨을 선명하게 비춰주세요" });
+      } else if (!parsed.lotFound) {
+        _setScanError({ type: "noLot", detail: `라벨을 선명하게 비춰주세요 — LOT 인식 안됨` });
+      } else if (!parsed.productFound) {
+        _setScanError({ type: "noProduct", detail: `라벨을 선명하게 비춰주세요 — 품명 인식 안됨` });
+      } else if (batchRef.current.some(d => d.lot === parsed.lot)) {
+        _setScanError({ type: "duplicate", detail: `중복 스캔: ${parsed.lot}` });
+      } else if (Object.entries(sectorDataRef.current).find(([, drums]) => (drums as any[]).some(d => d.lot === parsed.lot))) {
+        const sector = (Object.entries(sectorDataRef.current).find(([, drums]) => (drums as any[]).some(d => d.lot === parsed.lot)) ?? ["미확인"])[0];
+        _setScanError({ type: "duplicate", detail: `이미 위치가 저장된 제품입니다 — ${sector}: ${parsed.lot}` });
+      } else {
+        _setScanError(null);
         triggerFeedback();
         cooldownRef.current = true;
         setTimeout(() => { cooldownRef.current = false; }, 1500);
-        setBatch(prev => [...prev, parsed]);
+        const drumItem: DrumItem = { lot: parsed.lot, product: parsed.product, maker: parsed.maker };
+        setBatch(prev => [...prev, drumItem]);
+        // 미승인 품목 경고 — 배너로 표시 (스캔 흐름 차단 없음)
+        if (!APPROVED_PRODUCTS.has(parsed.product)) {
+          _setScanError({ type: "error", detail: `⚠️ 미등록 품목: ${parsed.product} — 신규품목이거나 오인식. 확인 후 등록 바랍니다.` });
+        }
       }
-    } catch (_) {
-      // OCR 오류 무시 (다음 주기에 재시도)
+    } catch (e: any) {
+      _setScanError({ type: "error", detail: `카메라/OCR 오류: ${e?.message ?? "알 수 없는 오류"}` });
     } finally {
       processingRef.current = false;
       if (uri) FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
@@ -427,74 +471,9 @@ export default function InventoryScreen() {
       <View style={{ flex: 1, backgroundColor: "#111" }}>
         <Stack.Screen options={{ title: "라벨 OCR 스캔", headerShown: true }} />
 
-        {/* 상단: 누적 스캔 리스트 */}
-        <View style={styles.scanListArea}>
-          <View style={styles.scanListHeader}>
-            <Text style={styles.scanListCount}>총 {batch.length}건 스캔됨</Text>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <TouchableOpacity
-                style={[
-                  styles.doneSmallBtn,
-                  { backgroundColor: scanManual ? "#4AFF91" : "#333", borderWidth: 1.5, borderColor: scanManual ? "#4AFF91" : "#888", minWidth: 36 }
-                ]}
-                onPress={() => setScanManual(m => !m)}
-              >
-                <Text style={[styles.doneSmallBtnText, scanManual ? { color: "#111", fontWeight: "900", fontSize: 15 } : { color: "#aaa", fontSize: 15 }]}>
-                  {scanManual ? "M" : "A"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.doneSmallBtn, { backgroundColor: torchMode !== "off" ? "#FFD600" : "#333", borderWidth: 1.5, borderColor: torchMode !== "off" ? "#FFD600" : "#888", minWidth: 44 }]}
-                onPress={() => setTorchMode(m => m === "off" ? "auto" : m === "auto" ? "on" : "off")}
-              >
-                <Text style={[styles.doneSmallBtnText, { color: torchMode !== "off" ? "#111" : "#aaa", fontSize: 13 }]}>
-                  {torchMode === "on" ? "🔦ON" : torchMode === "auto" ? `🔆${autoTorchActive ? "●" : "○"}` : "🔦"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.doneSmallBtn, { backgroundColor: "#555" }]}
-                onPress={() => setEditingItem({ index: -1, lot: "", product: "" })}
-              >
-                <Text style={styles.doneSmallBtnText}>수동등록</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.doneSmallBtn, batch.length === 0 && styles.btnDisabled]}
-                onPress={() => { if (batch.length > 0) filterAndProceed(batch, setBatch, () => setMode("sectorPick")); }}
-                disabled={batch.length === 0}
-              >
-                <Text style={styles.doneSmallBtnText}>완료 ({batch.length})</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-          {batch.length === 0 ? (
-            <Text style={styles.scanListEmpty}>라벨을 카메라에 비춰주세요</Text>
-          ) : (
-            <FlatList
-              data={[...batch].reverse()}
-              keyExtractor={(item) => item.lot}
-              renderItem={({ item, index }) => {
-                const realIndex = batch.length - 1 - index;
-                return (
-                  <TouchableOpacity
-                    style={styles.scanListItem}
-                    onPress={() => setEditingItem({ index: realIndex, lot: item.lot, product: item.product })}
-                  >
-                    <Text style={styles.scanListNum}>{batch.length - index}</Text>
-                    <Text style={styles.scanListProduct}>{item.product || "-"}</Text>
-                    <Text style={styles.scanListLot}>{item.lot}</Text>
-                    <TouchableOpacity onPress={() => setBatch(prev => prev.filter(d => d.lot !== item.lot))}>
-                      <Text style={styles.scanListDelete}>✕</Text>
-                    </TouchableOpacity>
-                  </TouchableOpacity>
-                );
-              }}
-            />
-          )}
-        </View>
-
-        {/* 하단: 카메라 */}
+        {/* 상단 50%: 카메라 */}
         <TouchableOpacity
-          style={styles.cameraArea}
+          style={{ flex: 5 }}
           activeOpacity={1}
           onPress={scanManual ? runOcr : undefined}
           disabled={!scanManual}
@@ -508,7 +487,7 @@ export default function InventoryScreen() {
           {/* 인식 성공 플래시 */}
           <Animated.View
             pointerEvents="none"
-            style={[StyleSheet.absoluteFillObject, { backgroundColor: "#4AFF91", opacity: flashAnim }]}
+            style={[StyleSheet.absoluteFill, { backgroundColor: "#4AFF91", opacity: flashAnim }]}
           />
           {/* 수동 모드 안내 */}
           {scanManual && (
@@ -516,13 +495,90 @@ export default function InventoryScreen() {
               <Text style={{ color: "#4AFF91", fontSize: 12, fontWeight: "600" }}>화면 터치로 인식</Text>
             </View>
           )}
-
         </TouchableOpacity>
 
-        {/* 취소 버튼 */}
-        <TouchableOpacity style={styles.scanCancelBtn} onPress={() => setMode("idle")}>
-          <Text style={styles.cancelBtnText}>취소</Text>
-        </TouchableOpacity>
+        {/* 중간 40%: 누적 스캔 리스트 */}
+        <View style={styles.scanListArea}>
+          {lastScanResult && (
+            <View style={[
+              styles.scanErrorBanner,
+              lastScanResult.type === "noProduct" && { backgroundColor: "#B45309" },
+              lastScanResult.type === "duplicate" && { backgroundColor: "#7C3AED" },
+              lastScanResult.type === "error" && { backgroundColor: "#991B1B" },
+            ]}>
+              <Text style={styles.scanErrorText}>
+                {lastScanResult.type === "duplicate" ? "🔁 " : lastScanResult.type === "error" ? "❌ " : "⚠️ "}
+                {lastScanResult.detail}
+              </Text>
+            </View>
+          )}
+          {batch.length === 0 ? (
+            <Text style={styles.scanListEmpty}>라벨을 카메라에 비춰주세요</Text>
+          ) : (
+            <FlatList
+              data={[...batch].reverse()}
+              keyExtractor={(item) => item.lot}
+              renderItem={({ item, index }) => {
+                const realIndex = batch.length - 1 - index;
+                const isLatest = index === 0;
+                return (
+                  <TouchableOpacity
+                    style={[styles.scanListItem, isLatest && styles.scanListItemLatest]}
+                    onPress={() => setEditingItem({ index: realIndex, lot: item.lot, product: item.product })}
+                  >
+                    <Text style={[styles.scanListNum, isLatest && { fontSize: 16, color: "#4AFF91" }]}>{batch.length - index}</Text>
+                    <Text style={isLatest ? styles.scanListProductLatest : styles.scanListProduct}>{item.product || "-"}</Text>
+                    <Text style={isLatest ? styles.scanListLotLatest : styles.scanListLot}>{item.lot}</Text>
+                    <TouchableOpacity onPress={() => setBatch(prev => prev.filter(d => d.lot !== item.lot))}>
+                      <Text style={[styles.scanListDelete, isLatest && { fontSize: 22 }]}>✕</Text>
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          )}
+        </View>
+
+        {/* 하단 10%: 버튼 바 */}
+        <View style={styles.scanBottomBar}>
+          <TouchableOpacity onPress={() => setShowScanLog(true)}>
+            <Text style={styles.scanListCount}>총 {batch.length}건{scanLog.length > 0 ? ` · 로그 ${scanLog.length}` : ""}</Text>
+          </TouchableOpacity>
+          <View style={{ flexDirection: "row", gap: 6 }}>
+            <TouchableOpacity
+              style={[
+                styles.doneSmallBtn,
+                { backgroundColor: scanManual ? "#4AFF91" : "#333", borderWidth: 1.5, borderColor: scanManual ? "#4AFF91" : "#888", minWidth: 34 }
+              ]}
+              onPress={() => setScanManual(m => !m)}
+            >
+              <Text style={[styles.doneSmallBtnText, scanManual ? { color: "#111", fontWeight: "900", fontSize: 14 } : { color: "#aaa", fontSize: 14 }]}>
+                {scanManual ? "M" : "A"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.doneSmallBtn, { backgroundColor: torchMode !== "off" ? "#FFD600" : "#333", borderWidth: 1.5, borderColor: torchMode !== "off" ? "#FFD600" : "#888", minWidth: 42 }]}
+              onPress={() => setTorchMode(m => m === "off" ? "auto" : m === "auto" ? "on" : "off")}
+            >
+              <Text style={[styles.doneSmallBtnText, { color: torchMode !== "off" ? "#111" : "#aaa", fontSize: 12 }]}>
+                {torchMode === "on" ? "🔦ON" : torchMode === "auto" ? `🔆${autoTorchActive ? "●" : "○"}` : "🔦"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.doneSmallBtn, { backgroundColor: "#555" }]}
+              onPress={() => setEditingItem({ index: -1, lot: "", product: "" })}
+            >
+              <Text style={styles.doneSmallBtnText}>수동등록</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.doneSmallBtn, batch.length === 0 && styles.btnDisabled]}
+              onPress={() => { if (batch.length > 0) filterAndProceed(batch, setBatch, () => setMode("sectorPick")); }}
+              disabled={batch.length === 0}
+            >
+              <Text style={styles.doneSmallBtnText}>완료 ({batch.length})</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
         {/* 저장 중 오버레이 */}
         {loading && (
@@ -531,6 +587,40 @@ export default function InventoryScreen() {
             <Text style={styles.savingText}>저장 중...</Text>
           </View>
         )}
+
+        {/* 스캔 로그 모달 */}
+        <Modal visible={showScanLog} animationType="slide" transparent>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalCard, { maxHeight: "70%" }]}>
+              <Text style={styles.modalTitle}>스캔 알림 로그</Text>
+              {scanLog.length === 0 ? (
+                <Text style={{ color: "#999", textAlign: "center", marginVertical: 20 }}>기록 없음</Text>
+              ) : (
+                <ScrollView>
+                  {scanLog.map((entry, i) => (
+                    <View key={i} style={{
+                      paddingVertical: 8, paddingHorizontal: 4,
+                      borderBottomWidth: 1, borderBottomColor: "#eee",
+                      flexDirection: "row", gap: 8, alignItems: "flex-start",
+                    }}>
+                      <Text style={{ color: "#999", fontSize: 11, width: 56 }}>{entry.time}</Text>
+                      <Text style={{ flex: 1, fontSize: 12, color: entry.type === "duplicate" ? "#7C3AED" : entry.type === "error" ? "#991B1B" : "#B45309" }}>
+                        {entry.type === "duplicate" ? "🔁 " : entry.type === "error" ? "❌ " : "⚠️ "}
+                        {entry.detail}
+                      </Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+              <TouchableOpacity
+                style={[styles.sectorBtn, { backgroundColor: "#374151", marginTop: 12 }]}
+                onPress={() => setShowScanLog(false)}
+              >
+                <Text style={[styles.sectorBtnText, { color: "#fff" }]}>닫기</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
 
         <Modal visible={editingItem !== null} animationType="fade" transparent>
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
@@ -541,7 +631,7 @@ export default function InventoryScreen() {
                 <TextInput
                   style={styles.editInput}
                   value={editingItem?.product ?? ""}
-                  onChangeText={v => setEditingItem(prev => prev ? { ...prev, product: v.replace(/[-\s]/g, "").toUpperCase() } : prev)}
+                  onChangeText={v => setEditingItem(prev => prev ? { ...prev, product: v.toUpperCase().replace(/[^A-Z0-9]/g, "") } : prev)}
                   autoCapitalize="characters"
                   placeholder="예) P7Y751Y"
                   autoFocus={editingItem?.index === -1}
@@ -550,7 +640,7 @@ export default function InventoryScreen() {
                 <TextInput
                   style={styles.editInput}
                   value={editingItem?.lot ?? ""}
-                  onChangeText={v => setEditingItem(prev => prev ? { ...prev, lot: v.replace(/[-\s]/g, "").toUpperCase() } : prev)}
+                  onChangeText={v => setEditingItem(prev => prev ? { ...prev, lot: v.toUpperCase().replace(/[^A-Z0-9]/g, "") } : prev)}
                   autoCapitalize="characters"
                   placeholder="예) P26D03917"
                 />
@@ -1038,7 +1128,7 @@ export default function InventoryScreen() {
               <TextInput
                 style={styles.editInput}
                 value={editingItem?.product ?? ""}
-                onChangeText={v => setEditingItem(prev => prev ? { ...prev, product: v.replace(/[-\s]/g, "").toUpperCase() } : prev)}
+                onChangeText={v => setEditingItem(prev => prev ? { ...prev, product: v.toUpperCase().replace(/[^A-Z0-9]/g, "") } : prev)}
                 autoCapitalize="characters"
                 placeholder="예) P7Y751Y"
                 autoFocus={editingItem?.index === -1}
@@ -1047,7 +1137,7 @@ export default function InventoryScreen() {
               <TextInput
                 style={styles.editInput}
                 value={editingItem?.lot ?? ""}
-                onChangeText={v => setEditingItem(prev => prev ? { ...prev, lot: v.replace(/[-\s]/g, "").toUpperCase() } : prev)}
+                onChangeText={v => setEditingItem(prev => prev ? { ...prev, lot: v.toUpperCase().replace(/[^A-Z0-9]/g, "") } : prev)}
                 autoCapitalize="characters"
                 placeholder="예) P26D03917"
               />
@@ -1111,13 +1201,14 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   permText: { fontSize: 16, color: COLORS.textPrimary, marginBottom: 16 },
 
-  // 스캔 화면 - 상단 리스트
-  scanListArea: { height: 200, backgroundColor: "#1a1a1a", borderBottomWidth: 1, borderBottomColor: "#333" },
-  scanListHeader: {
+  // 스캔 화면 - 중간 리스트
+  scanListArea: { flex: 4, backgroundColor: "#1a1a1a" },
+  scanListCount: { color: "#fff", fontSize: 12, fontWeight: "700" },
+  scanBottomBar: {
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#333",
+    backgroundColor: "#0d0d0d", paddingHorizontal: 10, paddingVertical: 8,
+    borderTopWidth: 1, borderTopColor: "#333", flex: 1,
   },
-  scanListCount: { color: "#fff", fontSize: 13, fontWeight: "700" },
   doneSmallBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
   doneSmallBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
   scanListEmpty: { color: "#888", fontSize: 13, textAlign: "center", marginTop: 24 },
@@ -1126,17 +1217,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 8,
     borderBottomWidth: 1, borderBottomColor: "#2a2a2a", gap: 8,
   },
+  scanListItemLatest: {
+    backgroundColor: "#0d2b1a", paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: "#4AFF91",
+  },
   scanListNum: { width: 22, color: "#888", fontSize: 12, textAlign: "center" },
   scanListProduct: { flex: 1.2, color: "#4AFF91", fontSize: 13, fontWeight: "700" },
+  scanListProductLatest: { flex: 1.2, color: "#4AFF91", fontSize: 30, fontWeight: "800" },
   scanListLot: { flex: 1.5, color: "#ccc", fontSize: 12 },
+  scanListLotLatest: { flex: 1.5, color: "#fff", fontSize: 22, fontWeight: "700" },
   scanListDelete: { color: "#ff5555", fontSize: 16, paddingHorizontal: 4 },
-
-  // 스캔 화면 - 카메라
-  cameraArea: { flex: 1 },
-  scanCancelBtn: {
-    backgroundColor: "rgba(0,0,0,0.85)", paddingVertical: 16,
-    alignItems: "center", borderTopWidth: 1, borderTopColor: "#333",
+  scanErrorBanner: {
+    backgroundColor: "#92400e", paddingHorizontal: 12, paddingVertical: 6,
+    borderBottomWidth: 1, borderBottomColor: "#b45309",
   },
+  scanErrorText: { color: "#FEF3C7", fontSize: 12, fontWeight: "600" },
+
   cancelBtnText: { color: "#fff", fontSize: 16, fontWeight: "600" },
 
   // 편집 모달
@@ -1229,7 +1325,7 @@ const styles = StyleSheet.create({
   checkoutBarBtn: { backgroundColor: "#E53935", paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
   checkoutBarBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
   savingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0,0,0,0.65)",
     justifyContent: "center",
     alignItems: "center",

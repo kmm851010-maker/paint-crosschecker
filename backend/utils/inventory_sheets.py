@@ -43,7 +43,14 @@ def _get_client():
     creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
     if not creds_json:
         raise ValueError("GOOGLE_CREDENTIALS_JSON 환경변수가 설정되지 않았습니다.")
-    creds_dict = json.loads(creds_json)
+    # Railway 환경변수에 리터럴 개행이 들어오는 경우 strict=False로 재시도
+    try:
+        creds_dict = json.loads(creds_json)
+    except json.JSONDecodeError:
+        creds_dict = json.loads(creds_json, strict=False)
+    # private_key 안의 리터럴 \\n → 실제 개행 변환 (환경에 따라 필요)
+    if "private_key" in creds_dict:
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
     creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
     return gspread.authorize(creds)
 
