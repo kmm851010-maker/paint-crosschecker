@@ -3500,13 +3500,10 @@ def page_inventory_return():
         _ret_dt_to = datetime.datetime.combine(_ret_d_to, datetime.time(int(_ret_h_to[:2]), int(_ret_h_to[3:])))
 
     try:
-        resp = _req.get(f"{BACKEND}/api/inventory/sectors", timeout=10)
-        if not resp.ok:
-            st.error(f"조회 실패: {resp.status_code}")
-            return
-        sectors_raw = resp.json().get("sectors", {})
+        from utils.inv_update import get_sector_inventory as _get_inv2
+        sectors_raw = _get_inv2()
     except Exception as e:
-        st.error(f"연결 오류: {e}")
+        st.error(f"조회 실패: {e}")
         return
 
     all_drums = []

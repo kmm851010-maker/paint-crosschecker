@@ -27,7 +27,7 @@ def _get_client():
 
 def _get_spreadsheet():
     client = _get_client()
-    spreadsheet_id = st.secrets["SPREADSHEET_ID"]
+    spreadsheet_id = st.secrets.get("INVENTORY_SPREADSHEET_ID") or st.secrets["SPREADSHEET_ID"]
     return client.open_by_key(spreadsheet_id)
 
 
