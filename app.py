@@ -3344,7 +3344,7 @@ def page_inventory():
                     _sy, _sn = st.columns(2)
                     if _sy.button("💾 저장", type="primary", key="inv_edit_save"):
                         try:
-                            from utils.inventory_sheets import update_drum_fields as _udf
+                            from utils.inv_update import update_drum_fields as _udf
                             _udf(_edit_lot, _new_lot.strip(), _new_product.strip(), _new_maker.strip(), _new_sector)
                             st.success("수정 완료!")
                             st.session_state.pop("inv_confirm", None)
