@@ -294,7 +294,7 @@ async def set_return_status_endpoint(req: ReturnStatusRequest):
 
 @app.get("/api/version")
 async def get_version():
-    return {"version": "20260901-edit-drum"}
+    return {"version": "20260901-creds-fix"}
 
 
 class UpdateDrumRequest(BaseModel):
