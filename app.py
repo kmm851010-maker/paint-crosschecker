@@ -3330,7 +3330,9 @@ def page_inventory():
                     _new_lot = _ec1.text_input("LOT번호", value=_edit_drum["lot"], key="edit_lot_inp")
                     _new_product = _ec2.text_input("품명", value=_edit_drum["product"], key="edit_prod_inp")
                     _ec3, _ec4 = st.columns(2)
-                    _new_maker = _ec3.text_input("제조사", value=_edit_drum["maker"], key="edit_mkr_inp")
+                    _maker_list = ["고려(KCC)", "대한(노루)", "건설(제비)", "삼화", "애경", "동주(PPG)"]
+                    _cur_mkr_idx = _maker_list.index(_edit_drum["maker"]) if _edit_drum["maker"] in _maker_list else 0
+                    _new_maker = _ec3.selectbox("제조사", _maker_list, index=_cur_mkr_idx, key="edit_mkr_inp")
                     _sector_list = sorted(sectors_raw.keys())
                     _cur_sidx = _sector_list.index(_edit_drum["sector"]) if _edit_drum["sector"] in _sector_list else 0
                     _new_sector = _ec4.selectbox("섹터", _sector_list, index=_cur_sidx, key="edit_sec_inp")
