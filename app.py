@@ -3287,6 +3287,11 @@ def page_inventory():
             all_in_return = all(d.get("returnStatus") for d in selected_drums_list)
             st.warning(f"**{len(selected_lots)}드럼** 선택됨")
 
+            # 편집 상태가 현재 선택과 다르면 자동 초기화
+            if st.session_state.get("inv_confirm") == "edit" and st.session_state.get("inv_edit_lot") not in selected_lots:
+                st.session_state.pop("inv_confirm", None)
+                st.session_state.pop("inv_edit_lot", None)
+
             _inv_confirm = st.session_state.get("inv_confirm")
 
             # ── 재확인 화면 ──
@@ -3352,8 +3357,12 @@ def page_inventory():
                                 st.rerun()
                             else:
                                 st.error(f"실패: {_eres.text}")
+                                st.session_state.pop("inv_confirm", None)
+                                st.session_state.pop("inv_edit_lot", None)
                         except Exception as _ee:
                             st.error(f"오류: {_ee}")
+                            st.session_state.pop("inv_confirm", None)
+                            st.session_state.pop("inv_edit_lot", None)
                     if _sn.button("❌ 취소", key="inv_edit_cancel"):
                         st.session_state.pop("inv_confirm", None)
                         st.session_state.pop("inv_edit_lot", None)
