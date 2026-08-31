@@ -144,3 +144,20 @@ def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: 
     ws_history.append_row([new_lot, new_product, new_maker, old_sector, new_sector, now])
 
     return True
+
+
+def set_return_status(drums: list, status: str):
+    """반품상태 플래그 설정/해제 (status='불량'/'기술'/'무상' → 반품대기, status='' → 해제). 섹터 변경 없음."""
+    now = _kst_now()
+    ws_status = _get_or_create_sheet(
+        "재고현황",
+        ["LOT", "품명", "제조사", "섹터", "등록일시", "최종변경", "반품상태", "스캔불가"],
+    )
+    lot_map = _load_status_map(ws_status)
+    for drum in drums:
+        lot = drum["lot"]
+        if lot in lot_map:
+            row_idx = lot_map[lot]["idx"]
+            ws_status.update([[status]], f"G{row_idx}")
+            ws_status.update([[now]], f"F{row_idx}")
+    return True

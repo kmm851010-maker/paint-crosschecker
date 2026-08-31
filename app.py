@@ -3365,13 +3365,10 @@ def page_inventory():
                     st.rerun()
                 if bb.button(f"🔓 반품 해제 ({len(selected_lots)})", key="btn_return_cancel"):
                     try:
-                        res = _req.post(f"{BACKEND}/api/inventory/return-status",
-                                        json={"drums": selected_drums_list, "status": ""}, timeout=15)
-                        if res.ok:
-                            st.success(f"{len(selected_drums_list)}드럼 반품 해제!")
-                            st.rerun()
-                        else:
-                            st.error(f"실패: {res.text}")
+                        from utils.inv_update import set_return_status as _srs
+                        _srs(selected_drums_list, "")
+                        st.success(f"{len(selected_drums_list)}드럼 반품 해제!")
+                        st.rerun()
                     except Exception as e:
                         st.error(f"오류: {e}")
                 if bc.button(f"라인입고 ({len(selected_lots)})", key="btn_checkout_r"):
@@ -3418,35 +3415,26 @@ def page_inventory():
                     st.rerun()
                 if cb.button(f"🔴 불량반품 ({len(selected_lots)})", key="btn_return_bad"):
                     try:
-                        res = _req.post(f"{BACKEND}/api/inventory/return-status",
-                                        json={"drums": selected_drums_list, "status": "불량"}, timeout=15)
-                        if res.ok:
-                            st.success(f"{len(selected_drums_list)}드럼 불량반품 등록!")
-                            st.rerun()
-                        else:
-                            st.error(f"실패: {res.text}")
+                        from utils.inv_update import set_return_status as _srs
+                        _srs(selected_drums_list, "불량")
+                        st.success(f"{len(selected_drums_list)}드럼 불량반품 등록!")
+                        st.rerun()
                     except Exception as e:
                         st.error(f"오류: {e}")
                 if cc.button(f"🟡 기술반품 ({len(selected_lots)})", key="btn_return_tech"):
                     try:
-                        res = _req.post(f"{BACKEND}/api/inventory/return-status",
-                                        json={"drums": selected_drums_list, "status": "기술"}, timeout=15)
-                        if res.ok:
-                            st.success(f"{len(selected_drums_list)}드럼 기술반품 등록!")
-                            st.rerun()
-                        else:
-                            st.error(f"실패: {res.text}")
+                        from utils.inv_update import set_return_status as _srs
+                        _srs(selected_drums_list, "기술")
+                        st.success(f"{len(selected_drums_list)}드럼 기술반품 등록!")
+                        st.rerun()
                     except Exception as e:
                         st.error(f"오류: {e}")
                 if cd.button(f"🔵 무상반품 ({len(selected_lots)})", key="btn_return_free"):
                     try:
-                        res = _req.post(f"{BACKEND}/api/inventory/return-status",
-                                        json={"drums": selected_drums_list, "status": "무상"}, timeout=15)
-                        if res.ok:
-                            st.success(f"{len(selected_drums_list)}드럼 무상반품 등록!")
-                            st.rerun()
-                        else:
-                            st.error(f"실패: {res.text}")
+                        from utils.inv_update import set_return_status as _srs
+                        _srs(selected_drums_list, "무상")
+                        st.success(f"{len(selected_drums_list)}드럼 무상반품 등록!")
+                        st.rerun()
                     except Exception as e:
                         st.error(f"오류: {e}")
                 if len(selected_lots) == 1:
@@ -3620,19 +3608,13 @@ def page_inventory_return():
                                 rt = d.get("new_return_type", "무상")
                                 groups.setdefault(rt, []).append(d)
                             ok_count, errs = 0, []
+                            from utils.inv_update import set_return_status as _srs
                             for status, grp in groups.items():
                                 if not grp:
                                     continue
                                 try:
-                                    r = _req.post(
-                                        f"{BACKEND}/api/inventory/return-status",
-                                        json={"drums": [dict(d) for d in grp], "status": status},
-                                        timeout=30,
-                                    )
-                                    if r.ok:
-                                        ok_count += len(grp)
-                                    else:
-                                        errs.append(f"{status}: {r.text}")
+                                    _srs([dict(d) for d in grp], status)
+                                    ok_count += len(grp)
                                 except Exception as _e2:
                                     errs.append(str(_e2))
                             if errs:
@@ -3808,13 +3790,10 @@ def page_inventory_return():
                 st.rerun()
             if bb.button(f"🔓 반품 해제 ({len(selected_lots)})", key="ret_cancel"):
                 try:
-                    res = _req.post(f"{BACKEND}/api/inventory/return-status",
-                                    json={"drums": selected_drums_list, "status": ""}, timeout=15)
-                    if res.ok:
-                        st.success(f"{len(selected_drums_list)}드럼 반품 해제!")
-                        st.rerun()
-                    else:
-                        st.error(f"실패: {res.text}")
+                    from utils.inv_update import set_return_status as _srs
+                    _srs(selected_drums_list, "")
+                    st.success(f"{len(selected_drums_list)}드럼 반품 해제!")
+                    st.rerun()
                 except Exception as e:
                     st.error(f"오류: {e}")
             if bc.button(f"라인입고 ({len(selected_lots)})", key="ret_checkout"):
