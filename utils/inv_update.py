@@ -25,9 +25,11 @@ def _get_client():
     return gspread.authorize(creds)
 
 
+INVENTORY_SPREADSHEET_ID = "1DDZzk6B8HdXUZRKMQmxSbbf59m5cl1Gmkn-p1oGisug"
+
 def _get_spreadsheet():
     client = _get_client()
-    spreadsheet_id = st.secrets.get("INVENTORY_SPREADSHEET_ID") or st.secrets["SPREADSHEET_ID"]
+    spreadsheet_id = st.secrets.get("INVENTORY_SPREADSHEET_ID", INVENTORY_SPREADSHEET_ID)
     return client.open_by_key(spreadsheet_id)
 
 
