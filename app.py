@@ -1304,8 +1304,12 @@ def page_work_log():
                     "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수",
                     "AGV 입/출고 작업 수량"
                 ]
-                _shift_labels = ["1근", "2근", "3근"]
-                _load_keys = ["s1", "s2", "s3"]
+                if is_2person:
+                    _shift_labels = ["주간", "야간"]
+                    _load_keys = ["day", "night"]
+                else:
+                    _shift_labels = ["1근", "2근", "3근"]
+                    _load_keys = ["s1", "s2", "s3"]
                 for idx, nm in enumerate(_item_names):
                     item = work_items.get(nm, {})
                     for j, lk in enumerate(_load_keys):
@@ -1343,12 +1347,15 @@ def page_work_log():
         "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수",
                     "AGV 입/출고 작업 수량"
     ]
-    # Google Sheets에서 월누계 자동 로드
-    try:
-        from utils.sheets import get_monthly_totals
-        monthly_totals = get_monthly_totals(selected_date)
-    except Exception:
-        monthly_totals = {}
+    # Google Sheets에서 월누계 자동 로드 (날짜별 1회만 — 이후 세션 캐시 사용)
+    _mt_key = f"wl_monthly_totals_{selected_date}"
+    if _mt_key not in st.session_state:
+        try:
+            from utils.sheets import get_monthly_totals
+            st.session_state[_mt_key] = get_monthly_totals(selected_date)
+        except Exception:
+            st.session_state[_mt_key] = {}
+    monthly_totals = st.session_state[_mt_key]
     month_totals_default = [monthly_totals.get(name, 0) for name in item_names]
 
     if is_2person:
@@ -1410,7 +1417,6 @@ def page_work_log():
 
     work_items_data = []
     for i, name in enumerate(item_names):
-        loaded_item = loaded_data.get(name, {})
         with st.container(border=True):
             if is_2person:
                 row = st.columns([3, 1, 1, 1, 1])
@@ -1423,9 +1429,7 @@ def page_work_log():
 
             vals = []
             for j, lk in enumerate(load_keys):
-                default_val = loaded_item.get(lk, 0) if loaded_item else 0
-                default_str = str(default_val) if default_val > 0 else ""
-                raw = row[j + 1].text_input(f"_{i}_{j}", value=default_str, key=f"wl_{shift_labels[j]}_{i}", label_visibility="collapsed")
+                raw = row[j + 1].text_input(f"_{i}_{j}", key=f"wl_{shift_labels[j]}_{i}", label_visibility="collapsed")
                 vals.append(safe_calc(raw))
 
             daily_sum = sum(vals)
@@ -1490,12 +1494,15 @@ def page_work_log():
     _can_save = _elapsed >= _cooldown
     if st.button("💾 전체 저장 (Google Sheets)", use_container_width=True, type="primary", disabled=not _can_save):
         try:
-            from utils.sheets import save_all
-            save_all(
-                selected_date, work_items_data, shift_data_final,
-                safety_items_data, note_text, st.session_state.get("leave_list", [])
-            )
+            with st.spinner("저장 중... Google Sheets에 업로드하고 있습니다."):
+                from utils.sheets import save_all
+                save_all(
+                    selected_date, work_items_data, shift_data_final,
+                    safety_items_data, note_text, st.session_state.get("leave_list", [])
+                )
             st.session_state["_last_save_ts"] = _time.time()
+            # 월누계 캐시 무효화 (저장 후 최신값 반영)
+            st.session_state.pop(f"wl_monthly_totals_{selected_date}", None)
             with st.spinner(f"{selected_date.month}월 통합 Excel 생성 중..."):
                 _mbytes, _mcount = generate_monthly_work_log_excel(selected_date)
             st.session_state["_monthly_bytes"] = _mbytes
@@ -3311,6 +3318,45 @@ def page_inventory():
                     st.session_state.pop("inv_confirm", None)
                     st.rerun()
 
+            elif _inv_confirm == "edit":
+                _edit_lot = st.session_state.get("inv_edit_lot")
+                _edit_drum = next((d for d in all_drums if d["lot"] == _edit_lot), None)
+                if _edit_drum is None:
+                    st.error("수정할 드럼 정보를 찾을 수 없습니다.")
+                    st.session_state.pop("inv_confirm", None)
+                else:
+                    st.info(f"✏️ **{_edit_drum['product']}** ({_edit_lot}) 정보 수정")
+                    _ec1, _ec2 = st.columns(2)
+                    _new_lot = _ec1.text_input("LOT번호", value=_edit_drum["lot"], key="edit_lot_inp")
+                    _new_product = _ec2.text_input("품명", value=_edit_drum["product"], key="edit_prod_inp")
+                    _ec3, _ec4 = st.columns(2)
+                    _new_maker = _ec3.text_input("제조사", value=_edit_drum["maker"], key="edit_mkr_inp")
+                    _sector_list = sorted(sectors_raw.keys())
+                    _cur_sidx = _sector_list.index(_edit_drum["sector"]) if _edit_drum["sector"] in _sector_list else 0
+                    _new_sector = _ec4.selectbox("섹터", _sector_list, index=_cur_sidx, key="edit_sec_inp")
+                    _sy, _sn = st.columns(2)
+                    if _sy.button("💾 저장", type="primary", key="inv_edit_save"):
+                        try:
+                            _eres = _req.post(f"{BACKEND}/api/inventory/update-drum",
+                                              json={"old_lot": _edit_lot,
+                                                    "new_lot": _new_lot.strip(),
+                                                    "new_product": _new_product.strip(),
+                                                    "new_maker": _new_maker.strip(),
+                                                    "new_sector": _new_sector}, timeout=15)
+                            if _eres.ok:
+                                st.success("수정 완료!")
+                                st.session_state.pop("inv_confirm", None)
+                                st.session_state.pop("inv_edit_lot", None)
+                                st.rerun()
+                            else:
+                                st.error(f"실패: {_eres.text}")
+                        except Exception as _ee:
+                            st.error(f"오류: {_ee}")
+                    if _sn.button("❌ 취소", key="inv_edit_cancel"):
+                        st.session_state.pop("inv_confirm", None)
+                        st.session_state.pop("inv_edit_lot", None)
+                        st.rerun()
+
             # ── 일반 버튼 ──
             elif all_in_return:
                 # 반품 항목 선택: 반품완료 / 반품 해제 / 라인입고
@@ -3332,6 +3378,11 @@ def page_inventory():
                 if bc.button(f"라인입고 ({len(selected_lots)})", key="btn_checkout_r"):
                     st.session_state["inv_confirm"] = "checkout_r"
                     st.rerun()
+                if len(selected_lots) == 1:
+                    if st.button("✏️ 정보 수정", key="btn_edit_r"):
+                        st.session_state["inv_confirm"] = "edit"
+                        st.session_state["inv_edit_lot"] = next(iter(selected_lots))
+                        st.rerun()
             else:
                 # 입고존 드럼이 포함된 경우 스캔불가 토글 표시
                 _sel_ingo = [d for d in selected_drums_list if d.get("sector") == "입고존"]
@@ -3399,6 +3450,11 @@ def page_inventory():
                             st.error(f"실패: {res.text}")
                     except Exception as e:
                         st.error(f"오류: {e}")
+                if len(selected_lots) == 1:
+                    if st.button("✏️ 정보 수정", key="btn_edit"):
+                        st.session_state["inv_confirm"] = "edit"
+                        st.session_state["inv_edit_lot"] = next(iter(selected_lots))
+                        st.rerun()
 
 
 # ══════════════════════════════════════

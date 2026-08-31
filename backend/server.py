@@ -292,6 +292,27 @@ async def set_return_status_endpoint(req: ReturnStatusRequest):
     return {"success": True, "count": len(drums), "status": req.status}
 
 
+class UpdateDrumRequest(BaseModel):
+    old_lot: str
+    new_lot: str
+    new_product: str
+    new_maker: str
+    new_sector: str
+
+
+@app.post("/api/inventory/update-drum")
+async def update_drum_endpoint(req: UpdateDrumRequest):
+    """드럼 정보 수정 (LOT/품명/제조사/섹터)"""
+    from utils.inventory_sheets import update_drum_fields
+    try:
+        update_drum_fields(req.old_lot, req.new_lot, req.new_product, req.new_maker, req.new_sector)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True}
+
+
 @app.get("/api/debug/inventory-sheet")
 async def debug_inventory_sheet():
     """재고현황 시트 원시 데이터 진단용"""

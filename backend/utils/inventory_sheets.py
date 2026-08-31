@@ -373,3 +373,31 @@ def set_return_status(drums: list, status: str):
             ws_status.update([[now]], f"F{row_idx}")
 
     return True
+
+
+def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: str, new_sector: str):
+    """드럼 정보 수정 (LOT/품명/제조사/섹터). old_lot으로 행을 찾아 해당 필드를 덮어씁니다."""
+    now = _kst_now()
+    ws_status = _get_or_create_sheet(
+        "재고현황",
+        ["LOT", "품명", "제조사", "섹터", "등록일시", "최종변경", "반품상태", "스캔불가"],
+    )
+    ws_history = _get_or_create_sheet(
+        _history_sheet_name(),
+        ["LOT", "품명", "제조사", "이전섹터", "새섹터", "일시"],
+    )
+
+    lot_map = _load_status_map(ws_status)
+    if old_lot not in lot_map:
+        raise ValueError(f"LOT '{old_lot}'을 재고에서 찾을 수 없습니다.")
+    if new_lot != old_lot and new_lot in lot_map:
+        raise ValueError(f"LOT '{new_lot}'이 이미 재고에 존재합니다.")
+
+    row_idx = lot_map[old_lot]["idx"]
+    old_sector = lot_map[old_lot]["sector"]
+
+    ws_status.update([[new_lot, new_product, new_maker, new_sector]], f"A{row_idx}:D{row_idx}")
+    ws_status.update([[now]], f"F{row_idx}")
+    ws_history.append_row([new_lot, new_product, new_maker, old_sector, new_sector, now])
+
+    return True
