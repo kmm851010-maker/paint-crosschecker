@@ -40,15 +40,21 @@ RETURN_SECTOR = "반품완료"
 
 
 def _get_client():
+    import base64 as _b64
     creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
     if not creds_json:
         raise ValueError("GOOGLE_CREDENTIALS_JSON 환경변수가 설정되지 않았습니다.")
-    # Railway 환경변수에 리터럴 개행이 들어오는 경우 strict=False로 재시도
+    # base64 인코딩된 경우 디코딩 (Railway UI가 JSON을 망치는 문제 방지)
+    stripped = creds_json.strip()
+    if not stripped.startswith("{"):
+        try:
+            creds_json = _b64.b64decode(stripped).decode("utf-8")
+        except Exception:
+            pass
     try:
         creds_dict = json.loads(creds_json)
     except json.JSONDecodeError:
         creds_dict = json.loads(creds_json, strict=False)
-    # private_key 안의 리터럴 \\n → 실제 개행 변환 (환경에 따라 필요)
     if "private_key" in creds_dict:
         creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
     creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
