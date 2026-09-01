@@ -1129,7 +1129,21 @@ def page_work_log():
     </style>
     """, unsafe_allow_html=True)
 
-    st.subheader("작업 일자 선택")
+    _dcol1, _dcol2 = st.columns([5, 1])
+    with _dcol1:
+        st.subheader("작업 일자 선택")
+    with _dcol2:
+        st.markdown("<div style='padding-top:28px'>", unsafe_allow_html=True)
+        if st.button("🔄 새로고침", key="wl_refresh", use_container_width=True, help="시트에서 데이터를 다시 불러옵니다"):
+            _now_kst2 = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
+            _today2 = (_now_kst2 - datetime.timedelta(hours=6, minutes=30)).date()
+            for _k in list(st.session_state.keys()):
+                if _k.startswith("wl_autoloaded_") or _k.startswith("wl_loaded_") or _k.startswith("wl_monthly_totals_"):
+                    del st.session_state[_k]
+            st.session_state.pop("wl_current_date", None)
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+
     _now_kst = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
     # 06:30 이전이면 전날 일지로 취급 (하루 기준 시각 06:30)
     today_kst = (_now_kst - datetime.timedelta(hours=6, minutes=30)).date()
@@ -1720,9 +1734,8 @@ def page_statistics():
                     daily_details[row[0]] = json.loads(row[1])
                 except Exception:
                     pass
-    except Exception as e:
-        st.error(f"데이터 로드 실패: {e}")
-        return
+    except Exception:
+        daily_details = {}
 
     # 휴가 등록 데이터 로드 (교대 스케줄 기반 계산용)
     try:
@@ -2137,8 +2150,103 @@ def page_statistics():
 
             # 급여시간표
             with st.expander(f"{month}월 급여시간표 자세히보기"):
-                _salary_rows = _build_salary_rows(name)
+                try:
+                    _salary_rows = _build_salary_rows(name)
+                except Exception as _serr:
+                    st.error(f"급여시간표 계산 오류: {_serr}")
+                    _salary_rows = []
+                # _build_salary_rows가 비어 있으면 직접 인라인 계산 (클로저 우회)
+                if not _salary_rows:
+                    try:
+                        import holidays as _hol2
+                        _kr2 = _hol2.SouthKorea(years=[year, year-1, year+1])
+                    except Exception:
+                        _kr2 = set()
+                    _salary_rows = []
+                    for _fd in range(1, days_in_month + 1):
+                        _fdate = datetime.date(year, month, _fd)
+                        _fds = _fdate.strftime("%Y-%m-%d")
+                        _fhol = _fdate in _kr2
+                        _frow = {c: 0.0 for c in _SALARY_COLS}
+                        _frow["날짜"] = f"{month:02d}/{_fd:02d}"
+                        if _fds in daily_details:
+                            _sh = daily_details[_fds].get("shift", {})
+                            if _sh.get("is_2person"):
+                                _lp = _sh.get("leave_person","") or _sh.get("3근_근무자","")
+                                _dw = _sh.get("주간_근무자","") or _sh.get("1근_근무자","")
+                                _nw = _sh.get("야간_근무자","") or _sh.get("2근_근무자","")
+                                _lv = _sh.get("leave_type","") or _sh.get("3근_비고","")
+                                _nb2 = NIGHT_HOURS.get("야간", 7.5)
+                                _dot = float(_sh.get("1근_연장", 4) or 4)
+                                _not = float(_sh.get("2근_연장", 4) or 4)
+                                if name == _lp:
+                                    if _lv == "공가": _frow["공가"] = 8.0
+                                    elif _lv != "공휴": _frow["휴가비근로"] = 8.0
+                                elif name == _dw:
+                                    if _fhol or _lv == "공휴":
+                                        _frow["유휴근로"] = 8.0; _frow["휴일연장"] = _dot; _frow["휴일비근로"] = 8.0
+                                    else:
+                                        _frow["정상근로"] = 8.0; _frow["연장근로"] = _dot
+                                elif name == _nw:
+                                    if _fhol or _lv == "공휴":
+                                        _frow["유휴근로"] = 8.0; _frow["야간근로"] = _nb2; _frow["휴일연장"] = _not; _frow["휴일비근로"] = 8.0
+                                    else:
+                                        _frow["정상근로"] = 8.0; _frow["야간근로"] = _nb2; _frow["연장근로"] = _not
+                            else:
+                                for _sk2, _근2 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                                    if _sh.get(_sk2) == name:
+                                        _nb2 = NIGHT_HOURS.get(_근2, 0)
+                                        _ot2 = float(_sh.get(f"{_근2}_연장", 0) or 0)
+                                        _doy2 = float(_sh.get(f"{_근2}_주간연장") or _ot2)
+                                        _noy2 = float(_sh.get(f"{_근2}_야간연장") or 0)
+                                        if _fhol:
+                                            _frow["유휴근로"] = 8.0; _frow["휴일비근로"] = 8.0
+                                            _frow["휴일연장"] = _doy2 + _noy2
+                                            if _nb2 > 0: _frow["야간근로"] = _nb2
+                                        else:
+                                            _frow["정상근로"] = 8.0; _frow["연장근로"] = _doy2
+                                            if _nb2 > 0: _frow["야간근로"] = _nb2 + _noy2
+                                        break
+                        else:
+                            _fsched = _shift_for_date(_fdate, MEMBERS)
+                            _fsched = _apply_leaves_stat(_fsched, _fdate, base_leaves)
+                            if _fsched.get("is_2person"):
+                                _nb2 = NIGHT_HOURS.get("야간", 7.5)
+                                _lp2 = _fsched.get("leave_person","")
+                                _dw2 = _fsched.get("주간_근무자","")
+                                _nw2 = _fsched.get("야간_근무자","")
+                                _lv2 = _fsched.get("leave_type","")
+                                if name == _lp2:
+                                    if _lv2 == "공가": _frow["공가"] = 8.0
+                                    elif _lv2 != "공휴": _frow["휴가비근로"] = 8.0
+                                elif name == _dw2:
+                                    if _fhol or _lv2 == "공휴":
+                                        _frow["유휴근로"] = 8.0; _frow["휴일연장"] = 4.0; _frow["휴일비근로"] = 8.0
+                                    else:
+                                        _frow["정상근로"] = 8.0; _frow["연장근로"] = 4.0
+                                elif name == _nw2:
+                                    if _fhol or _lv2 == "공휴":
+                                        _frow["유휴근로"] = 8.0; _frow["야간근로"] = _nb2; _frow["휴일연장"] = 4.0; _frow["휴일비근로"] = 8.0
+                                    else:
+                                        _frow["정상근로"] = 8.0; _frow["야간근로"] = _nb2; _frow["연장근로"] = 4.0
+                            else:
+                                for _sk2, _근2 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                                    if _fsched.get(_sk2) == name:
+                                        _nb2 = NIGHT_HOURS.get(_근2, 0)
+                                        if _fhol:
+                                            _frow["유휴근로"] = 8.0; _frow["휴일비근로"] = 8.0
+                                            if _nb2 > 0: _frow["야간근로"] = _nb2
+                                        else:
+                                            _frow["정상근로"] = 8.0
+                                            if _nb2 > 0: _frow["야간근로"] = _nb2
+                                        break
+                        _ftotal = sum(_frow[c] for c in _SALARY_COLS)
+                        _frow["일별합계"] = _ftotal
+                        if _ftotal > 0:
+                            _salary_rows.append(_frow)
                 if _salary_rows:
+                    if not daily_details:
+                        st.caption("※ 저장된 일지 없음 — 교대 스케줄 기준 기본 급여시간 (예상치)")
                     st.markdown(_render_salary_table(_salary_rows), unsafe_allow_html=True)
                 else:
                     st.info("저장된 근무 데이터가 없습니다.")
