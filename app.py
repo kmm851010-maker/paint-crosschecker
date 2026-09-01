@@ -2827,8 +2827,10 @@ div[data-testid="column"]:has(.ctoday) button {
         _mn_key = f"sched_month_notes_{selected_name}_{selected_year}_{selected_month}"
         if _mn_key not in st.session_state:
             try:
-                from utils.sheets import load_schedule_notes_month as _load_notes_month
-                st.session_state[_mn_key] = _load_notes_month(selected_name, selected_year, selected_month)
+                import importlib, utils.sheets as _sh
+                if not hasattr(_sh, "load_schedule_notes_month"):
+                    importlib.reload(_sh)
+                st.session_state[_mn_key] = _sh.load_schedule_notes_month(selected_name, selected_year, selected_month)
             except Exception as _ne:
                 _notes_load_err = str(_ne)
                 # 실패 시 캐시하지 않음 (다음 렌더에서 재시도)
