@@ -500,6 +500,10 @@ def page_cross_check():
                             exp_rows[j].append("")
 
                 full_table_df = pd.DataFrame(exp_rows, columns=exp_headers)
+                # 모든 값을 문자열로 통일 → data_editor에서 전 셀 수정 가능 보장
+                full_table_df = full_table_df.apply(
+                    lambda col: col.map(lambda x: "" if x is None else str(x) if not isinstance(x, str) else x)
+                )
 
                 _tbl_key = f"cc_full_table_{plan_name}_{len(rows)}"
                 is_image = plan_name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
