@@ -689,24 +689,10 @@ def page_cross_check():
             plan_bytes = st.session_state["cc_plan_bytes"]
             plan_name = st.session_state["cc_plan_name"]
 
-            st.markdown("---")
-            st.subheader("교차검증 결과")
+            if "cc_result_df" in st.session_state and not result_df.empty:
+                summary = format_summary(result_df)
 
             if not result_df.empty:
-                summary = format_summary(result_df)
-                c1, c2, c3, c4, c5 = st.columns(5)
-                c1.metric("일치", f"{summary['match_count']}건")
-                c2.metric("초과", f"{summary['excess_count']}건",
-                          delta=f"+{summary['excess_count']}" if summary['excess_count'] > 0 else None)
-                c3.metric("부족", f"{summary['short_count']}건",
-                          delta=f"-{summary['short_count']}" if summary['short_count'] > 0 else None,
-                          delta_color="inverse")
-                c4.metric("미입고", f"{summary['missing_count']}건",
-                          delta=f"-{summary['missing_count']}" if summary['missing_count'] > 0 else None,
-                          delta_color="inverse")
-                c5.metric("⚠️확인필요", f"{summary['reverse_count']}건",
-                          delta=f"!{summary['reverse_count']}" if summary['reverse_count'] > 0 else None)
-
                 # ── ERP 입고 반영 결과 ──
                 if "cc_filled_df" in st.session_state:
                     st.markdown("---")
