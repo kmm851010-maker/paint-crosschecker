@@ -2913,7 +2913,7 @@ div[data-testid="column"]:has(.ctoday) button {
                     # 공휴일/기념일 라벨
                     hol_html = ""
                     if holiday:
-                        hol_html = (f'<div style="font-size:9px;font-weight:600;color:#EF4444;'
+                        hol_html = (f'<div style="font-size:13px;font-weight:600;color:#EF4444;'
                                     f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
                                     f'line-height:1.2;margin-top:1px;">{holiday}</div>')
 
