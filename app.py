@@ -538,6 +538,50 @@ def page_cross_check():
                 )
                 st.markdown("---")
 
+                # ── ERP 입고 반영 결과 (교차검증 완료 후 자동 생성) ──
+                if "cc_result_df" in st.session_state:
+                    from utils.helpers import auto_correct_code, is_valid_item_code
+                    _result_df = st.session_state["cc_result_df"]
+                    erp_qty_map = {
+                        str(r.get("색상코드", "")).strip(): int(r.get("입고수량", 0) or 0)
+                        for _, r in _result_df.iterrows()
+                        if str(r.get("색상코드", "")).strip()
+                    }
+
+                    # 신규 컬럼 위치 → 입고 컬럼에 ERP 수량 기입
+                    신규_col_indices = [i for i, h in enumerate(exp_headers) if "신규" in str(h)]
+                    filled_df = full_table_df.copy()
+                    for row_idx, row_vals in filled_df.iterrows():
+                        for ni in 신규_col_indices:
+                            if ni + 1 >= len(exp_headers):
+                                continue
+                            inc_col = exp_headers[ni + 1]
+                            if "입고" not in str(inc_col):
+                                continue
+                            code_col_idx = ni - 3
+                            if code_col_idx < 0:
+                                continue
+                            raw_code = str(row_vals[exp_headers[code_col_idx]]).strip()
+                            corrected = auto_correct_code(raw_code)
+                            if is_valid_item_code(corrected) and corrected in erp_qty_map:
+                                qty = erp_qty_map[corrected]
+                                filled_df.at[row_idx, inc_col] = str(qty) if qty > 0 else ""
+
+                    st.subheader("ERP 입고 반영 결과")
+                    st.caption("신규 옆 입고 칸에 ERP 실입고 수량이 자동 기입된 양식입니다.")
+                    st.dataframe(filled_df, use_container_width=True, hide_index=True)
+
+                    from modules.excel_converter import convert_to_excel as _cvt_erp
+                    erp_excel = _cvt_erp(list(filled_df.columns), filled_df.fillna("").values.tolist())
+                    st.download_button(
+                        label="📥 ERP 입고 반영 엑셀 다운로드",
+                        data=erp_excel,
+                        file_name="plan_erp_result.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                    )
+                    st.markdown("---")
+
             with st.expander("📋 입고 예정 품목 리스트", expanded=False):
                 cols = ["색상코드", "제조사", "신규"]
                 has_remark = "비고" in plan_df.columns
