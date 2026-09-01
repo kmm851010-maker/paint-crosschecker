@@ -24,9 +24,12 @@ import TextRecognition, { type TextBlock } from "@react-native-ml-kit/text-recog
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LightSensor } from "expo-sensors";
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS, API_BASE_URL } from "../src/constants/config";
 import { VolumeManager } from "react-native-volume-manager";
 import { APPROVED_PRODUCTS } from "../src/constants/approvedProducts";
+
+const ASYNC_KEY_APPROVED = "user_approved_products_v1";
 import { registerDrums, getSectorInventory, setDrumReturnStatus, type DrumItem } from "../src/services/api";
 
 // ── 제조사 코드 ──
@@ -190,7 +193,19 @@ export default function InventoryScreen() {
   const torchModeRef = useRef<"off" | "auto" | "on">("off");
   const editingRef = useRef(false); // 편집 모달 열림 여부 (runOcr 내 클로저용)
   const alertActiveRef = useRef(false); // Alert 팝업 표시 중 여부 (runOcr 내 클로저용)
-  const localApprovedRef = useRef<Set<string>>(new Set()); // 세션 내 사용자 승인 신규 품목
+  const localApprovedRef = useRef<Set<string>>(new Set()); // 사용자 승인 신규 품목 (AsyncStorage 연동)
+
+  // 앱 시작 시 사용자 승인 품목 로드
+  useEffect(() => {
+    AsyncStorage.getItem(ASYNC_KEY_APPROVED).then(val => {
+      if (val) {
+        try {
+          const arr: string[] = JSON.parse(val);
+          arr.forEach(p => localApprovedRef.current.add(p));
+        } catch {}
+      }
+    });
+  }, []);
 
   // torchModeRef를 torchMode와 동기화
   useEffect(() => { torchModeRef.current = torchMode; }, [torchMode]);
@@ -362,6 +377,14 @@ export default function InventoryScreen() {
               text: "저장",
               onPress: () => {
                 localApprovedRef.current.add(parsed.product);
+                // AsyncStorage에 영구 저장
+                AsyncStorage.getItem(ASYNC_KEY_APPROVED).then(val => {
+                  const arr: string[] = val ? JSON.parse(val) : [];
+                  if (!arr.includes(parsed.product)) {
+                    arr.push(parsed.product);
+                    AsyncStorage.setItem(ASYNC_KEY_APPROVED, JSON.stringify(arr));
+                  }
+                }).catch(() => {});
                 setBatch(prev => [...prev, drumItem]);
                 triggerFeedback();
                 alertActiveRef.current = false;
