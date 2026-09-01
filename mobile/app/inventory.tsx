@@ -477,6 +477,32 @@ export default function InventoryScreen() {
     };
     if (editingItem.index === -1) {
       if (!editingItem.lot || !editingItem.product) return;
+      // 수동등록 시 미등록 품목 확인
+      if (!APPROVED_PRODUCTS.has(editingItem.product) && !localApprovedRef.current.has(editingItem.product)) {
+        Alert.alert(
+          "미등록 품목",
+          `"${editingItem.product}" 은(는) 승인 목록에 없는 품목입니다.\n신규 제품이거나 잘못 입력된 품목일 수 있습니다.\n\n신규 제품으로 저장하시겠습니까?`,
+          [
+            { text: "취소", style: "cancel" },
+            {
+              text: "저장",
+              onPress: () => {
+                localApprovedRef.current.add(editingItem.product);
+                AsyncStorage.getItem(ASYNC_KEY_APPROVED).then(val => {
+                  const arr: string[] = val ? JSON.parse(val) : [];
+                  if (!arr.includes(editingItem.product)) {
+                    arr.push(editingItem.product);
+                    AsyncStorage.setItem(ASYNC_KEY_APPROVED, JSON.stringify(arr));
+                  }
+                }).catch(() => {});
+                setBatch(prev => prev.some(d => d.lot === editingItem.lot) ? prev : [...prev, newItem]);
+                setEditingItem(null);
+              },
+            },
+          ]
+        );
+        return;
+      }
       setBatch(prev => prev.some(d => d.lot === editingItem.lot) ? prev : [...prev, newItem]);
     } else {
       setBatch(prev => {
