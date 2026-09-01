@@ -544,7 +544,77 @@ def page_cross_check():
                 )
                 st.markdown("---")
 
-                # ── ERP 입고 반영 결과 (교차검증 완료 후 자동 생성) ──
+                with st.expander("📋 입고 예정 품목 리스트", expanded=False):
+                    cols = ["색상코드", "제조사", "신규"]
+                    has_remark = "비고" in plan_df.columns
+                    if has_remark:
+                        cols.append("비고")
+                    incoming_df = plan_df[plan_df["신규"] > 0][cols].copy()
+                    col_names = ["품목코드", "제조사", "입고예정수량"]
+                    if has_remark:
+                        col_names.append("비고")
+                    incoming_df.columns = col_names
+                    incoming_df = incoming_df.reset_index(drop=True)
+                    incoming_df.insert(incoming_df.columns.get_loc("입고예정수량"), "기입고수량", 0)
+                    incoming_df["기입고수량"] = incoming_df["기입고수량"].astype(int)
+                    incoming_df["입고예정수량"] = incoming_df["입고예정수량"].astype(int)
+                    if not has_remark:
+                        incoming_df["비고"] = ""
+                    else:
+                        incoming_df["비고"] = incoming_df["비고"].fillna("").astype(str)
+
+                    _editor_key = f"cc_editor_{plan_name}_{len(incoming_df)}"
+                    edited_df = st.data_editor(
+                        incoming_df[["품목코드", "제조사", "기입고수량", "입고예정수량", "비고"]],
+                        column_config={
+                            "품목코드":     st.column_config.TextColumn(disabled=True),
+                            "제조사":       st.column_config.TextColumn(disabled=True),
+                            "기입고수량":   st.column_config.NumberColumn("기입고수량", min_value=0, step=1, help="오늘 이전 기입고 수량"),
+                            "입고예정수량": st.column_config.NumberColumn(disabled=True),
+                            "비고":         st.column_config.TextColumn("비고"),
+                        },
+                        use_container_width=True,
+                        hide_index=False,
+                        num_rows="fixed",
+                        key=_editor_key,
+                    )
+
+                    _total_plan    = int(edited_df["입고예정수량"].sum())
+                    _total_already = int(edited_df["기입고수량"].fillna(0).sum())
+                    _total_remain  = _total_plan - _total_already
+                    st.success(f"총 {len(edited_df)}개 품목 | 입고예정: {_total_plan}개 | 기입고: {_total_already}개 | 잔여: {_total_remain}개")
+
+                    incoming_df = edited_df.copy()
+                    incoming_df.index += 1
+                    incoming_df.index.name = "No."
+
+                    from modules.excel_converter import generate_incoming_plan_excel
+                    incoming_excel = generate_incoming_plan_excel(plan_df)
+                    st.download_button(
+                        label="📥 입고 예정 엑셀 다운로드",
+                        data=incoming_excel,
+                        file_name="incoming_plan.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                    )
+                    p_col1, p_col2 = st.columns([1, 3])
+                    with p_col1:
+                        sort_by = st.selectbox("인쇄 정렬", ["품목코드", "제조사", "입고예정수량"], key="sort_incoming", label_visibility="collapsed")
+                    with p_col2:
+                        sort_asc = st.radio("순서", ["오름차순", "내림차순"], horizontal=True, key="sort_dir_incoming", label_visibility="collapsed")
+                    sorted_df = incoming_df.sort_values(sort_by, ascending=(sort_asc == "오름차순")).reset_index(drop=True)
+                    sorted_df.index += 1
+                    sorted_df.index.name = "No."
+                    sorted_html = sorted_df.to_html(border=1)
+                    st.components.v1.html(
+                        f"""<style>@media print{{.no-print{{display:none}}}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #333;padding:8px;text-align:center}} .print-only{{display:none}} @media print{{.print-only{{display:block}}}}</style>
+                        <button class="no-print" onclick="window.print()"
+                        style="padding:8px 20px;background:#4B2D8E;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🖨 인쇄</button>
+                        <div class="print-only"><h3>입고 예정 품목 ({sort_by} {sort_asc})</h3>{sorted_html}</div>""",
+                        height=42,
+                    )
+
+                # ── ERP 입고 반영 결과 계산 (col_erp에서 표시) ──
                 if "cc_result_df" in st.session_state:
                     from utils.helpers import auto_correct_code, is_valid_item_code
                     _result_df = st.session_state["cc_result_df"]
@@ -553,8 +623,6 @@ def page_cross_check():
                         for _, r in _result_df.iterrows()
                         if str(r.get("색상코드", "")).strip()
                     }
-
-                    # 신규 컬럼 위치 → 입고 컬럼에 ERP 수량 기입
                     신규_col_indices = [i for i, h in enumerate(exp_headers) if "신규" in str(h)]
                     filled_df = full_table_df.copy()
                     for row_idx, row_vals in filled_df.iterrows():
@@ -572,91 +640,7 @@ def page_cross_check():
                             if is_valid_item_code(corrected) and corrected in erp_qty_map:
                                 qty = erp_qty_map[corrected]
                                 filled_df.at[row_idx, inc_col] = str(qty) if qty > 0 else ""
-
-                    st.subheader("ERP 입고 반영 결과")
-                    st.caption("신규 옆 입고 칸에 ERP 실입고 수량이 자동 기입된 양식입니다.")
-                    st.dataframe(filled_df, use_container_width=True, hide_index=True)
-
-                    from modules.excel_converter import convert_to_excel as _cvt_erp
-                    erp_excel = _cvt_erp(list(filled_df.columns), filled_df.fillna("").values.tolist())
-                    st.download_button(
-                        label="📥 ERP 입고 반영 엑셀 다운로드",
-                        data=erp_excel,
-                        file_name="plan_erp_result.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True,
-                    )
-                    st.markdown("---")
-
-            with st.expander("📋 입고 예정 품목 리스트", expanded=False):
-                cols = ["색상코드", "제조사", "신규"]
-                has_remark = "비고" in plan_df.columns
-                if has_remark:
-                    cols.append("비고")
-                incoming_df = plan_df[plan_df["신규"] > 0][cols].copy()
-                col_names = ["품목코드", "제조사", "입고예정수량"]
-                if has_remark:
-                    col_names.append("비고")
-                incoming_df.columns = col_names
-                incoming_df = incoming_df.reset_index(drop=True)
-                incoming_df.insert(incoming_df.columns.get_loc("입고예정수량"), "기입고수량", 0)
-                incoming_df["기입고수량"] = incoming_df["기입고수량"].astype(int)
-                incoming_df["입고예정수량"] = incoming_df["입고예정수량"].astype(int)
-                if not has_remark:
-                    incoming_df["비고"] = ""
-                else:
-                    incoming_df["비고"] = incoming_df["비고"].fillna("").astype(str)
-
-                _editor_key = f"cc_editor_{plan_name}_{len(incoming_df)}"
-                edited_df = st.data_editor(
-                    incoming_df[["품목코드", "제조사", "기입고수량", "입고예정수량", "비고"]],
-                    column_config={
-                        "품목코드":     st.column_config.TextColumn(disabled=True),
-                        "제조사":       st.column_config.TextColumn(disabled=True),
-                        "기입고수량":   st.column_config.NumberColumn("기입고수량", min_value=0, step=1, help="오늘 이전 기입고 수량"),
-                        "입고예정수량": st.column_config.NumberColumn(disabled=True),
-                        "비고":         st.column_config.TextColumn("비고"),
-                    },
-                    use_container_width=True,
-                    hide_index=False,
-                    num_rows="fixed",
-                    key=_editor_key,
-                )
-
-                _total_plan    = int(edited_df["입고예정수량"].sum())
-                _total_already = int(edited_df["기입고수량"].fillna(0).sum())
-                _total_remain  = _total_plan - _total_already
-                st.success(f"총 {len(edited_df)}개 품목 | 입고예정: {_total_plan}개 | 기입고: {_total_already}개 | 잔여: {_total_remain}개")
-
-                incoming_df = edited_df.copy()
-                incoming_df.index += 1
-                incoming_df.index.name = "No."
-
-                from modules.excel_converter import generate_incoming_plan_excel
-                incoming_excel = generate_incoming_plan_excel(plan_df)
-                st.download_button(
-                    label="📥 입고 예정 엑셀 다운로드",
-                    data=incoming_excel,
-                    file_name="incoming_plan.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                )
-                p_col1, p_col2 = st.columns([1, 3])
-                with p_col1:
-                    sort_by = st.selectbox("인쇄 정렬", ["품목코드", "제조사", "입고예정수량"], key="sort_incoming", label_visibility="collapsed")
-                with p_col2:
-                    sort_asc = st.radio("순서", ["오름차순", "내림차순"], horizontal=True, key="sort_dir_incoming", label_visibility="collapsed")
-                sorted_df = incoming_df.sort_values(sort_by, ascending=(sort_asc == "오름차순")).reset_index(drop=True)
-                sorted_df.index += 1
-                sorted_df.index.name = "No."
-                sorted_html = sorted_df.to_html(border=1)
-                st.components.v1.html(
-                    f"""<style>@media print{{.no-print{{display:none}}}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #333;padding:8px;text-align:center}} .print-only{{display:none}} @media print{{.print-only{{display:block}}}}</style>
-                    <button class="no-print" onclick="window.print()"
-                    style="padding:8px 20px;background:#4B2D8E;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🖨 인쇄</button>
-                    <div class="print-only"><h3>입고 예정 품목 ({sort_by} {sort_asc})</h3>{sorted_html}</div>""",
-                    height=42,
-                )
+                    st.session_state["cc_filled_df"] = filled_df
 
     # ── 오른쪽: ERP 입고명세서 ──
     with col_erp:
@@ -723,7 +707,26 @@ def page_cross_check():
                 c5.metric("⚠️확인필요", f"{summary['reverse_count']}건",
                           delta=f"!{summary['reverse_count']}" if summary['reverse_count'] > 0 else None)
 
+                # ── ERP 입고 반영 결과 ──
+                if "cc_filled_df" in st.session_state:
+                    st.markdown("---")
+                    st.subheader("ERP 입고 반영 결과")
+                    st.caption("신규 옆 입고 칸에 ERP 실입고 수량이 자동 기입된 양식입니다.")
+                    _filled = st.session_state["cc_filled_df"]
+                    st.dataframe(_filled, use_container_width=True, hide_index=True)
+                    from modules.excel_converter import convert_to_excel as _cvt_erp
+                    _erp_excel = _cvt_erp(list(_filled.columns), _filled.fillna("").values.tolist())
+                    st.download_button(
+                        label="📥 ERP 입고 반영 엑셀 다운로드",
+                        data=_erp_excel,
+                        file_name="plan_erp_result.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                    )
+
+                # ── 확인필요 목록 ──
                 if summary['reverse_count'] > 0:
+                    st.markdown("---")
                     st.warning(
                         f"⚠️ **확인필요 {summary['reverse_count']}건**: "
                         "생산계획서에 없지만 ERP에 입고 기록이 있는 품목입니다."
@@ -772,33 +775,6 @@ def page_cross_check():
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             use_container_width=True,
                         )
-
-                st.markdown("---")
-                st.subheader("교차검증 상세 결과")
-                styled = style_result_table(result_df)
-                st.dataframe(styled, use_container_width=True, hide_index=True)
-                st.markdown(
-                    f"**총 계획수량: {summary['total_plan']}** | "
-                    f"**총 입고수량: {summary['total_actual']}** | "
-                    f"**차이: {summary['total_actual'] - summary['total_plan']}**"
-                )
-
-                r_col1, r_col2 = st.columns([1, 3])
-                with r_col1:
-                    r_sort = st.selectbox("인쇄 정렬", list(result_df.columns), key="sort_result", label_visibility="collapsed")
-                with r_col2:
-                    r_asc = st.radio("순서", ["오름차순", "내림차순"], horizontal=True, key="sort_dir_result", label_visibility="collapsed")
-                sorted_result = result_df.sort_values(r_sort, ascending=(r_asc == "오름차순")).reset_index(drop=True)
-                sorted_result.index += 1
-                sorted_result.index.name = "No."
-                sorted_result_html = sorted_result.to_html(border=1)
-                st.components.v1.html(
-                    f"""<style>@media print{{.no-print{{display:none}}}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #333;padding:8px;text-align:center}} .print-only{{display:none}} @media print{{.print-only{{display:block}}}}</style>
-                    <button class="no-print" onclick="window.print()"
-                    style="padding:8px 20px;background:#4B2D8E;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🖨 인쇄</button>
-                    <div class="print-only"><h3>교차검증 결과 ({r_sort} {r_asc})</h3>{sorted_result_html}</div>""",
-                    height=42,
-                )
 
                 st.markdown("---")
                 excel_bytes = generate_report(result_df)
