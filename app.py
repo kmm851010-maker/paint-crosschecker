@@ -711,7 +711,7 @@ def page_cross_check():
                 if "cc_filled_df" in st.session_state:
                     st.markdown("---")
                     st.subheader("ERP 입고 반영 결과")
-                    st.caption("신규 옆 입고 칸에 ERP 실입고 수량이 자동 기입된 양식입니다. 🟥 미입고 · 🟩 일치")
+                    st.caption("신규 옆 입고 칸에 ERP 실입고 수량이 자동 기입된 양식입니다. 🟥 미입고 · 🟩 일치 · 🟡 초과 · 🟠 일부입고")
                     _filled = st.session_state["cc_filled_df"]
 
                     def _style_filled(df):
@@ -731,9 +731,13 @@ def page_cross_check():
                                         _inc_n = 0
                                     if _new_n > 0:
                                         if _inc_n == 0:
-                                            styles.at[_idx, _inc] = "background-color: #FF9999"
+                                            styles.at[_idx, _inc] = "background-color: #FF9999"   # 빨강: 미입고
                                         elif _inc_n == _new_n:
-                                            styles.at[_idx, _inc] = "background-color: #C6EFCE"
+                                            styles.at[_idx, _inc] = "background-color: #C6EFCE"   # 녹색: 일치
+                                        elif _inc_n > _new_n:
+                                            styles.at[_idx, _inc] = "background-color: #FFEB9C"   # 노랑: 초과
+                                        else:
+                                            styles.at[_idx, _inc] = "background-color: #FFDAB9"   # 주황: 일부입고
                         return styles
 
                     st.dataframe(_filled.style.apply(_style_filled, axis=None), use_container_width=True, hide_index=True)
