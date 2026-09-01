@@ -232,6 +232,75 @@ def extract_new_items_from_table(table_data: dict) -> list:
     return list(merged.values())
 
 
+def _excel_to_table_data(file_bytes: bytes, file_name: str) -> dict:
+    """Excel/CSV 파일을 table_data 형식으로 변환."""
+    from io import BytesIO
+    import pandas as pd
+    ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
+    is_ole = len(file_bytes) >= 8 and file_bytes[:8] == bytes.fromhex("d0cf11e0a1b011ae")
+    try:
+        if ext == "csv":
+            for enc in ["utf-8", "cp949", "euc-kr", "latin-1"]:
+                try:
+                    df = pd.read_csv(BytesIO(file_bytes), encoding=enc)
+                    break
+                except Exception:
+                    continue
+            else:
+                return {"headers": [], "rows": []}
+        elif is_ole or ext == "xls":
+            df = pd.read_excel(BytesIO(file_bytes), engine="xlrd")
+        else:
+            df = pd.read_excel(BytesIO(file_bytes), engine="openpyxl")
+        headers = [str(c) for c in df.columns.tolist()]
+        rows = [[str(v) if v != "" else "" for v in row] for row in df.fillna("").values.tolist()]
+        return {"headers": headers, "rows": rows}
+    except Exception:
+        return {"headers": [], "rows": []}
+
+
+def _extract_table_from_pdf(pdf_bytes: bytes, api_key: str, model: str) -> dict:
+    """PDF에서 표 데이터를 추출합니다 (Anthropic native PDF support)."""
+    import base64 as _b64
+    client = anthropic.Anthropic(api_key=api_key)
+    b64 = _b64.standard_b64encode(pdf_bytes).decode("utf-8")
+    response = client.messages.create(
+        model=model,
+        max_tokens=16000,
+        tools=[EXTRACT_TABLE_TOOL],
+        tool_choice={"type": "tool", "name": "extract_table_data"},
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": b64}},
+                {"type": "text", "text": TABLE_READ_PROMPT},
+            ],
+        }],
+    )
+    for block in response.content:
+        if getattr(block, "type", "") == "tool_use" and block.name == "extract_table_data":
+            return block.input
+    raise ValueError("PDF Tool Use 응답을 받지 못했습니다.")
+
+
+def _extract_table_from_word(word_bytes: bytes) -> dict:
+    """Word(.docx) 파일에서 표 데이터를 추출합니다."""
+    from io import BytesIO
+    try:
+        import docx
+    except ImportError:
+        raise ImportError("python-docx가 필요합니다. pip install python-docx")
+    doc = docx.Document(BytesIO(word_bytes))
+    if not doc.tables:
+        lines = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+        return {"headers": ["내용"], "rows": [[line] for line in lines]}
+    best_table = max(doc.tables, key=lambda t: len(t.rows) * len(t.columns))
+    all_rows = [[cell.text.strip() for cell in row.cells] for row in best_table.rows]
+    if not all_rows:
+        return {"headers": [], "rows": []}
+    return {"headers": all_rows[0], "rows": all_rows[1:]}
+
+
 def extract_production_plan(
     file_bytes: bytes,
     file_name: str,
@@ -239,23 +308,37 @@ def extract_production_plan(
     model: str = "claude-opus-4-8",
 ) -> dict:
     """
-    생산계획서(이미지/엑셀)에서 신규 입고 대상 품목을 추출합니다.
+    생산계획서(이미지/엑셀/PDF/Word)에서 신규 입고 대상 품목을 추출합니다.
 
     Returns: {
         "items": [{"색상코드", "제조사", "신규", ...}, ...],
         "table_data": {"headers": [...], "rows": [[...], ...]} or None,
     }
     """
+    ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
+
+    # PDF → Claude native document support
+    if ext == "pdf":
+        table_data = _extract_table_from_pdf(file_bytes, api_key, model)
+        items = extract_new_items_from_table(table_data)
+        return {"items": items, "table_data": table_data}
+
+    # Word → python-docx 파싱
+    if ext in ("docx", "doc"):
+        table_data = _extract_table_from_word(file_bytes)
+        items = extract_new_items_from_table(table_data)
+        return {"items": items, "table_data": table_data}
+
+    # Excel/CSV → 기존 파서 + table_data 합성
     if is_document_file(file_name, file_bytes):
         from modules.plan_excel_parser import parse_plan_excel
         items = parse_plan_excel(file_bytes, file_name)
-        return {"items": items, "table_data": None}
+        table_data = _excel_to_table_data(file_bytes, file_name)
+        return {"items": items, "table_data": table_data}
 
-    # 이미지 → table_extractor로 표 전체 읽기 (1회, 엑셀 변환기와 동일 방식)
+    # 이미지 → table_extractor로 표 전체 읽기
     from modules.table_extractor import extract_table_from_image
     table_data = extract_table_from_image(file_bytes, file_name, api_key, model)
-
-    # 코드로 신규 품목 필터링
     items = extract_new_items_from_table(table_data)
     return {"items": items, "table_data": table_data}
 
