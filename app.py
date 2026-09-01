@@ -724,6 +724,8 @@ def page_cross_check():
                                             styles.at[_idx, _inc] = "background-color: #FFEB9C"
                                         else:
                                             styles.at[_idx, _inc] = "background-color: #FFDAB9"
+                                    elif _new_n == 0 and _inc_n > 0:
+                                        styles.at[_idx, _inc] = "background-color: #FFEB9C"
                         return styles
 
                     st.dataframe(_filled.style.apply(_style_filled, axis=None), use_container_width=True, hide_index=True)

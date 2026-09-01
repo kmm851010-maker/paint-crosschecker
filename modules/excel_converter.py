@@ -212,6 +212,8 @@ def convert_erp_filled_to_excel(filled_df) -> bytes:
                         cell.fill = FILL_YELLOW
                     else:
                         cell.fill = FILL_ORANGE
+                elif 신규_n == 0 and 입고_n > 0:
+                    cell.fill = FILL_YELLOW
 
     # 열 너비 자동
     for ci in range(1, len(headers) + 1):
