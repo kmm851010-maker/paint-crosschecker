@@ -727,8 +727,8 @@ def page_cross_check():
                         return styles
 
                     st.dataframe(_filled.style.apply(_style_filled, axis=None), use_container_width=True, hide_index=True)
-                    from modules.excel_converter import convert_to_excel as _cvt_erp
-                    _erp_excel = _cvt_erp(list(_filled.columns), _filled.fillna("").values.tolist())
+                    from modules.excel_converter import convert_erp_filled_to_excel
+                    _erp_excel = convert_erp_filled_to_excel(_filled)
                     st.download_button(
                         label="📥 ERP 입고 반영 엑셀 다운로드",
                         data=_erp_excel,

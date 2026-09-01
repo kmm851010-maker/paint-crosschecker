@@ -148,6 +148,86 @@ def convert_to_excel(headers: list, rows: list) -> bytes:
     return buf.getvalue()
 
 
+def convert_erp_filled_to_excel(filled_df) -> bytes:
+    """
+    ERP 입고 반영 결과 DataFrame을 색상 적용 엑셀로 변환합니다.
+    - 빨강: 신규 > 0, 입고 = 0 (미입고)
+    - 녹색: 신규 = 입고 (일치)
+    - 노랑: 입고 > 신규 (초과)
+    - 주황: 0 < 입고 < 신규 (일부입고)
+    """
+    FILL_RED    = PatternFill(start_color="FF9999", end_color="FF9999", fill_type="solid")
+    FILL_GREEN  = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+    FILL_YELLOW = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+    FILL_ORANGE = PatternFill(start_color="FFDAB9", end_color="FFDAB9", fill_type="solid")
+
+    headers = list(filled_df.columns)
+    rows = filled_df.fillna("").values.tolist()
+
+    # 신규/입고 컬럼 쌍 찾기
+    pairs = {}  # {입고_col_idx: 신규_col_idx}
+    for i, h in enumerate(headers):
+        if "신규" in str(h) and i + 1 < len(headers) and "입고" in str(headers[i + 1]):
+            pairs[i + 1] = i  # 입고 idx → 신규 idx
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "ERP 입고 반영 결과"
+
+    # 헤더
+    for ci, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=ci, value=h)
+        cell.fill = HEADER_FILL
+        cell.font = HEADER_FONT
+        cell.alignment = CENTER
+        cell.border = THIN_BORDER
+
+    # 데이터 + 색상
+    for ri, row_data in enumerate(rows, 2):
+        for ci, val in enumerate(row_data, 1):
+            cell = ws.cell(row=ri, column=ci, value=val)
+            cell.font = DATA_FONT
+            cell.alignment = CENTER
+            cell.border = THIN_BORDER
+
+            # 입고 컬럼이면 색상 판정
+            col_idx = ci - 1  # 0-based
+            if col_idx in pairs:
+                신규_idx = pairs[col_idx]
+                try:
+                    신규_n = int(str(row_data[신규_idx]).strip()) if str(row_data[신규_idx]).strip() else 0
+                except (ValueError, TypeError):
+                    신규_n = 0
+                try:
+                    입고_n = int(str(val).strip()) if str(val).strip() else 0
+                except (ValueError, TypeError):
+                    입고_n = 0
+
+                if 신규_n > 0:
+                    if 입고_n == 0:
+                        cell.fill = FILL_RED
+                    elif 입고_n == 신규_n:
+                        cell.fill = FILL_GREEN
+                    elif 입고_n > 신규_n:
+                        cell.fill = FILL_YELLOW
+                    else:
+                        cell.fill = FILL_ORANGE
+
+    # 열 너비 자동
+    for ci in range(1, len(headers) + 1):
+        max_len = len(str(headers[ci - 1]))
+        for row in ws.iter_rows(min_row=2, min_col=ci, max_col=ci):
+            for cell in row:
+                if cell.value:
+                    max_len = max(max_len, len(str(cell.value)))
+        ws.column_dimensions[get_column_letter(ci)].width = max(min(max_len * 1.5 + 4, 50), 8)
+
+    ws.freeze_panes = "A2"
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def generate_incoming_plan_excel(plan_df) -> bytes:
     """입고 예정 품목만 추려서 깔끔한 엑셀을 생성합니다."""
     import pandas as pd
