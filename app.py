@@ -711,9 +711,32 @@ def page_cross_check():
                 if "cc_filled_df" in st.session_state:
                     st.markdown("---")
                     st.subheader("ERP 입고 반영 결과")
-                    st.caption("신규 옆 입고 칸에 ERP 실입고 수량이 자동 기입된 양식입니다.")
+                    st.caption("신규 옆 입고 칸에 ERP 실입고 수량이 자동 기입된 양식입니다. 🟥 미입고 · 🟩 일치")
                     _filled = st.session_state["cc_filled_df"]
-                    st.dataframe(_filled, use_container_width=True, hide_index=True)
+
+                    def _style_filled(df):
+                        styles = pd.DataFrame("", index=df.index, columns=df.columns)
+                        _cols = list(df.columns)
+                        for _i, _h in enumerate(_cols):
+                            if "신규" in str(_h) and _i + 1 < len(_cols) and "입고" in str(_cols[_i + 1]):
+                                _inc = _cols[_i + 1]
+                                for _idx in df.index:
+                                    try:
+                                        _new_n = int(str(df.at[_idx, _h]).strip()) if str(df.at[_idx, _h]).strip() else 0
+                                    except (ValueError, TypeError):
+                                        _new_n = 0
+                                    try:
+                                        _inc_n = int(str(df.at[_idx, _inc]).strip()) if str(df.at[_idx, _inc]).strip() else 0
+                                    except (ValueError, TypeError):
+                                        _inc_n = 0
+                                    if _new_n > 0:
+                                        if _inc_n == 0:
+                                            styles.at[_idx, _inc] = "background-color: #FF9999"
+                                        elif _inc_n == _new_n:
+                                            styles.at[_idx, _inc] = "background-color: #C6EFCE"
+                        return styles
+
+                    st.dataframe(_filled.style.apply(_style_filled, axis=None), use_container_width=True, hide_index=True)
                     from modules.excel_converter import convert_to_excel as _cvt_erp
                     _erp_excel = _cvt_erp(list(_filled.columns), _filled.fillna("").values.tolist())
                     st.download_button(
