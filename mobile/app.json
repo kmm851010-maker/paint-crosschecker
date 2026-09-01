@@ -7,10 +7,6 @@
     "icon": "./assets/icon.png",
     "scheme": "kg-paint-checker",
     "userInterfaceStyle": "light",
-    "newArchEnabled": false,
-    "splash": {
-      "backgroundColor": "#4B2D8E"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.kgsteel.paintchecker"
@@ -24,15 +20,20 @@
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.CAMERA",
-        "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.RECORD_AUDIO"
       ]
     },
     "owner": "sergekang",
     "plugins": [
       "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#4B2D8E",
+          "image": "./assets/splash.png",
+          "imageWidth": 200
+        }
+      ],
       [
         "expo-camera",
         {
@@ -46,7 +47,9 @@
         }
       ],
       "expo-asset",
-      "expo-font"
+      "expo-font",
+      "expo-sharing",
+      "./plugins/withBouncyCastleFix"
     ],
     "extra": {
       "router": {},

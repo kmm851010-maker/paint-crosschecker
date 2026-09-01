@@ -13,7 +13,7 @@ export default function ResultTable({ results }: ResultTableProps) {
       <View>
         {/* Header */}
         <View style={styles.headerRow}>
-          {["No.", "라인", "위치", "색상코드", "계획", "입고", "차이", "상태"].map(
+          {["No.", "색상코드", "계획", "입고", "차이", "상태"].map(
             (col) => (
               <View
                 key={col}
@@ -34,12 +34,6 @@ export default function ResultTable({ results }: ResultTableProps) {
             <View key={idx} style={[styles.dataRow, { backgroundColor: rowBg }]}>
               <View style={styles.cell}>
                 <Text style={styles.cellText}>{idx + 1}</Text>
-              </View>
-              <View style={styles.cell}>
-                <Text style={styles.cellText}>{item.라인}</Text>
-              </View>
-              <View style={styles.cell}>
-                <Text style={styles.cellText}>{item.위치}</Text>
               </View>
               <View style={[styles.cell, styles.wideCell]}>
                 <Text style={styles.cellText} numberOfLines={1}>

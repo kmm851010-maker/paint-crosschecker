@@ -5,6 +5,7 @@ module.exports = {
   ...base,
   expo: {
     ...base.expo,
+    newArchEnabled: false,
     name: IS_DEV ? "KG OPS (Dev)" : base.expo.name,
     android: {
       ...base.expo.android,

@@ -40,21 +40,15 @@ RETURN_SECTOR = "반품완료"
 
 
 def _get_client():
-    import base64 as _b64
     creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
     if not creds_json:
         raise ValueError("GOOGLE_CREDENTIALS_JSON 환경변수가 설정되지 않았습니다.")
-    # base64 인코딩된 경우 디코딩 (Railway UI가 JSON을 망치는 문제 방지)
-    stripped = creds_json.strip()
-    if not stripped.startswith("{"):
-        try:
-            creds_json = _b64.b64decode(stripped).decode("utf-8")
-        except Exception:
-            pass
+    # Railway 환경변수에 리터럴 개행이 들어오는 경우 strict=False로 재시도
     try:
         creds_dict = json.loads(creds_json)
     except json.JSONDecodeError:
         creds_dict = json.loads(creds_json, strict=False)
+    # private_key 안의 리터럴 \\n → 실제 개행 변환
     if "private_key" in creds_dict:
         creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
     creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
@@ -384,33 +378,5 @@ def set_return_status(drums: list, status: str):
             row_idx = lot_map[lot]["idx"]
             ws_status.update([[status]], f"G{row_idx}")
             ws_status.update([[now]], f"F{row_idx}")
-
-    return True
-
-
-def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: str, new_sector: str):
-    """드럼 정보 수정 (LOT/품명/제조사/섹터). old_lot으로 행을 찾아 해당 필드를 덮어씁니다."""
-    now = _kst_now()
-    ws_status = _get_or_create_sheet(
-        "재고현황",
-        ["LOT", "품명", "제조사", "섹터", "등록일시", "최종변경", "반품상태", "스캔불가"],
-    )
-    ws_history = _get_or_create_sheet(
-        _history_sheet_name(),
-        ["LOT", "품명", "제조사", "이전섹터", "새섹터", "일시"],
-    )
-
-    lot_map = _load_status_map(ws_status)
-    if old_lot not in lot_map:
-        raise ValueError(f"LOT '{old_lot}'을 재고에서 찾을 수 없습니다.")
-    if new_lot != old_lot and new_lot in lot_map:
-        raise ValueError(f"LOT '{new_lot}'이 이미 재고에 존재합니다.")
-
-    row_idx = lot_map[old_lot]["idx"]
-    old_sector = lot_map[old_lot]["sector"]
-
-    ws_status.update([[new_lot, new_product, new_maker, new_sector]], f"A{row_idx}:D{row_idx}")
-    ws_status.update([[now]], f"F{row_idx}")
-    ws_history.append_row([new_lot, new_product, new_maker, old_sector, new_sector, now])
 
     return True

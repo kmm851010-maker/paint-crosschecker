@@ -17,7 +17,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -216,6 +216,16 @@ class DrumItem(BaseModel):
     lot: str
     product: str
     maker: str
+    scanDisabled: bool = False
+
+    @field_validator("scanDisabled", mode="before")
+    @classmethod
+    def _parse_scan_disabled(cls, v):
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v == "Y"
+        return bool(v)
 
 
 class InventoryRegisterRequest(BaseModel):
@@ -248,6 +258,23 @@ async def inventory_register(req: InventoryRegisterRequest):
     return {"success": True, "count": len(drums), "sector": req.sector}
 
 
+class ScanDisabledRequest(BaseModel):
+    drums: list[DrumItem]
+    disabled: bool
+
+
+@app.post("/api/inventory/scan-disabled")
+async def set_scan_disabled_endpoint(req: ScanDisabledRequest):
+    """스캔불가 플래그 설정/해제"""
+    from utils.inventory_sheets import set_scan_disabled
+    drums = [d.model_dump() for d in req.drums]
+    try:
+        set_scan_disabled(drums, req.disabled)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, "count": len(drums), "disabled": req.disabled}
+
+
 class ReturnStatusRequest(BaseModel):
     drums: list[DrumItem]
     status: str  # "Y" → 반품대기, "" → 해제
@@ -265,6 +292,48 @@ async def set_return_status_endpoint(req: ReturnStatusRequest):
     return {"success": True, "count": len(drums), "status": req.status}
 
 
+@app.get("/api/version")
+async def get_version():
+    return {"version": "20260901-b64-fix"}
+
+
+class UpdateDrumRequest(BaseModel):
+    old_lot: str
+    new_lot: str
+    new_product: str
+    new_maker: str
+    new_sector: str
+
+
+@app.post("/api/inventory/update-drum")
+async def update_drum_endpoint(req: UpdateDrumRequest):
+    """드럼 정보 수정 (LOT/품명/제조사/섹터)"""
+    from utils.inventory_sheets import update_drum_fields
+    try:
+        update_drum_fields(req.old_lot, req.new_lot, req.new_product, req.new_maker, req.new_sector)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True}
+
+
+@app.get("/api/debug/inventory-sheet")
+async def debug_inventory_sheet():
+    """재고현황 시트 원시 데이터 진단용"""
+    import os as _os
+    from utils.inventory_sheets import _retry, _get_spreadsheet
+    sp = _retry(_get_spreadsheet)
+    sid = _os.getenv("SPREADSHEET_ID", "MISSING")
+    sheets = [ws.title for ws in sp.worksheets()]
+    try:
+        ws = sp.worksheet("재고현황")
+        data = ws.get_all_values()
+        return {"spreadsheet_id": sid, "sheets": sheets, "row_count": len(data), "preview": data[:6]}
+    except Exception as e:
+        return {"spreadsheet_id": sid, "sheets": sheets, "error": str(e)}
+
+
 @app.get("/api/inventory/sectors")
 async def get_inventory_sectors():
     """섹터별 보관 드럼 현황 조회"""
@@ -274,6 +343,23 @@ async def get_inventory_sectors():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"success": True, "sectors": sectors}
+
+
+@app.get("/api/inventory/history")
+async def get_inventory_history_endpoint(from_dt: str = "", to_dt: str = ""):
+    """재고 이력 조회 (from_dt/to_dt: 'YYYY-MM-DD HH:MM', 기본값 오늘 KST 00:00~23:59)"""
+    from utils.inventory_sheets import get_inventory_history
+    import datetime as _dt
+    _today = (_dt.datetime.utcnow() + _dt.timedelta(hours=9)).strftime("%Y-%m-%d")
+    if not from_dt:
+        from_dt = f"{_today} 00:00"
+    if not to_dt:
+        to_dt = f"{_today} 23:59"
+    try:
+        history = get_inventory_history(from_dt, to_dt)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, "from_dt": from_dt, "to_dt": to_dt, "history": history}
 
 
 class ParseReturnListRequest(BaseModel):

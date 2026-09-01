@@ -38,7 +38,11 @@ DAY_MAP = {"월": "월요일", "화": "화요일", "수": "수요일", "목": "�
 
 
 def parse_quantity_text(text) -> dict:
-    """수량 텍스트 파싱. '16(수)' → {"quantity": 16, "schedule_day": "수요일"}"""
+    """수량 텍스트 파싱.
+    - '16(수)' → {"quantity": 16, "schedule_day": "수요일"}
+    - '1/1'   → {"quantity": 2,  "schedule_day": ""}  (슬래시는 합산)
+    - '2/3(화)' → {"quantity": 5, "schedule_day": "화요일"}
+    """
     if text is None or (isinstance(text, float) and str(text) == "nan"):
         return {"quantity": 0, "schedule_day": ""}
 
@@ -46,6 +50,25 @@ def parse_quantity_text(text) -> dict:
     if text in ("", "-", "0", "0.0"):
         return {"quantity": 0, "schedule_day": ""}
 
+    # 슬래시 구분: 각 파트를 개별 파싱 후 합산
+    if "/" in text:
+        total_qty = 0
+        combined_day = ""
+        for part in text.split("/"):
+            part = part.strip()
+            if not part:
+                continue
+            parsed = _parse_single_qty(part)
+            total_qty += parsed["quantity"]
+            if parsed["schedule_day"] and not combined_day:
+                combined_day = parsed["schedule_day"]
+        return {"quantity": total_qty, "schedule_day": combined_day}
+
+    return _parse_single_qty(text)
+
+
+def _parse_single_qty(text: str) -> dict:
+    """슬래시 없는 단일 수량 텍스트 파싱."""
     match = QTY_DAY_PATTERN.match(text)
     if match:
         day_raw = match.group(2)

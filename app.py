@@ -262,15 +262,15 @@ page = st.session_state["page"]
 st.sidebar.markdown("---")
 _uname = st.session_state.get("username", "")
 if _uname:
-    st.sidebar.caption(f"👤 {_uname}")
+    st.sidebar.caption(f"{_uname}")
 if st.sidebar.button("🚪 로그아웃", use_container_width=True):
     st.query_params.clear()
     st.session_state.clear()
     st.rerun()
 st.sidebar.markdown("---")
-st.sidebar.markdown("📱 **모바일 앱**")
+st.sidebar.markdown("**모바일 앱**")
 st.sidebar.markdown(
-    '<a href="https://expo.dev/artifacts/eas/WkTwaK-2wofEdsiDDZanvAm-fJ4CEK9djqT4SXFCQpY.apk" '
+    '<a href="https://expo.dev/artifacts/eas/ygumxaiUld3daJxpjcuVYxm-DcddgYrGUSGUOh-rmMM.apk" '
     'style="display:block;text-align:center;padding:10px;background:#F5A623;color:#1A1A2E;'
     'border-radius:8px;font-weight:700;text-decoration:none;">⬇️ KG OPS 설치</a>',
     unsafe_allow_html=True,
@@ -1130,7 +1130,9 @@ def page_work_log():
     """, unsafe_allow_html=True)
 
     st.subheader("작업 일자 선택")
-    today_kst = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
+    _now_kst = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
+    # 06:30 이전이면 전날 일지로 취급 (하루 기준 시각 06:30)
+    today_kst = (_now_kst - datetime.timedelta(hours=6, minutes=30)).date()
     selected_date = st.date_input("날짜를 클릭하세요", today_kst,
                                    min_value=datetime.date(2026, 1, 1),
                                    max_value=datetime.date(2100, 12, 31),
@@ -1147,7 +1149,7 @@ def page_work_log():
             f"2인 근무 체계 (주간/야간 12시간) 자동 전환"
         )
         st.success(
-            f"📅 **{selected_date.strftime('%Y년 %m월 %d일')}** 2인 근무\n\n"
+            f"**{selected_date.strftime('%Y년 %m월 %d일')}** 2인 근무\n\n"
             f"주간(06:30-18:30): **{shift_auto['주간_조']}조 {shift_auto['주간_근무자']}** | "
             f"야간(18:30-06:30): **{shift_auto['야간_조']}조 {shift_auto['야간_근무자']}** | "
             f"휴가: **{shift_auto['leave_person']}** | "
@@ -1155,7 +1157,7 @@ def page_work_log():
         )
     else:
         st.success(
-            f"📅 **{selected_date.strftime('%Y년 %m월 %d일')}** 근무 매칭 완료\n\n"
+            f"**{selected_date.strftime('%Y년 %m월 %d일')}** 근무 매칭 완료\n\n"
             f"1근: **{shift_auto['1근_조']}조 {shift_auto['1근_근무자']}** | "
             f"2근: **{shift_auto['2근_조']}조 {shift_auto['2근_근무자']}** | "
             f"3근: **{shift_auto['3근_조']}조 {shift_auto['3근_근무자']}** | "
@@ -1301,36 +1303,55 @@ def page_work_log():
         except Exception:
             pass
 
-    # 작업일지 자동 불러오기 (저장 데이터 있으면 즉시 복원)
+    # 작업일지 자동 불러오기 (저장 데이터 있으면 즉시 복원 / 날짜 변경 감지)
     load_key = f"wl_autoloaded_{selected_date}"
-    if load_key not in st.session_state:
-        st.session_state[load_key] = True
-        try:
-            from utils.sheets import load_all
-            all_data = load_all(selected_date)
-            work_items = all_data.get("work_items") or {}
-            st.session_state[f"wl_loaded_{selected_date}"] = work_items
-            st.session_state[f"wl_detail_{selected_date}"] = all_data.get("detail")
+    _prev_date = st.session_state.get("wl_current_date")
+    _date_changed = _prev_date is not None and _prev_date != str(selected_date)
 
-            if work_items:
-                _item_names = [
-                    "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
-                    "신나 하차 수량", "신나 공급 수량", "크롬 공급 수량",
-                    "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
-                    "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수",
-                    "AGV 입/출고 작업 수량"
-                ]
-                _shift_labels = ["1근", "2근", "3근"]
-                _load_keys = ["s1", "s2", "s3"]
-                for idx, nm in enumerate(_item_names):
-                    item = work_items.get(nm, {})
-                    for j, lk in enumerate(_load_keys):
-                        val = item.get(lk, 0)
-                        st.session_state[f"wl_{_shift_labels[j]}_{idx}"] = str(val) if val > 0 else ""
-                st.toast(f"📂 {selected_date.strftime('%Y-%m-%d')} 저장 데이터 자동 불러옴")
-                st.rerun()
-        except Exception:
-            pass
+    if load_key not in st.session_state or _date_changed:
+        _item_names = [
+            "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
+            "신나 하차 수량", "신나 공급 수량", "크롬 공급 수량",
+            "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
+            "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수",
+            "AGV 입/출고 작업 수량"
+        ]
+        if is_2person:
+            _shift_labels = ["주간", "야간"]
+            _load_keys = ["day", "night"]
+        else:
+            _shift_labels = ["1근", "2근", "3근"]
+            _load_keys = ["s1", "s2", "s3"]
+        # 입력 위젯 초기화 (이전 날짜 값 제거)
+        for idx in range(len(_item_names)):
+            for lbl in _shift_labels:
+                st.session_state[f"wl_{lbl}_{idx}"] = ""
+
+        if load_key not in st.session_state:
+            # 이 날짜 첫 방문 — Sheets에서 로드
+            st.session_state[load_key] = True
+            try:
+                from utils.sheets import load_all
+                all_data = load_all(selected_date)
+                work_items = all_data.get("work_items") or {}
+                st.session_state[f"wl_loaded_{selected_date}"] = work_items
+                st.session_state[f"wl_detail_{selected_date}"] = all_data.get("detail")
+            except Exception:
+                work_items = {}
+        else:
+            # 날짜가 바뀌었지만 이미 캐시에 있음 — Sheets 호출 없이 캐시 사용
+            work_items = st.session_state.get(f"wl_loaded_{selected_date}") or {}
+
+        if work_items:
+            for idx, nm in enumerate(_item_names):
+                item = work_items.get(nm, {})
+                for j, lk in enumerate(_load_keys):
+                    val = item.get(lk, 0)
+                    st.session_state[f"wl_{_shift_labels[j]}_{idx}"] = str(val) if val > 0 else ""
+            st.toast(f"📂 {selected_date.strftime('%Y-%m-%d')} 저장 데이터 자동 불러옴")
+
+        st.session_state["wl_current_date"] = str(selected_date)
+        st.rerun()
 
     # 새로 작성 버튼
     if st.session_state.get(f"wl_loaded_{selected_date}"):
@@ -1359,12 +1380,15 @@ def page_work_log():
         "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수",
                     "AGV 입/출고 작업 수량"
     ]
-    # Google Sheets에서 월누계 자동 로드
-    try:
-        from utils.sheets import get_monthly_totals
-        monthly_totals = get_monthly_totals(selected_date)
-    except Exception:
-        monthly_totals = {}
+    # Google Sheets에서 월누계 자동 로드 (날짜별 1회만 — 이후 세션 캐시 사용)
+    _mt_key = f"wl_monthly_totals_{selected_date}"
+    if _mt_key not in st.session_state:
+        try:
+            from utils.sheets import get_monthly_totals
+            st.session_state[_mt_key] = get_monthly_totals(selected_date)
+        except Exception:
+            st.session_state[_mt_key] = {}
+    monthly_totals = st.session_state[_mt_key]
     month_totals_default = [monthly_totals.get(name, 0) for name in item_names]
 
     if is_2person:
@@ -1393,6 +1417,8 @@ def page_work_log():
     /* 업무현황 */
     .work-section p, .work-section span, .work-section strong{font-size:11px !important; line-height:1.2 !important;}
     .work-section input{font-size:11px !important; padding:1px 4px !important; height:28px !important;}
+    div[data-testid="stTextInput"] input{border:2px solid #8B6BBF !important; border-radius:4px !important; background:#ffffff !important;}
+    div[data-testid="stTextInput"] input:focus{border-color:#4B2D8E !important; box-shadow:0 0 0 2px rgba(75,45,142,0.2) !important; background:#ffffff !important;}
     .work-section .stTextInput > div{min-height:0 !important;}
     .work-section .stTextInput{margin-bottom:0 !important; padding-bottom:0 !important;}
     .work-section [data-testid="stVerticalBlock"] > div{gap:0.15rem !important;}
@@ -1424,7 +1450,6 @@ def page_work_log():
 
     work_items_data = []
     for i, name in enumerate(item_names):
-        loaded_item = loaded_data.get(name, {})
         with st.container(border=True):
             if is_2person:
                 row = st.columns([3, 1, 1, 1, 1])
@@ -1437,9 +1462,7 @@ def page_work_log():
 
             vals = []
             for j, lk in enumerate(load_keys):
-                default_val = loaded_item.get(lk, 0) if loaded_item else 0
-                default_str = str(default_val) if default_val > 0 else ""
-                raw = row[j + 1].text_input(f"_{i}_{j}", value=default_str, key=f"wl_{shift_labels[j]}_{i}", label_visibility="collapsed")
+                raw = row[j + 1].text_input(f"_{i}_{j}", key=f"wl_{shift_labels[j]}_{i}", label_visibility="collapsed")
                 vals.append(safe_calc(raw))
 
             daily_sum = sum(vals)
@@ -1530,12 +1553,24 @@ def page_work_log():
     _can_save = _elapsed >= _cooldown
     if st.button("💾 전체 저장 (Google Sheets)", use_container_width=True, type="primary", disabled=not _can_save):
         try:
-            from utils.sheets import save_all
-            save_all(
-                selected_date, work_items_data, shift_data_final,
-                safety_items_data, note_text, st.session_state.get("leave_list", [])
-            )
+            with st.spinner("저장 중... Google Sheets에 업로드하고 있습니다."):
+                from utils.sheets import save_all
+                save_all(
+                    selected_date, work_items_data, shift_data_final,
+                    safety_items_data, note_text, st.session_state.get("leave_list", [])
+                )
             st.session_state["_last_save_ts"] = _time.time()
+            # 저장 후 캐시 갱신 (날짜 이동 후 돌아와도 저장된 값 표시)
+            _saved_cache = {}
+            for _wi in work_items_data:
+                _saved_cache[_wi["name"]] = {
+                    "s1": _wi["s1"] or 0, "s2": _wi["s2"] or 0, "s3": _wi["s3"] or 0,
+                    "day": _wi["day"] or 0, "night": _wi["night"] or 0,
+                    "month_total": _wi.get("month_total", 0),
+                }
+            st.session_state[f"wl_loaded_{selected_date}"] = _saved_cache
+            # 월누계 캐시 무효화 (저장 후 최신값 반영)
+            st.session_state.pop(f"wl_monthly_totals_{selected_date}", None)
             with st.spinner(f"{selected_date.month}월 통합 Excel 생성 중..."):
                 _mbytes, _mcount = generate_monthly_work_log_excel(selected_date)
             st.session_state["_monthly_bytes"] = _mbytes
@@ -2075,28 +2110,22 @@ def page_statistics():
             mc7.metric("휴가(월)", f"{s['휴가일수']}일")
 
             total_daegeun_h = sum(d["시간"] for d in s["대근내역"])
-            st.caption(
-                f"대근 {s['대근횟수']}회 ({_fh(total_daegeun_h)}H) | "
-                f"총 연장 {_fh(total_ot)}H (주간 {_fh(s['연장근로_주간'])}H + 야간 {_fh(s['연장근로_야간'])}H + 대근 {_fh(s['연장근로_대근'])}H) | "
-                f"총 근로 {_fh(s['기본근로'] + total_ot)}H | "
-                f"올해 휴가 총 {len(yr_leaves)}일"
-            )
 
             # 대근 상세 내역
             if s["대근내역"]:
-                with st.expander(f"🔄 대근 내역 ({s['대근횟수']}회 · 계 {_fh(total_daegeun_h)}H)"):
+                with st.expander(f"대근 내역 ({s['대근횟수']}회 · 계 {_fh(total_daegeun_h)}H)"):
                     for d in s["대근내역"]:
                         st.write(f"{d['날짜']} | {d['구분']} | {d['휴가자']} {d['휴가구분']}으로 대근 | {_fh(d['시간'])}H")
 
             # 이번 달 휴가 내역
             if s["휴가내역"]:
-                with st.expander(f"📅 {month}월 휴가 내역 ({s['휴가일수']}일)"):
+                with st.expander(f"{month}월 휴가 내역 ({s['휴가일수']}일)"):
                     for h in s["휴가내역"]:
                         st.write(h)
 
             # 올해 전체 휴가 내역
             if yr_leaves:
-                with st.expander(f"📋 {year}년 전체 휴가 내역 ({len(yr_leaves)}일)"):
+                with st.expander(f"{year}년 전체 휴가 내역 ({len(yr_leaves)}일)"):
                     # 유형별 집계
                     type_count = {}
                     for lv in yr_leaves:
@@ -2107,12 +2136,124 @@ def page_statistics():
                         st.write(f"{lv['날짜']} — {lv['구분']}")
 
             # 급여시간표
-            with st.expander(f"📊 {month}월 급여시간표 자세히보기"):
+            with st.expander(f"{month}월 급여시간표 자세히보기"):
                 _salary_rows = _build_salary_rows(name)
                 if _salary_rows:
                     st.markdown(_render_salary_table(_salary_rows), unsafe_allow_html=True)
                 else:
                     st.info("저장된 근무 데이터가 없습니다.")
+
+            # 교대주기별 연장 시간
+            with st.expander("교대주기별 연장 시간", expanded=False):
+                st.caption("조회월 기준 해당 근무조 교대 주기(연속 근무 5일)별 연장 현황. 주기당 최대 12H — 초과 시 빨간색 경고.")
+                _OT_LIMIT = 12
+                _team_key = next((k for k, v in MEMBERS.items() if v == name), None)
+                if _team_key is None:
+                    st.info("조 코드 미매핑")
+                else:
+                    _m_start = datetime.date(year, month, 1)
+                    _next_m = datetime.date(year, month + 1, 1) if month < 12 else datetime.date(year + 1, 1, 1)
+                    _m_end = _next_m - datetime.timedelta(days=1)
+                    _scan_start = _m_start - datetime.timedelta(days=6)
+                    _scan_end = _m_end + datetime.timedelta(days=6)
+
+                    # 날짜별 연장시간 맵: 대근내역(이미 정확히 계산됨) + 일지 저장 주간/야간 연장
+                    _ot_by_date = {}
+                    for _dk in s.get("대근내역", []):
+                        _ot_by_date[_dk["날짜"]] = _ot_by_date.get(_dk["날짜"], 0) + _dk["시간"]
+                    for _ds2, _dd2 in daily_details.items():
+                        if _ds2 in _ot_by_date:
+                            continue
+                        _sh2 = _dd2.get("shift", {})
+                        if not _sh2.get("is_2person"):
+                            for _sk2, _ok2 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                                if _sh2.get(_sk2) == name:
+                                    _ot2 = _sf(_sh2.get(f"{_ok2}_연장", 0))
+                                    if _ot2 > 0:
+                                        _ot_by_date[_ds2] = _ot2
+                                    break
+
+                    _work_seq = []
+                    _d = _scan_start
+                    while _d <= _scan_end:
+                        _idx = (_d - _BASE_DATE).days % 20
+                        _s1, _s2, _s3, _off = _CYCLE_20[_idx]
+                        if _team_key in (_s1, _s2, _s3):
+                            _ds = _d.strftime("%Y-%m-%d")
+                            _ot = _ot_by_date.get(_ds, 0)
+                            _work_seq.append((_d, _ot))
+                        _d += datetime.timedelta(days=1)
+
+                    _blocks = []
+                    if _work_seq:
+                        _cur = [_work_seq[0]]
+                        for _i in range(1, len(_work_seq)):
+                            if (_work_seq[_i][0] - _work_seq[_i - 1][0]).days == 1:
+                                _cur.append(_work_seq[_i])
+                            else:
+                                _blocks.append(_cur)
+                                _cur = [_work_seq[_i]]
+                        _blocks.append(_cur)
+
+                    _month_blocks = [b for b in _blocks if b[-1][0] >= _m_start and b[0][0] <= _m_end]
+
+                    if not _month_blocks:
+                        st.info("해당 월 교대 주기 없음")
+                    else:
+                        _n = len(_month_blocks)
+                        _TH = "background:#374151;color:#D1D5DB;padding:5px 4px;border:1px solid #4B5563;text-align:center;font-size:12px;"
+                        _TD_BASE = "padding:6px 4px;border:1px solid #4B5563;text-align:center;font-size:13px;"
+                        _TD_GRAY = _TD_BASE + "background:#1F2937;color:#9CA3AF;"
+                        _TD_OK   = _TD_BASE + "background:#1F2937;color:#E5E7EB;font-weight:600;"
+                        _TD_RED  = _TD_BASE + "background:#DC2626;color:#fff;font-weight:700;"
+                        _TD_WARN = _TD_BASE + "background:#78350F;color:#FDE68A;font-weight:600;"
+
+                        _date_hdr = "".join(
+                            '<th colspan="3" style="' + _TH + '">' +
+                            b[0][0].strftime("%m/%d") + "~" + b[-1][0].strftime("%m/%d") + "</th>"
+                            for b in _month_blocks
+                        )
+                        _col_sub = (
+                            '<th style="' + _TH + '">연장(발생)</th>' +
+                            '<th style="' + _TH + '">연장(잔여)</th>' +
+                            '<th style="' + _TH + '">탄력근로 사용</th>'
+                        ) * _n
+
+                        _data_cells = ""
+                        _any_warn = False
+                        for _b in _month_blocks:
+                            _b_ot = int(sum(_x[1] for _x in _b))
+                            _remain = max(0, _OT_LIMIT - _b_ot)
+                            _is_over = _b_ot >= _OT_LIMIT
+                            _is_near = not _is_over and _b_ot >= _OT_LIMIT - 2
+                            _any_warn = _any_warn or _is_over
+                            _cell_style = _TD_RED if _is_over else (_TD_WARN if _is_near else _TD_OK)
+                            _data_cells += (
+                                '<td style="' + _cell_style + '">' + str(_b_ot) + '</td>' +
+                                '<td style="' + _TD_GRAY + '">' + str(_remain) + '</td>' +
+                                '<td style="' + _TD_GRAY + '">0</td>'
+                            )
+
+                        _html_ot = (
+                            '<div style="overflow-x:auto;margin-top:8px;">'
+                            '<table style="border-collapse:collapse;font-size:12px;min-width:100%;">'
+                            '<thead>'
+                            '<tr><th style="' + _TH + 'min-width:90px;">구분</th>' + _date_hdr + '</tr>'
+                            '<tr><th style="' + _TH + '"></th>' + _col_sub + '</tr>'
+                            '</thead>'
+                            '<tbody>'
+                            '<tr><td style="' + _TH + 'text-align:left;white-space:nowrap;">연장/잔여(H)</td>' + _data_cells + '</tr>'
+                            '</tbody></table></div>'
+                        )
+                        st.markdown(_html_ot, unsafe_allow_html=True)
+
+                        if _any_warn:
+                            _warn_list = [
+                                b[0][0].strftime("%m/%d") + "~" + b[-1][0].strftime("%m/%d") +
+                                " (" + str(int(sum(_x[1] for _x in b))) + "H)"
+                                for b in _month_blocks if int(sum(_x[1] for _x in b)) >= _OT_LIMIT
+                            ]
+                            st.error("⚠️ 주 52시간 위배 주기: " + ", ".join(_warn_list))
 
 
 # ══════════════════════════════════════
@@ -2195,7 +2336,7 @@ def page_my_schedule():
 </style>
 """, unsafe_allow_html=True)
 
-    st.markdown("## 📅 근무표")
+    st.markdown("## 근무표")
 
     MEMBERS = dict(st.secrets.get("members", {'A': '직원A', 'B': '직원B', 'C': '직원C', 'D': '직원D'}))
     ALL_MEMBERS = list(MEMBERS.values())
@@ -2833,6 +2974,58 @@ div[data-testid="column"]:has(.ctoday) button {
 
 
 # ──────────────────────────────────────
+# 재고 엑셀 생성 헬퍼
+# ──────────────────────────────────────
+def _make_inventory_excel(df, col_map, sheet_name="재고현황", notes_col=None):
+    import io, openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = sheet_name
+
+    thin = Side(style="thin")
+    bd = Border(left=thin, right=thin, top=thin, bottom=thin)
+    hdr_fill = PatternFill(start_color="4B2D8E", end_color="4B2D8E", fill_type="solid")
+    alt_fill = PatternFill(start_color="F3F0FF", end_color="F3F0FF", fill_type="solid")
+
+    headers = [lbl for lbl, _ in col_map] + ["비고"]
+    for ci, h in enumerate(headers, 1):
+        c = ws.cell(row=1, column=ci, value=h)
+        c.fill = hdr_fill
+        c.font = Font(color="FFFFFF", bold=True)
+        c.border = bd
+        c.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 18
+
+    for ri, (_, row) in enumerate(df.iterrows(), 2):
+        row_fill = alt_fill if ri % 2 == 0 else None
+        for ci, (_, field) in enumerate(col_map, 1):
+            val = ri - 1 if field == "#" else str(row.get(field, "") or "")
+            c = ws.cell(row=ri, column=ci, value=val)
+            c.border = bd
+            c.alignment = Alignment(vertical="center")
+            if row_fill:
+                c.fill = row_fill
+        note_val = str(row.get(notes_col, "") or "") if notes_col else ""
+        note = ws.cell(row=ri, column=len(col_map) + 1, value=note_val)
+        note.border = bd
+        if row_fill:
+            note.fill = row_fill
+
+    col_widths = {"#": 5, "product": 12, "lot": 18, "maker": 12,
+                  "sector": 12, "registered": 16}
+    for ci, (_, field) in enumerate(col_map, 1):
+        ws.column_dimensions[get_column_letter(ci)].width = col_widths.get(field, 12)
+    ws.column_dimensions[get_column_letter(len(col_map) + 1)].width = 28  # 비고
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+# ──────────────────────────────────────
 # 재고 관리 페이지
 # ──────────────────────────────────────
 def page_inventory():
@@ -2842,228 +3035,462 @@ def page_inventory():
     BACKEND = "https://kgcounter.up.railway.app"
     st.subheader("재고 현황")
 
-    col_refresh, col_sort = st.columns([1, 5])
-    with col_refresh:
-        if st.button("🔄 새로고침", key="inv_refresh"):
-            st.rerun()
-    with col_sort:
-        sort_mode = st.radio("정렬", ["섹터별", "제조사별", "품목별", "LOT순", "등록시간순"], horizontal=True, key="inv_sort", label_visibility="collapsed")
+    _half_hours = [f"{h:02d}:{m:02d}" for h in range(24) for m in (0, 30)]
+    _tab_sector, _tab_history = st.tabs(["섹터별 현황", "날짜별 이력"])
 
-    # 등록시간순 선택 시 기간 선택기 표시
-    _inv_dt_from = None
-    _inv_dt_to = None
-    if sort_mode == "등록시간순":
-        _tc1, _tc2 = st.columns(2)
-        with _tc1:
-            _inv_d_from = st.date_input("시작일", datetime.date.today() - datetime.timedelta(days=7), key="inv_d_from")
-            _inv_h_from = st.selectbox("시작 시각", [f"{h:02d}:00" for h in range(24)], index=0, key="inv_h_from")
-        with _tc2:
-            _inv_d_to = st.date_input("종료일", datetime.date.today(), key="inv_d_to")
-            _inv_h_to = st.selectbox("종료 시각", [f"{h:02d}:59" for h in range(24)], index=23, key="inv_h_to")
-        _inv_dt_from = datetime.datetime.combine(_inv_d_from, datetime.time(int(_inv_h_from[:2]), 0))
-        _inv_dt_to = datetime.datetime.combine(_inv_d_to, datetime.time(int(_inv_h_to[:2]), 59))
+    # ── 날짜별 이력 탭 ──────────────────────────────────────────────────────
+    with _tab_history:
+        _now_kst_h = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
+        _default_date = (_now_kst_h - datetime.timedelta(hours=6, minutes=30)).date()
 
-    return_filter = ""
+        _hd_c1, _hd_c2 = st.columns(2)
+        with _hd_c1:
+            st.caption("시작")
+            _hd_from_date = st.date_input("시작일", _default_date, key="inv_hd_from_date",
+                                           min_value=datetime.date(2026, 1, 1),
+                                           max_value=datetime.date(2100, 12, 31),
+                                           label_visibility="collapsed")
+            _hd_from_time = st.selectbox("시작시간", _half_hours, index=0, key="inv_hd_from_time",
+                                          label_visibility="collapsed")
+        with _hd_c2:
+            st.caption("종료")
+            _hd_to_date = st.date_input("종료일", _default_date, key="inv_hd_to_date",
+                                         min_value=datetime.date(2026, 1, 1),
+                                         max_value=datetime.date(2100, 12, 31),
+                                         label_visibility="collapsed")
+            _hd_to_time = st.selectbox("종료시간", _half_hours, index=len(_half_hours)-1, key="inv_hd_to_time",
+                                        label_visibility="collapsed")
 
-    try:
-        resp = _req.get(f"{BACKEND}/api/inventory/sectors", timeout=10)
-        if not resp.ok:
-            st.error(f"조회 실패: {resp.status_code}")
+        _hist_from_dt = f"{_hd_from_date} {_hd_from_time}"
+        _hist_to_dt   = f"{_hd_to_date} {_hd_to_time}"
+
+        if st.button("조회", key="hist_fetch"):
+            st.session_state["hist_data"] = None
+
+        _hist_data = st.session_state.get("hist_data", None)
+        _hist_loaded_key = st.session_state.get("hist_loaded_key", None)
+        _hist_key = f"{_hist_from_dt}~{_hist_to_dt}"
+        if _hist_data is None or _hist_loaded_key != _hist_key:
+            try:
+                _hr = _req.get(f"{BACKEND}/api/inventory/history",
+                               params={"from_dt": _hist_from_dt, "to_dt": _hist_to_dt}, timeout=15)
+                if _hr.ok:
+                    _hist_data = _hr.json().get("history", [])
+                    st.session_state["hist_data"] = _hist_data
+                    st.session_state["hist_loaded_key"] = _hist_key
+                else:
+                    st.error(f"조회 실패: {_hr.status_code}")
+                    _hist_data = []
+            except Exception as _he:
+                st.error(f"연결 오류: {_he}")
+                _hist_data = []
+
+        _act_new  = [h for h in _hist_data if h["action"] == "신규등록"]
+        _act_line = [h for h in _hist_data if h["action"] == "라인입고"]
+        _act_ret  = [h for h in _hist_data if h["action"] == "반품완료"]
+
+        _hc1, _hc2, _hc3 = st.tabs([
+            f"신규등록 ({len(_act_new)})",
+            f"라인입고 ({len(_act_line)})",
+            f"반품완료 ({len(_act_ret)})",
+        ])
+
+        def _render_hist_table(items, show_from=False, show_to=False):
+            if not items:
+                st.info("해당 항목 없음")
+                return
+            _hh1, _hh2, _hh3, _hh4, _hh5 = st.columns([2.8, 2, 1.5, 2, 1.5])
+            _hh1.markdown("**일시**"); _hh2.markdown("**LOT**")
+            _hh3.markdown("**품명**"); _hh4.markdown("**제조사**")
+            if show_from: _hh5.markdown("**이전섹터**")
+            elif show_to: _hh5.markdown("**섹터**")
+            for _hi in items:
+                _r1, _r2, _r3, _r4, _r5 = st.columns([2.8, 2, 1.5, 2, 1.5])
+                _r1.text(_hi["timestamp"][:16] if len(_hi["timestamp"]) >= 16 else _hi["timestamp"])
+                _r2.text(_hi["lot"])
+                _r3.text(_hi["product"])
+                _r4.text(_hi["maker"])
+                if show_from: _r5.text(_hi["from_sector"])
+                elif show_to: _r5.text(_hi["to_sector"])
+
+        def _hist_to_excel(items, sector_key):
+            import io, openpyxl
+            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "이력"
+            headers = ["시각", "LOT번호", "품명", "제조사", "섹터", "비고"]
+            purple = PatternFill("solid", fgColor="4B2D8E")
+            thin = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
+            for ci, h in enumerate(headers, 1):
+                c = ws.cell(row=1, column=ci, value=h)
+                c.font = Font(bold=True, color="FFFFFF")
+                c.fill = purple
+                c.alignment = Alignment(horizontal="center")
+                c.border = thin
+            for ri, item in enumerate(items, 2):
+                sector_val = item.get(sector_key, "")
+                ts = item.get("timestamp", "")
+                row_vals = [ts[:16] if len(ts) >= 16 else ts, item.get("lot",""), item.get("product",""), item.get("maker",""), sector_val, ""]
+                fill = PatternFill("solid", fgColor="F5F0FF") if ri % 2 == 0 else PatternFill("solid", fgColor="FFFFFF")
+                for ci, val in enumerate(row_vals, 1):
+                    c = ws.cell(row=ri, column=ci, value=val)
+                    c.border = thin
+                    c.fill = fill
+            ws.column_dimensions["F"].width = 20
+            for col in ws.columns:
+                if col[0].column_letter == "F":
+                    continue
+                max_len = max((len(str(c.value or "")) for c in col), default=0)
+                ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 30)
+            buf = io.BytesIO()
+            wb.save(buf)
+            return buf.getvalue()
+
+        _fd = str(_hd_from_date)
+        _td = str(_hd_to_date)
+        with _hc1:
+            _render_hist_table(_act_new, show_to=True)
+            if _act_new:
+                st.download_button("📥 엑셀 다운로드", data=_hist_to_excel(_act_new, "to_sector"),
+                    file_name=f"신규등록_{_fd}_{_td}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+        with _hc2:
+            _render_hist_table(_act_line, show_from=True)
+            if _act_line:
+                st.download_button("📥 엑셀 다운로드", data=_hist_to_excel(_act_line, "from_sector"),
+                    file_name=f"라인입고_{_fd}_{_td}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+        with _hc3:
+            _render_hist_table(_act_ret, show_from=True)
+            if _act_ret:
+                st.download_button("📥 엑셀 다운로드", data=_hist_to_excel(_act_ret, "from_sector"),
+                    file_name=f"반품완료_{_fd}_{_td}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+
+    # ── 섹터별 현황 탭 ──────────────────────────────────────────────────────
+    with _tab_sector:
+        _c_inv_sort, _c_inv_ref = st.columns([5, 0.8])
+        with _c_inv_sort:
+            sort_mode = st.radio("정렬", ["섹터별", "제조사별", "품목별", "LOT순", "등록시간순"], horizontal=True, key="inv_sort", label_visibility="collapsed")
+        with _c_inv_ref:
+            if st.button("🔄", key="inv_refresh", use_container_width=True, help="새로고침"):
+                st.rerun()
+
+    with _tab_sector:
+            # 등록시간순 선택 시 기간 선택기 표시
+        _inv_dt_from = None
+        _inv_dt_to = None
+        if sort_mode == "등록시간순":
+            _tc1, _tc2 = st.columns(2)
+            with _tc1:
+                _inv_d_from = st.date_input("시작일", datetime.date.today() - datetime.timedelta(days=7), key="inv_d_from")
+                _inv_h_from = st.selectbox("시작 시각", _half_hours, index=0, key="inv_h_from")
+            with _tc2:
+                _inv_d_to = st.date_input("종료일", datetime.date.today(), key="inv_d_to")
+                _inv_h_to = st.selectbox("종료 시각", _half_hours, index=len(_half_hours)-1, key="inv_h_to")
+            _inv_dt_from = datetime.datetime.combine(_inv_d_from, datetime.time(int(_inv_h_from[:2]), int(_inv_h_from[3:])))
+            _inv_dt_to = datetime.datetime.combine(_inv_d_to, datetime.time(int(_inv_h_to[:2]), int(_inv_h_to[3:])))
+
+        return_filter = ""
+
+        try:
+            from utils.inv_update import get_sector_inventory as _get_inv
+            sectors_raw = _get_inv()
+        except Exception as e:
+            st.error(f"조회 실패: {e}")
             return
-        sectors_raw = resp.json().get("sectors", {})
-    except Exception as e:
-        st.error(f"연결 오류: {e}")
-        return
 
-    # 전체 드럼 목록 (sector 컬럼 추가)
-    all_drums = []
-    for sector, drums in sectors_raw.items():
-        for d in drums:
-            all_drums.append({**d, "sector": sector})
+        # 전체 드럼 목록 (sector 컬럼 추가)
+        all_drums = []
+        for sector, drums in sectors_raw.items():
+            for d in drums:
+                all_drums.append({**d, "sector": sector})
 
-    if not all_drums:
-        st.info("보관 중인 드럼 없음")
-        return
+        if not all_drums:
+            st.info("보관 중인 드럼 없음")
+            return
 
-    df_all = _pd.DataFrame(all_drums)
-    total = len(df_all)
+        df_all = _pd.DataFrame(all_drums)
+        total = len(df_all)
 
-    col_lbl, col_inp, col_cap = st.columns([0.6, 3, 1.5])
-    col_lbl.markdown("**검색**")
-    search = col_inp.text_input("검색", placeholder="품명 또는 LOT 일부 입력...", key="inv_search", label_visibility="collapsed")
-    col_cap.caption(f"전체 **{total}드럼**")
+        col_lbl, col_inp, col_cap = st.columns([0.6, 3, 1.5])
+        col_lbl.markdown("**검색**")
+        search = col_inp.text_input("검색", placeholder="품명 또는 LOT 일부 입력...", key="inv_search", label_visibility="collapsed")
+        col_cap.caption(f"전체 **{total}드럼**")
 
-    # 검색 필터
-    if search.strip():
-        s = search.strip().upper()
-        mask = df_all["lot"].str.upper().str.contains(s, na=False) | df_all["product"].str.upper().str.contains(s, na=False)
-        df_filtered = df_all[mask].copy()
-    else:
-        df_filtered = df_all.copy()
+        # 검색 필터
+        if search.strip():
+            s = search.strip().upper()
+            mask = df_all["lot"].str.upper().str.contains(s, na=False) | df_all["product"].str.upper().str.contains(s, na=False)
+            df_filtered = df_all[mask].copy()
+        else:
+            df_filtered = df_all.copy()
 
-    df_filtered["_rsort"] = 0
+        df_filtered["_rsort"] = 0
 
-    # 등록시간 파싱 및 기간 필터
-    if sort_mode == "등록시간순":
-        df_filtered["_reg_dt"] = _pd.to_datetime(df_filtered["registered"], errors="coerce")
-        if _inv_dt_from and _inv_dt_to:
-            _from_ts = _pd.Timestamp(_inv_dt_from)
-            _to_ts = _pd.Timestamp(_inv_dt_to)
-            _mask_dt = (df_filtered["_reg_dt"] >= _from_ts) & (df_filtered["_reg_dt"] <= _to_ts)
-            df_filtered = df_filtered[_mask_dt]
+        # 등록시간 파싱 및 기간 필터
+        if sort_mode == "등록시간순":
+            df_filtered["_reg_dt"] = _pd.to_datetime(df_filtered["registered"], errors="coerce")
+            if _inv_dt_from and _inv_dt_to:
+                _from_ts = _pd.Timestamp(_inv_dt_from)
+                _to_ts = _pd.Timestamp(_inv_dt_to)
+                _mask_dt = (df_filtered["_reg_dt"] >= _from_ts) & (df_filtered["_reg_dt"] <= _to_ts)
+                df_filtered = df_filtered[_mask_dt]
 
-    # 그룹 키 + 정렬
-    if sort_mode == "LOT순":
-        group_col = "_all"
-        df_filtered["_all"] = "전체 (LOT순)"
-        df_filtered = df_filtered.sort_values(["_rsort", "lot"])
-    elif sort_mode == "등록시간순":
-        group_col = "_all"
-        df_filtered["_all"] = "전체 (등록시간순)"
-        df_filtered = df_filtered.sort_values("_reg_dt", ascending=False, na_position="last")
-    else:
-        group_col = {"섹터별": "sector", "제조사별": "maker", "품목별": "product"}[sort_mode]
-        df_filtered = df_filtered.sort_values(["_rsort", group_col, "lot"])
+        # 그룹 키 + 정렬
+        if sort_mode == "LOT순":
+            group_col = "_all"
+            df_filtered["_all"] = "전체 (LOT순)"
+            df_filtered = df_filtered.sort_values(["_rsort", "lot"])
+        elif sort_mode == "등록시간순":
+            group_col = "_all"
+            df_filtered["_all"] = "전체 (등록시간순)"
+            df_filtered = df_filtered.sort_values("_reg_dt", ascending=False, na_position="last")
+        else:
+            group_col = {"섹터별": "sector", "제조사별": "maker", "품목별": "product"}[sort_mode]
+            df_filtered = df_filtered.sort_values(["_rsort", group_col, "lot"])
 
 
-    # 선택 해제 버튼
-    if st.button("선택 해제", key="inv_desel", use_container_width=False):
-        for _l in df_all["lot"].tolist():
-            st.session_state[f"chk_{_l}"] = False
-        st.rerun()
+        _inv_col_map = [
+            ("번호", "#"), ("품명", "product"), ("LOT번호", "lot"), ("제조사", "maker"),
+            ("섹터", "sector"), ("등록시간", "registered"),
+        ]
+        import datetime as _dt_mod
 
-    # 드럼별 체크박스 선택
-    selected_lots = set()
-    _seen_groups = []
-    for group_key, group_df in df_filtered.groupby(group_col, sort=False):
-        cnt = len(group_df)
-        # 반품필터 활성 시 그룹 내 해당 반품 항목 목록
-        grp_rf_lots = group_df[group_df["returnStatus"] == return_filter]["lot"].tolist() if return_filter else []
-        grp_all_rf_selected = bool(grp_rf_lots) and all(st.session_state.get(f"chk_{_l}", False) for _l in grp_rf_lots)
+        # 전체선택 / 선택 해제 버튼
+        _btn_c1, _btn_c2 = st.columns([1, 1])
+        if _btn_c1.button("전체선택", key="inv_selall", use_container_width=True):
+            for _l in df_filtered["lot"].tolist():
+                st.session_state[f"chk_{_l}"] = True
+            st.rerun()
+        if _btn_c2.button("선택 해제", key="inv_desel", use_container_width=True):
+            for _l in df_all["lot"].tolist():
+                st.session_state[f"chk_{_l}"] = False
+            st.rerun()
 
-        with st.expander(f"**{group_key}** — {cnt}드럼", expanded=True):
-            # 그룹별 전체선택 버튼 (반품필터 활성 + 해당 그룹에 반품 항목 있을 때)
-            if grp_rf_lots:
-                _gbtn_label = f"선택해제 ({len(grp_rf_lots)})" if grp_all_rf_selected else f"{'제조사별 ' if sort_mode=='제조사별' else ''}전체선택 {len(grp_rf_lots)}건"
-                if st.button(_gbtn_label, key=f"grpsel_{group_key}", type="secondary"):
-                    _new_val = not grp_all_rf_selected
-                    for _l in grp_rf_lots:
-                        st.session_state[f"chk_{_l}"] = _new_val
+        # 드럼별 체크박스 선택
+        selected_lots = set()
+        _seen_groups = []
+        for group_key, group_df in df_filtered.groupby(group_col, sort=False):
+            cnt = len(group_df)
+            # 반품필터 활성 시 그룹 내 해당 반품 항목 목록
+            grp_rf_lots = group_df[group_df["returnStatus"] == return_filter]["lot"].tolist() if return_filter else []
+            grp_all_rf_selected = bool(grp_rf_lots) and all(st.session_state.get(f"chk_{_l}", False) for _l in grp_rf_lots)
+
+            with st.expander(f"**{group_key}** — {cnt}드럼", expanded=False):
+                # 그룹별 전체선택 버튼 (섹터별/제조사별/품목별)
+                if sort_mode in ("섹터별", "제조사별", "품목별"):
+                    _grp_lots = group_df["lot"].tolist()
+                    _grp_all_sel = all(st.session_state.get(f"chk_{_l}", False) for _l in _grp_lots)
+                    _grp_btn_label = f"선택해제 ({cnt})" if _grp_all_sel else f"전체선택 ({cnt})"
+                    if st.button(_grp_btn_label, key=f"grpsel_{group_key}", type="secondary"):
+                        for _l in _grp_lots:
+                            st.session_state[f"chk_{_l}"] = not _grp_all_sel
+                        st.rerun()
+
+                # 헤더
+                h1, h2, h3, h4, h5, h6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+                h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
+                h4.markdown("**제조사**")
+                if sort_mode not in ("섹터별",): h5.markdown("**섹터**")
+                h6.markdown("**등록시간**")
+                # 행
+                for _, row in group_df.iterrows():
+                    rs = row.get("returnStatus", "")
+                    sd = row.get("scanDisabled", "")
+                    return_emoji = "🔴" if rs == "불량" else "🟡" if rs == "기술" else "🔵" if rs == "무상" else ""
+                    scan_badge = " `스캔불가`" if sd == "Y" else ""
+                    c1, c2, c3, c4, c5, c6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+                    checked = c1.checkbox("", key=f"chk_{row['lot']}", label_visibility="collapsed")
+                    if checked:
+                        selected_lots.add(row["lot"])
+                    _pfx = f"{return_emoji} " if return_emoji else ""
+                    c2.markdown(f"{_pfx}**{row.get('product','')}**{scan_badge}")
+                    c3.text(row.get("lot", ""))
+                    c4.text(row.get("maker", ""))
+                    if sort_mode not in ("섹터별",):
+                        c5.text(row.get("sector", ""))
+                    c6.text(row.get("registered", ""))
+
+        # 선택 항목 엑셀 다운로드
+        if selected_lots:
+            _sel_df = df_filtered[df_filtered["lot"].isin(selected_lots)].copy()
+            _sel_df["_notes"] = _sel_df.apply(lambda r: ", ".join(filter(None, [
+                r.get("returnStatus", "") or "",
+                "스캔불가" if r.get("scanDisabled") == "Y" else "",
+            ])), axis=1)
+            _inv_excel_bytes = _make_inventory_excel(_sel_df, _inv_col_map, "재고현황", notes_col="_notes")
+            _inv_fname = f"재고현황_{_dt_mod.date.today().strftime('%Y%m%d')}.xlsx"
+            st.download_button("📥 선택 항목 엑셀 다운로드", data=_inv_excel_bytes, file_name=_inv_fname,
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                               key="inv_excel_dl")
+
+        # 액션 버튼바
+        if selected_lots:
+            st.markdown("---")
+            selected_drums_list = [d for d in all_drums if d["lot"] in selected_lots]
+            all_in_return = all(d.get("returnStatus") for d in selected_drums_list)
+            st.warning(f"**{len(selected_lots)}드럼** 선택됨")
+
+            # 편집 상태가 현재 선택과 다르면 자동 초기화
+            if st.session_state.get("inv_confirm") == "edit" and st.session_state.get("inv_edit_lot") not in selected_lots:
+                st.session_state.pop("inv_confirm", None)
+                st.session_state.pop("inv_edit_lot", None)
+
+            _inv_confirm = st.session_state.get("inv_confirm")
+
+            # ── 재확인 화면 ──
+            if _inv_confirm in ("checkout", "checkout_r", "return_done"):
+                if _inv_confirm in ("checkout", "checkout_r"):
+                    st.error(f"선택하신 **{len(selected_lots)}드럼** 제품이 라인입고 처리되어 목록에서 삭제됩니다. 계속하시겠습니까?")
+                    _sector = "라인입고"
+                    _success_msg = f"{len(selected_drums_list)}드럼 라인입고 완료!"
+                else:
+                    st.error(f"선택하신 반품 **{len(selected_lots)}드럼** 제품이 반품완료 처리되어 목록에서 삭제됩니다. 계속하시겠습니까?")
+                    _sector = "반품완료"
+                    _success_msg = f"{len(selected_drums_list)}드럼 반품완료 처리!"
+                _yc, _nc = st.columns(2)
+                if _yc.button("✅ 확인", type="primary", key="inv_confirm_yes"):
+                    try:
+                        res = _req.post(f"{BACKEND}/api/inventory/register",
+                                        json={"drums": selected_drums_list, "sector": _sector}, timeout=15)
+                        if res.ok:
+                            st.success(_success_msg)
+                            st.session_state.pop("inv_confirm", None)
+                            st.rerun()
+                        else:
+                            st.error(f"실패: {res.text}")
+                            st.session_state.pop("inv_confirm", None)
+                    except Exception as e:
+                        st.error(f"오류: {e}")
+                        st.session_state.pop("inv_confirm", None)
+                if _nc.button("❌ 취소", key="inv_confirm_no"):
+                    st.session_state.pop("inv_confirm", None)
                     st.rerun()
 
-            # 헤더
-            h1, h2, h3, h4, h5, h6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
-            h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
-            h4.markdown("**제조사**")
-            if sort_mode not in ("섹터별",): h5.markdown("**섹터**")
-            h6.markdown("**등록시간**")
-            # 행
-            for _, row in group_df.iterrows():
-                rs = row.get("returnStatus", "")
-                return_emoji = "🔴" if rs == "불량" else "🟡" if rs == "기술" else "🔵" if rs == "무상" else ""
-                _row_bg = ""
-                c1, c2, c3, c4, c5, c6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
-                checked = c1.checkbox("", key=f"chk_{row['lot']}", label_visibility="collapsed")
-                if checked:
-                    selected_lots.add(row["lot"])
-                product_label = f"{return_emoji} **{row.get('product','')}**" if return_emoji else f"**{row.get('product','')}**"
-                c2.markdown(product_label)
-                c3.text(row.get("lot", ""))
-                c4.text(row.get("maker", ""))
-                if sort_mode not in ("섹터별",):
-                    c5.text(row.get("sector", ""))
-                c6.text(row.get("registered", ""))
-
-    # 액션 버튼바
-    if selected_lots:
-        st.markdown("---")
-        selected_drums_list = [d for d in all_drums if d["lot"] in selected_lots]
-        all_in_return = all(d.get("returnStatus") for d in selected_drums_list)
-        st.warning(f"**{len(selected_lots)}드럼** 선택됨")
-
-        if all_in_return:
-            # 반품 항목 선택: 반품완료 / 반품 해제 / 라인입고
-            ba, bb, bc = st.columns(3)
-            if ba.button(f"↩️ 반품완료 ({len(selected_lots)})", type="primary", key="btn_return_done"):
-                try:
-                    res = _req.post(f"{BACKEND}/api/inventory/register",
-                                    json={"drums": selected_drums_list, "sector": "반품완료"}, timeout=15)
-                    if res.ok:
-                        st.success(f"{len(selected_drums_list)}드럼 반품완료 처리!")
+            elif _inv_confirm == "edit":
+                _edit_lot = st.session_state.get("inv_edit_lot")
+                _edit_drum = next((d for d in all_drums if d["lot"] == _edit_lot), None)
+                if _edit_drum is None:
+                    st.error("수정할 드럼 정보를 찾을 수 없습니다.")
+                    st.session_state.pop("inv_confirm", None)
+                else:
+                    st.info(f"✏️ **{_edit_drum['product']}** ({_edit_lot}) 정보 수정")
+                    _ec1, _ec2 = st.columns(2)
+                    _new_lot = _ec1.text_input("LOT번호", value=_edit_drum["lot"], key="edit_lot_inp")
+                    _new_product = _ec2.text_input("품명", value=_edit_drum["product"], key="edit_prod_inp")
+                    _ec3, _ec4 = st.columns(2)
+                    _maker_list = ["고려(KCC)", "대한(노루)", "건설(제비)", "삼화", "애경", "동주(PPG)"]
+                    _cur_mkr_idx = _maker_list.index(_edit_drum["maker"]) if _edit_drum["maker"] in _maker_list else 0
+                    _new_maker = _ec3.selectbox("제조사", _maker_list, index=_cur_mkr_idx, key="edit_mkr_inp")
+                    _sector_list = sorted(sectors_raw.keys())
+                    _cur_sidx = _sector_list.index(_edit_drum["sector"]) if _edit_drum["sector"] in _sector_list else 0
+                    _new_sector = _ec4.selectbox("섹터", _sector_list, index=_cur_sidx, key="edit_sec_inp")
+                    _sy, _sn = st.columns(2)
+                    if _sy.button("💾 저장", type="primary", key="inv_edit_save"):
+                        try:
+                            from utils.inv_update import update_drum_fields as _udf
+                            _udf(_edit_lot, _new_lot.strip(), _new_product.strip(), _new_maker.strip(), _new_sector)
+                            st.success("수정 완료!")
+                            st.session_state.pop("inv_confirm", None)
+                            st.session_state.pop("inv_edit_lot", None)
+                            st.rerun()
+                        except Exception as _ee:
+                            st.error(f"오류: {_ee}")
+                            st.session_state.pop("inv_confirm", None)
+                            st.session_state.pop("inv_edit_lot", None)
+                    if _sn.button("❌ 취소", key="inv_edit_cancel"):
+                        st.session_state.pop("inv_confirm", None)
+                        st.session_state.pop("inv_edit_lot", None)
                         st.rerun()
-                    else:
-                        st.error(f"실패: {res.text}")
-                except Exception as e:
-                    st.error(f"오류: {e}")
-            if bb.button(f"🔓 반품 해제 ({len(selected_lots)})", key="btn_return_cancel"):
-                try:
-                    res = _req.post(f"{BACKEND}/api/inventory/return-status",
-                                    json={"drums": selected_drums_list, "status": ""}, timeout=15)
-                    if res.ok:
+
+            # ── 일반 버튼 ──
+            elif all_in_return:
+                # 반품 항목 선택: 반품완료 / 반품 해제 / 라인입고
+                ba, bb, bc = st.columns(3)
+                if ba.button(f"↩️ 반품완료 ({len(selected_lots)})", type="primary", key="btn_return_done"):
+                    st.session_state["inv_confirm"] = "return_done"
+                    st.rerun()
+                if bb.button(f"🔓 반품 해제 ({len(selected_lots)})", key="btn_return_cancel"):
+                    try:
+                        from utils.inv_update import set_return_status as _srs
+                        _srs(selected_drums_list, "")
                         st.success(f"{len(selected_drums_list)}드럼 반품 해제!")
                         st.rerun()
-                    else:
-                        st.error(f"실패: {res.text}")
-                except Exception as e:
-                    st.error(f"오류: {e}")
-            if bc.button(f"🚚 라인입고 ({len(selected_lots)})", key="btn_checkout_r"):
-                try:
-                    res = _req.post(f"{BACKEND}/api/inventory/register",
-                                    json={"drums": selected_drums_list, "sector": "라인입고"}, timeout=15)
-                    if res.ok:
-                        st.success(f"{len(selected_drums_list)}드럼 라인입고 완료!")
+                    except Exception as e:
+                        st.error(f"오류: {e}")
+                if bc.button(f"라인입고 ({len(selected_lots)})", key="btn_checkout_r"):
+                    st.session_state["inv_confirm"] = "checkout_r"
+                    st.rerun()
+                if len(selected_lots) == 1:
+                    if st.button("✏️ 정보 수정", key="btn_edit_r"):
+                        st.session_state["inv_confirm"] = "edit"
+                        st.session_state["inv_edit_lot"] = next(iter(selected_lots))
                         st.rerun()
-                    else:
-                        st.error(f"실패: {res.text}")
-                except Exception as e:
-                    st.error(f"오류: {e}")
-        else:
-            # 일반 항목 선택: 라인입고 + 반품 3종
-            ca, cb, cc, cd = st.columns(4)
-            if ca.button(f"🚚 라인입고 ({len(selected_lots)})", type="primary", key="btn_checkout"):
-                try:
-                    res = _req.post(f"{BACKEND}/api/inventory/register",
-                                    json={"drums": selected_drums_list, "sector": "라인입고"}, timeout=15)
-                    if res.ok:
-                        st.success(f"{len(selected_drums_list)}드럼 라인입고 완료!")
-                        st.rerun()
-                    else:
-                        st.error(f"실패: {res.text}")
-                except Exception as e:
-                    st.error(f"오류: {e}")
-            if cb.button(f"🔴 불량반품 ({len(selected_lots)})", key="btn_return_bad"):
-                try:
-                    res = _req.post(f"{BACKEND}/api/inventory/return-status",
-                                    json={"drums": selected_drums_list, "status": "불량"}, timeout=15)
-                    if res.ok:
+            else:
+                # 입고존 드럼이 포함된 경우 스캔불가 토글 표시
+                _sel_ingo = [d for d in selected_drums_list if d.get("sector") == "입고존"]
+                _sel_ingo_dis = [d for d in _sel_ingo if d.get("scanDisabled") == "Y"]
+                if _sel_ingo:
+                    _sd_cols = st.columns([2, 2, 4])
+                    if _sd_cols[0].button(f"스캔불가 설정 ({len(_sel_ingo)})", key="btn_sd_on"):
+                        try:
+                            res = _req.post(f"{BACKEND}/api/inventory/scan-disabled",
+                                            json={"drums": _sel_ingo, "disabled": True}, timeout=15)
+                            if res.ok:
+                                st.success(f"{len(_sel_ingo)}드럼 스캔불가 설정!")
+                                st.rerun()
+                            else:
+                                st.error(f"실패: {res.text}")
+                        except Exception as e:
+                            st.error(f"오류: {e}")
+                    if _sel_ingo_dis and _sd_cols[1].button(f"스캔불가 해제 ({len(_sel_ingo_dis)})", key="btn_sd_off"):
+                        try:
+                            res = _req.post(f"{BACKEND}/api/inventory/scan-disabled",
+                                            json={"drums": _sel_ingo_dis, "disabled": False}, timeout=15)
+                            if res.ok:
+                                st.success(f"{len(_sel_ingo_dis)}드럼 스캔불가 해제!")
+                                st.rerun()
+                            else:
+                                st.error(f"실패: {res.text}")
+                        except Exception as e:
+                            st.error(f"오류: {e}")
+
+                # 일반 항목 선택: 라인입고 + 반품 3종
+                ca, cb, cc, cd = st.columns(4)
+                if ca.button(f"라인입고 ({len(selected_lots)})", type="primary", key="btn_checkout"):
+                    st.session_state["inv_confirm"] = "checkout"
+                    st.rerun()
+                if cb.button(f"🔴 불량반품 ({len(selected_lots)})", key="btn_return_bad"):
+                    try:
+                        from utils.inv_update import set_return_status as _srs
+                        _srs(selected_drums_list, "불량")
                         st.success(f"{len(selected_drums_list)}드럼 불량반품 등록!")
                         st.rerun()
-                    else:
-                        st.error(f"실패: {res.text}")
-                except Exception as e:
-                    st.error(f"오류: {e}")
-            if cc.button(f"🟡 기술반품 ({len(selected_lots)})", key="btn_return_tech"):
-                try:
-                    res = _req.post(f"{BACKEND}/api/inventory/return-status",
-                                    json={"drums": selected_drums_list, "status": "기술"}, timeout=15)
-                    if res.ok:
+                    except Exception as e:
+                        st.error(f"오류: {e}")
+                if cc.button(f"🟡 기술반품 ({len(selected_lots)})", key="btn_return_tech"):
+                    try:
+                        from utils.inv_update import set_return_status as _srs
+                        _srs(selected_drums_list, "기술")
                         st.success(f"{len(selected_drums_list)}드럼 기술반품 등록!")
                         st.rerun()
-                    else:
-                        st.error(f"실패: {res.text}")
-                except Exception as e:
-                    st.error(f"오류: {e}")
-            if cd.button(f"🔵 무상반품 ({len(selected_lots)})", key="btn_return_free"):
-                try:
-                    res = _req.post(f"{BACKEND}/api/inventory/return-status",
-                                    json={"drums": selected_drums_list, "status": "무상"}, timeout=15)
-                    if res.ok:
+                    except Exception as e:
+                        st.error(f"오류: {e}")
+                if cd.button(f"🔵 무상반품 ({len(selected_lots)})", key="btn_return_free"):
+                    try:
+                        from utils.inv_update import set_return_status as _srs
+                        _srs(selected_drums_list, "무상")
                         st.success(f"{len(selected_drums_list)}드럼 무상반품 등록!")
                         st.rerun()
-                    else:
-                        st.error(f"실패: {res.text}")
-                except Exception as e:
-                    st.error(f"오류: {e}")
+                    except Exception as e:
+                        st.error(f"오류: {e}")
+                if len(selected_lots) == 1:
+                    if st.button("✏️ 정보 수정", key="btn_edit"):
+                        st.session_state["inv_confirm"] = "edit"
+                        st.session_state["inv_edit_lot"] = next(iter(selected_lots))
+                        st.rerun()
 
 
 # ══════════════════════════════════════
@@ -3074,6 +3501,7 @@ def page_inventory_return():
     import pandas as _pd
 
     BACKEND = "https://kgcounter.up.railway.app"
+    _half_hours = [f"{h:02d}:{m:02d}" for h in range(24) for m in (0, 30)]
     st.subheader("반품 관리")
     st.caption("기술·불량·무상 반품 드럼 현황 및 처리")
 
@@ -3101,21 +3529,18 @@ def page_inventory_return():
         _rtc1, _rtc2 = st.columns(2)
         with _rtc1:
             _ret_d_from = st.date_input("시작일", datetime.date.today() - datetime.timedelta(days=30), key="ret_d_from")
-            _ret_h_from = st.selectbox("시작 시각", [f"{h:02d}:00" for h in range(24)], index=0, key="ret_h_from")
+            _ret_h_from = st.selectbox("시작 시각", _half_hours, index=0, key="ret_h_from")
         with _rtc2:
             _ret_d_to = st.date_input("종료일", datetime.date.today(), key="ret_d_to")
-            _ret_h_to = st.selectbox("종료 시각", [f"{h:02d}:59" for h in range(24)], index=23, key="ret_h_to")
-        _ret_dt_from = datetime.datetime.combine(_ret_d_from, datetime.time(int(_ret_h_from[:2]), 0))
-        _ret_dt_to = datetime.datetime.combine(_ret_d_to, datetime.time(int(_ret_h_to[:2]), 59))
+            _ret_h_to = st.selectbox("종료 시각", _half_hours, index=len(_half_hours)-1, key="ret_h_to")
+        _ret_dt_from = datetime.datetime.combine(_ret_d_from, datetime.time(int(_ret_h_from[:2]), int(_ret_h_from[3:])))
+        _ret_dt_to = datetime.datetime.combine(_ret_d_to, datetime.time(int(_ret_h_to[:2]), int(_ret_h_to[3:])))
 
     try:
-        resp = _req.get(f"{BACKEND}/api/inventory/sectors", timeout=10)
-        if not resp.ok:
-            st.error(f"조회 실패: {resp.status_code}")
-            return
-        sectors_raw = resp.json().get("sectors", {})
+        from utils.inv_update import get_sector_inventory as _get_inv2
+        sectors_raw = _get_inv2()
     except Exception as e:
-        st.error(f"연결 오류: {e}")
+        st.error(f"조회 실패: {e}")
         return
 
     all_drums = []
@@ -3232,19 +3657,13 @@ def page_inventory_return():
                                 rt = d.get("new_return_type", "무상")
                                 groups.setdefault(rt, []).append(d)
                             ok_count, errs = 0, []
+                            from utils.inv_update import set_return_status as _srs
                             for status, grp in groups.items():
                                 if not grp:
                                     continue
                                 try:
-                                    r = _req.post(
-                                        f"{BACKEND}/api/inventory/return-status",
-                                        json={"drums": [dict(d) for d in grp], "status": status},
-                                        timeout=30,
-                                    )
-                                    if r.ok:
-                                        ok_count += len(grp)
-                                    else:
-                                        errs.append(f"{status}: {r.text}")
+                                    _srs([dict(d) for d in grp], status)
+                                    ok_count += len(grp)
                                 except Exception as _e2:
                                     errs.append(str(_e2))
                             if errs:
@@ -3320,11 +3739,36 @@ def page_inventory_return():
 
     st.markdown("---")
 
+    _ret_col_map = [
+        ("번호", "#"), ("품명", "product"), ("LOT번호", "lot"), ("제조사", "maker"),
+        ("섹터", "sector"), ("등록시간", "registered"),
+    ]
+    import datetime as _dt_mod2
+
+    # 전체선택 / 선택 해제
+    _rb1, _rb2 = st.columns([1, 1])
+    if _rb1.button("전체선택", key="ret_selall", use_container_width=True):
+        for _l in df_filtered["lot"].tolist():
+            st.session_state[f"ret_chk_{_l}"] = True
+        st.rerun()
+    if _rb2.button("선택 해제", key="ret_desel", use_container_width=True):
+        for _l in df_filtered["lot"].tolist():
+            st.session_state[f"ret_chk_{_l}"] = False
+        st.rerun()
+
     # 드럼 목록
     selected_lots = set()
     for group_key, group_df in df_filtered.groupby(group_col, sort=False):
         cnt = len(group_df)
-        with st.expander(f"**{group_key}** — {cnt}드럼", expanded=True):
+        with st.expander(f"**{group_key}** — {cnt}드럼", expanded=False):
+            if sort_mode in ("섹터별", "제조사별", "품목별"):
+                _rgrp_lots = group_df["lot"].tolist()
+                _rgrp_all_sel = all(st.session_state.get(f"ret_chk_{_l}", False) for _l in _rgrp_lots)
+                _rgrp_btn_label = f"선택해제 ({cnt})" if _rgrp_all_sel else f"전체선택 ({cnt})"
+                if st.button(_rgrp_btn_label, key=f"ret_grpsel_{group_key}", type="secondary"):
+                    for _l in _rgrp_lots:
+                        st.session_state[f"ret_chk_{_l}"] = not _rgrp_all_sel
+                    st.rerun()
             h1, h2, h3, h4, h5, h6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
             h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
             h4.markdown("**제조사**"); h5.markdown("**섹터**"); h6.markdown("**등록시간**")
@@ -3340,45 +3784,70 @@ def page_inventory_return():
                 c5.text(row.get("sector", ""))
                 c6.text(row.get("registered", ""))
 
+    # 선택 항목 엑셀 다운로드
+    if selected_lots:
+        _sel_ret_df = df_filtered[df_filtered["lot"].isin(selected_lots)].copy()
+        _sel_ret_df["_notes"] = _sel_ret_df["returnStatus"].fillna("").astype(str)
+        _ret_excel_bytes = _make_inventory_excel(_sel_ret_df, _ret_col_map, "반품관리", notes_col="_notes")
+        _ret_fname = f"반품관리_{_dt_mod2.date.today().strftime('%Y%m%d')}.xlsx"
+        st.download_button("📥 선택 항목 엑셀 다운로드", data=_ret_excel_bytes, file_name=_ret_fname,
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           key="ret_excel_dl")
+
     # 액션 버튼
     if selected_lots:
         st.markdown("---")
         selected_drums_list = [d for d in return_drums if d["lot"] in selected_lots]
         st.warning(f"**{len(selected_lots)}드럼** 선택됨")
-        ba, bb, bc = st.columns(3)
-        if ba.button(f"↩️ 반품완료 ({len(selected_lots)})", type="primary", key="ret_done"):
-            try:
-                res = _req.post(f"{BACKEND}/api/inventory/register",
-                                json={"drums": selected_drums_list, "sector": "반품완료"}, timeout=15)
-                if res.ok:
-                    st.success(f"{len(selected_drums_list)}드럼 반품완료!")
-                    st.rerun()
-                else:
-                    st.error(f"실패: {res.text}")
-            except Exception as e:
-                st.error(f"오류: {e}")
-        if bb.button(f"🔓 반품 해제 ({len(selected_lots)})", key="ret_cancel"):
-            try:
-                res = _req.post(f"{BACKEND}/api/inventory/return-status",
-                                json={"drums": selected_drums_list, "status": ""}, timeout=15)
-                if res.ok:
+
+        _ret_confirm = st.session_state.get("ret_confirm")
+
+        # ── 재확인 화면 ──
+        if _ret_confirm in ("ret_done", "ret_checkout"):
+            if _ret_confirm == "ret_checkout":
+                st.error(f"선택하신 **{len(selected_lots)}드럼** 제품이 라인입고 처리되어 목록에서 삭제됩니다. 계속하시겠습니까?")
+                _ret_sector = "라인입고"
+                _ret_ok_msg = f"{len(selected_drums_list)}드럼 라인입고 완료!"
+            else:
+                st.error(f"선택하신 반품 **{len(selected_lots)}드럼** 제품이 반품완료 처리되어 목록에서 삭제됩니다. 계속하시겠습니까?")
+                _ret_sector = "반품완료"
+                _ret_ok_msg = f"{len(selected_drums_list)}드럼 반품완료!"
+            _ry, _rn = st.columns(2)
+            if _ry.button("✅ 확인", type="primary", key="ret_confirm_yes"):
+                try:
+                    res = _req.post(f"{BACKEND}/api/inventory/register",
+                                    json={"drums": selected_drums_list, "sector": _ret_sector}, timeout=15)
+                    if res.ok:
+                        st.success(_ret_ok_msg)
+                        st.session_state.pop("ret_confirm", None)
+                        st.rerun()
+                    else:
+                        st.error(f"실패: {res.text}")
+                        st.session_state.pop("ret_confirm", None)
+                except Exception as e:
+                    st.error(f"오류: {e}")
+                    st.session_state.pop("ret_confirm", None)
+            if _rn.button("❌ 취소", key="ret_confirm_no"):
+                st.session_state.pop("ret_confirm", None)
+                st.rerun()
+
+        # ── 일반 버튼 ──
+        else:
+            ba, bb, bc = st.columns(3)
+            if ba.button(f"↩️ 반품완료 ({len(selected_lots)})", type="primary", key="ret_done"):
+                st.session_state["ret_confirm"] = "ret_done"
+                st.rerun()
+            if bb.button(f"🔓 반품 해제 ({len(selected_lots)})", key="ret_cancel"):
+                try:
+                    from utils.inv_update import set_return_status as _srs
+                    _srs(selected_drums_list, "")
                     st.success(f"{len(selected_drums_list)}드럼 반품 해제!")
                     st.rerun()
-                else:
-                    st.error(f"실패: {res.text}")
-            except Exception as e:
-                st.error(f"오류: {e}")
-        if bc.button(f"🚚 라인입고 ({len(selected_lots)})", key="ret_checkout"):
-            try:
-                res = _req.post(f"{BACKEND}/api/inventory/register",
-                                json={"drums": selected_drums_list, "sector": "라인입고"}, timeout=15)
-                if res.ok:
-                    st.success(f"{len(selected_drums_list)}드럼 라인입고 완료!")
-                    st.rerun()
-                else:
-                    st.error(f"실패: {res.text}")
-            except Exception as e:
-                st.error(f"오류: {e}")
+                except Exception as e:
+                    st.error(f"오류: {e}")
+            if bc.button(f"라인입고 ({len(selected_lots)})", key="ret_checkout"):
+                st.session_state["ret_confirm"] = "ret_checkout"
+                st.rerun()
 
 
 # ──────────────────────────────────────
