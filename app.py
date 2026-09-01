@@ -2922,7 +2922,7 @@ div[data-testid="column"]:has(.ctoday) button {
                     note_html = ""
                     if _cell_note:
                         note_html = (
-                            f'<div style="font-size:10px;color:#374151;margin-top:2px;'
+                            f'<div style="font-size:12px;color:#374151;margin-top:2px;'
                             f'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
                             f'line-height:1.3;font-weight:600;background:#FEF9C3;'
                             f'border-radius:3px;padding:1px 3px;" title="{_cell_note}">'
