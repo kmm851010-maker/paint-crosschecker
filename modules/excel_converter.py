@@ -22,10 +22,10 @@ DATA_FONT = Font(name="맑은 고딕", size=10)
 SUM_FILL = PatternFill(start_color="DFE4EA", end_color="DFE4EA", fill_type="solid")
 SUM_FONT = Font(name="맑은 고딕", size=10, bold=True)
 THIN_BORDER = Border(
-    left=Side(style="thin", color="A4B0BE"),
-    right=Side(style="thin", color="A4B0BE"),
-    top=Side(style="thin", color="A4B0BE"),
-    bottom=Side(style="thin", color="A4B0BE"),
+    left=Side(style="thin"),
+    right=Side(style="thin"),
+    top=Side(style="thin"),
+    bottom=Side(style="thin"),
 )
 CENTER = Alignment(horizontal="center", vertical="center", wrap_text=True)
 LEFT = Alignment(horizontal="left", vertical="center", wrap_text=True)

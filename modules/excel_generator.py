@@ -72,6 +72,8 @@ def generate_report(result_df: pd.DataFrame) -> bytes:
     title_cell.value = "KG스틸 페인트 입고 검증 리포트"
     title_cell.font = FONT_TITLE
     title_cell.alignment = ALIGN_CENTER
+    for c in range(1, 11):
+        ws.cell(row=1, column=c).border = THIN_BORDER
 
     # 날짜
     ws.merge_cells("A2:J2")
@@ -79,6 +81,11 @@ def generate_report(result_df: pd.DataFrame) -> bytes:
     date_cell.value = f"생성일: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     date_cell.font = FONT_NORMAL
     date_cell.alignment = Alignment(horizontal="right")
+    for c in range(1, 11):
+        ws.cell(row=2, column=c).border = THIN_BORDER
+    # 빈 구분 행 테두리
+    for c in range(1, 11):
+        ws.cell(row=3, column=c).border = THIN_BORDER
 
     # 헤더 (row 4)
     header_row = 4
@@ -176,7 +183,9 @@ def generate_report(result_df: pd.DataFrame) -> bytes:
 
     # 범례
     legend_row = sum_row + 2
-    ws.cell(row=legend_row, column=1, value="[범례]").font = FONT_BOLD
+    legend_title = ws.cell(row=legend_row, column=1, value="[범례]")
+    legend_title.font = FONT_BOLD
+    legend_title.border = THIN_BORDER
     legends = [
         ("일치", FILL_MATCH, "계획 수량 = 입고 수량"),
         ("초과", FILL_EXCESS, "입고 수량 > 계획 수량"),
@@ -189,7 +198,10 @@ def generate_report(result_df: pd.DataFrame) -> bytes:
         cell_label.fill = fill
         cell_label.font = FONT_BOLD
         cell_label.alignment = ALIGN_CENTER
-        ws.cell(row=r, column=3, value=desc).font = FONT_NORMAL
+        cell_label.border = THIN_BORDER
+        cell_desc = ws.cell(row=r, column=3, value=desc)
+        cell_desc.font = FONT_NORMAL
+        cell_desc.border = THIN_BORDER
 
     output = BytesIO()
     wb.save(output)
