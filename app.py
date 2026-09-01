@@ -2560,21 +2560,25 @@ def page_my_schedule():
     today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
 
     st.markdown("""<style>
-/* 근무표 셀렉트박스 글자 크기·색상 강화 */
-section[data-testid="stMain"] .sched-selects label {
-    font-size: 14px !important; font-weight: 700 !important; color: #CDD6F4 !important;
+/* 근무표 셀렉트박스 글자 크기·색상 강화 — Streamlit DOM 직접 타겟 */
+div[data-testid="stSelectbox"] label p {
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    color: #CDD6F4 !important;
 }
-section[data-testid="stMain"] .sched-selects div[data-baseweb="select"] {
+div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:first-child {
+    min-height: 48px !important;
     border-radius: 10px !important;
+    border: 1.5px solid #45475A !important;
+    background: #1E1E2E !important;
 }
-section[data-testid="stMain"] .sched-selects div[data-baseweb="select"] > div {
-    background: #1E1E2E !important; border: 1.5px solid #45475A !important;
-    border-radius: 10px !important; min-height: 48px !important;
+div[data-testid="stSelectbox"] [data-testid="stSelectboxVirtualDropdown"] span,
+div[data-testid="stSelectbox"] div[data-baseweb="select"] span {
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    color: #CDD6F4 !important;
 }
-section[data-testid="stMain"] .sched-selects span {
-    font-size: 16px !important; font-weight: 700 !important; color: #CDD6F4 !important;
-}
-</style><div class="sched-selects">""", unsafe_allow_html=True)
+</style>""", unsafe_allow_html=True)
 
     _sc1, _sc2, _sc3, _sc4 = st.columns([2, 2, 1, 1])
     with _sc1:
@@ -2599,7 +2603,19 @@ section[data-testid="stMain"] .sched-selects span {
     with _sc4:
         selected_month = st.selectbox("월", list(range(1, 13)), index=today.month - 1, key="sched_mo")
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="background:#1E1E2E;border:1.5px solid #45475A;border-radius:10px;'
+        f'padding:10px 18px;margin:6px 0 10px;display:flex;align-items:center;gap:16px;">'
+        f'<span style="font-size:14px;font-weight:600;color:#6C7086;">근무형태</span>'
+        f'<span style="font-size:18px;font-weight:800;color:#CDD6F4;">{shift_type}</span>'
+        f'<span style="color:#45475A;font-size:20px;">|</span>'
+        f'<span style="font-size:14px;font-weight:600;color:#6C7086;">{"이름" if shift_type == "4조3교대" else "조"}</span>'
+        f'<span style="font-size:22px;font-weight:900;color:#89B4FA;">{selected_name}</span>'
+        f'<span style="color:#45475A;font-size:20px;">|</span>'
+        f'<span style="font-size:20px;font-weight:800;color:#CDD6F4;">{selected_year}년 {selected_month}월</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
     if shift_type != "4조3교대":
         _team_code = selected_name[0]  # "A조" → "A"
@@ -2890,23 +2906,6 @@ div[data-testid="column"]:has(.ctoday) button {
                                     f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
                                     f'line-height:1.2;margin-top:1px;">{holiday}</div>')
 
-                    _BADGE = {
-                        "cs-day":   ("#FFC107","#3D2A00","#FFB300"),
-                        "cs-night": ("#1a1a1a","#ffffff","#000000"),
-                        "cs-off":   ("#f5f5f5","#EF4444","#E5E7EB"),
-                        "cs1":      ("#EFF6FF","#1D4ED8","#BFDBFE"),
-                        "cs2":      ("#F0FDF4","#15803D","#BBF7D0"),
-                        "cs3":      ("#FEF2F2","#B91C1C","#FECACA"),
-                        "cs-leave": ("#FFFBEB","#92400E","#FDE68A"),
-                        "cs-sub":   ("#F5F3FF","#6D28D9","#DDD6FE"),
-                    }
-                    _bbg, _bfg, _bbr = _BADGE.get(mcls, ("#f0f0f0","#666","#ccc"))
-                    badge_html = (
-                        f'<div style="margin-top:5px;background:{_bbg};color:{_bfg};'
-                        f'border:1.5px solid {_bbr};border-radius:6px;'
-                        f'padding:3px 4px;font-size:16px;font-weight:800;'
-                        f'text-align:center;line-height:1.3;">{btn_txt}</div>'
-                    )
                     # 비고 메모 표시
                     _cell_note = _month_notes.get(d.strftime("%Y-%m-%d"), "")
                     note_html = ""
@@ -2918,25 +2917,26 @@ div[data-testid="column"]:has(.ctoday) button {
                             f'{_cell_note}</div>'
                         )
 
-                    # 대근 상세 표시 (달력 셀 배지 아래)
+                    # 대근 상세 표시 (날짜 아래 소형 텍스트)
                     sub_html = ""
                     if info["sub_for"]:
                         sub_html = (
-                            f'<div style="font-size:9px;color:#7C3AED;margin-top:2px;'
+                            f'<div style="font-size:9px;color:#7C3AED;margin-top:1px;'
                             f'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
                             f'line-height:1.2;font-weight:600;">'
                             f'↺{info["sub_for"]} 휴가</div>'
                         )
 
                     ring = "2px solid #3B82F6" if (is_sel or is_today) else "1.5px solid #E5E7EB"
+                    # 배지를 별도 div 없이, 버튼 자체에 텍스트로 표시
                     st.markdown(
                         f'<div class="{marker_cls}" style="background:#ffffff;border:{ring};'
-                        f'border-bottom:none;border-radius:10px 10px 0 0;padding:4px 5px 4px;min-height:72px;">'
-                        f'{num_html}{hol_html}{badge_html}{sub_html}{note_html}</div>',
+                        f'border-bottom:none;border-radius:10px 10px 0 0;padding:4px 5px 2px;min-height:44px;">'
+                        f'{num_html}{hol_html}{sub_html}{note_html}</div>',
                         unsafe_allow_html=True
                     )
 
-                    if st.button("", key=f"cd_{selected_year}_{selected_month}_{dn}", use_container_width=True):
+                    if st.button(btn_txt, key=f"cd_{selected_year}_{selected_month}_{dn}", use_container_width=True):
                         st.session_state[_skey] = dn
                         st.rerun()
     # ── 월간 요약 ──
