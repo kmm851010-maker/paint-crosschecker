@@ -1285,40 +1285,55 @@ def page_work_log():
         except Exception:
             pass
 
-    # 작업일지 자동 불러오기 (저장 데이터 있으면 즉시 복원)
+    # 작업일지 자동 불러오기 (저장 데이터 있으면 즉시 복원 / 날짜 변경 감지)
     load_key = f"wl_autoloaded_{selected_date}"
-    if load_key not in st.session_state:
-        st.session_state[load_key] = True
-        try:
-            from utils.sheets import load_all
-            all_data = load_all(selected_date)
-            work_items = all_data.get("work_items") or {}
-            st.session_state[f"wl_loaded_{selected_date}"] = work_items
-            st.session_state[f"wl_detail_{selected_date}"] = all_data.get("detail")
+    _prev_date = st.session_state.get("wl_current_date")
+    _date_changed = _prev_date is not None and _prev_date != str(selected_date)
 
-            if work_items:
-                _item_names = [
-                    "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
-                    "신나 하차 수량", "신나 공급 수량", "크롬 공급 수량",
-                    "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
-                    "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수",
-                    "AGV 입/출고 작업 수량"
-                ]
-                if is_2person:
-                    _shift_labels = ["주간", "야간"]
-                    _load_keys = ["day", "night"]
-                else:
-                    _shift_labels = ["1근", "2근", "3근"]
-                    _load_keys = ["s1", "s2", "s3"]
-                for idx, nm in enumerate(_item_names):
-                    item = work_items.get(nm, {})
-                    for j, lk in enumerate(_load_keys):
-                        val = item.get(lk, 0)
-                        st.session_state[f"wl_{_shift_labels[j]}_{idx}"] = str(val) if val > 0 else ""
-                st.toast(f"📂 {selected_date.strftime('%Y-%m-%d')} 저장 데이터 자동 불러옴")
-                st.rerun()
-        except Exception:
-            pass
+    if load_key not in st.session_state or _date_changed:
+        _item_names = [
+            "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
+            "신나 하차 수량", "신나 공급 수량", "크롬 공급 수량",
+            "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
+            "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수",
+            "AGV 입/출고 작업 수량"
+        ]
+        if is_2person:
+            _shift_labels = ["주간", "야간"]
+            _load_keys = ["day", "night"]
+        else:
+            _shift_labels = ["1근", "2근", "3근"]
+            _load_keys = ["s1", "s2", "s3"]
+        # 입력 위젯 초기화 (이전 날짜 값 제거)
+        for idx in range(len(_item_names)):
+            for lbl in _shift_labels:
+                st.session_state[f"wl_{lbl}_{idx}"] = ""
+
+        if load_key not in st.session_state:
+            # 이 날짜 첫 방문 — Sheets에서 로드
+            st.session_state[load_key] = True
+            try:
+                from utils.sheets import load_all
+                all_data = load_all(selected_date)
+                work_items = all_data.get("work_items") or {}
+                st.session_state[f"wl_loaded_{selected_date}"] = work_items
+                st.session_state[f"wl_detail_{selected_date}"] = all_data.get("detail")
+            except Exception:
+                work_items = {}
+        else:
+            # 날짜가 바뀌었지만 이미 캐시에 있음 — Sheets 호출 없이 캐시 사용
+            work_items = st.session_state.get(f"wl_loaded_{selected_date}") or {}
+
+        if work_items:
+            for idx, nm in enumerate(_item_names):
+                item = work_items.get(nm, {})
+                for j, lk in enumerate(_load_keys):
+                    val = item.get(lk, 0)
+                    st.session_state[f"wl_{_shift_labels[j]}_{idx}"] = str(val) if val > 0 else ""
+            st.toast(f"📂 {selected_date.strftime('%Y-%m-%d')} 저장 데이터 자동 불러옴")
+
+        st.session_state["wl_current_date"] = str(selected_date)
+        st.rerun()
 
     # 새로 작성 버튼
     if st.session_state.get(f"wl_loaded_{selected_date}"):
@@ -1501,6 +1516,15 @@ def page_work_log():
                     safety_items_data, note_text, st.session_state.get("leave_list", [])
                 )
             st.session_state["_last_save_ts"] = _time.time()
+            # 저장 후 캐시 갱신 (날짜 이동 후 돌아와도 저장된 값 표시)
+            _saved_cache = {}
+            for _wi in work_items_data:
+                _saved_cache[_wi["name"]] = {
+                    "s1": _wi["s1"] or 0, "s2": _wi["s2"] or 0, "s3": _wi["s3"] or 0,
+                    "day": _wi["day"] or 0, "night": _wi["night"] or 0,
+                    "month_total": _wi.get("month_total", 0),
+                }
+            st.session_state[f"wl_loaded_{selected_date}"] = _saved_cache
             # 월누계 캐시 무효화 (저장 후 최신값 반영)
             st.session_state.pop(f"wl_monthly_totals_{selected_date}", None)
             with st.spinner(f"{selected_date.month}월 통합 Excel 생성 중..."):
