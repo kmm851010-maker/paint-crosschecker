@@ -331,7 +331,7 @@ def _shift_for_date_2s2(target_date, team):
 # ── 4조2교대 (4팀, 연속 교대, 8일 사이클: 주주→휴휴→야야→휴휴) ──
 _4S2_REF = datetime.date(2026, 7, 27)  # 기준일
 _4S2_CYCLE = ["주간", "주간", "휴무", "휴무", "야간", "야간", "휴무", "휴무"]
-_4S2_OFFSET = {"A": 1, "B": 3, "C": 5, "D": 7}  # A조 2026-08-31=야간 기준 검증완료
+_4S2_OFFSET = {"A": 1, "B": 5, "C": 3, "D": 7}  # A조 2026-08-31=야간, B조 2026-09-01=주간 검증완료
 
 
 def _shift_for_date_4s2(target_date, team):
@@ -1462,6 +1462,32 @@ def page_work_log():
             })
 
     st.markdown("</div>", unsafe_allow_html=True)
+
+    # -- 방향키 입력 셀 이동 (JavaScript) --
+    _n_items = len(item_names)
+    _n_cols = 2 if is_2person else 3
+    import streamlit.components.v1 as _components
+    _components.html(
+        "<script>(function(){var ROWS=" + str(_n_items) + ",COLS=" + str(_n_cols) + ";"
+        "function getInput(r,c){return window.parent.document.querySelector('input[aria-label=\"_'+r+'_'+c+'\"]');}"
+        "function setup(){for(var r=0;r<ROWS;r++){for(var c=0;c<COLS;c++){(function(row,col){"
+        "var el=getInput(row,col);if(!el||el._wl_bound)return;el._wl_bound=true;"
+        "el.addEventListener('keydown',function(e){"
+        "var nr=row,nc=col;"
+        "if(e.key==='ArrowRight')nc=Math.min(col+1,COLS-1);"
+        "else if(e.key==='ArrowLeft')nc=Math.max(col-1,0);"
+        "else if(e.key==='ArrowDown')nr=Math.min(row+1,ROWS-1);"
+        "else if(e.key==='ArrowUp')nr=Math.max(row-1,0);"
+        "else return;"
+        "if(nr!==row||nc!==col){e.preventDefault();var t=getInput(nr,nc);if(t){t.focus();t.select();}}"
+        "});}})(r,c);}}}"
+        "setTimeout(setup,800);"
+        "new MutationObserver(function(){setTimeout(setup,300);})"
+        ".observe(window.parent.document.body,{childList:true,subtree:true});"
+        "})();</script>",
+        height=0
+    )
+
     st.markdown("---")
     st.subheader("3. 안전 관리 사항")
     st.markdown('<div class="safety-section">', unsafe_allow_html=True)
@@ -2454,11 +2480,9 @@ def page_my_schedule():
     st.markdown(_legend_html, unsafe_allow_html=True)
 
     # ── 달력 CSS (Samsung Calendar 라이트 스타일) ──
+    # column 단위 색상 적용: 각 날짜는 st.columns(7)의 독립 column 안에 있음
     st.markdown("""<style>
-div[data-testid="stMarkdownContainer"]:has(.cmark) + div[data-testid="stButton"] {
-    margin-top: -6px !important;
-}
-div[data-testid="stMarkdownContainer"]:has(.cmark) + div[data-testid="stButton"] > button {
+div[data-testid="column"]:has(.cmark) button {
     min-height: 44px !important; max-height: 44px !important;
     font-size: 17px !important; font-weight: 800 !important;
     padding: 2px 3px !important; white-space: nowrap !important;
@@ -2466,46 +2490,47 @@ div[data-testid="stMarkdownContainer"]:has(.cmark) + div[data-testid="stButton"]
     border-top: none !important;
     width: 100% !important;
     transition: filter 0.1s !important;
+    margin-top: -6px !important;
 }
-div[data-testid="stMarkdownContainer"]:has(.cmark) + div[data-testid="stButton"] > button:hover {
+div[data-testid="column"]:has(.cmark) button:hover {
     filter: brightness(0.92) !important;
 }
-div[data-testid="stMarkdownContainer"]:has(.cs-day) + div[data-testid="stButton"] > button {
+div[data-testid="column"]:has(.cs-day) button {
     background: #FFC107 !important; color: #3D2A00 !important;
     border: 1.5px solid #FFB300 !important;
 }
-div[data-testid="stMarkdownContainer"]:has(.cs-night) + div[data-testid="stButton"] > button {
+div[data-testid="column"]:has(.cs-night) button {
     background: #1a1a1a !important; color: #ffffff !important;
     border: 1.5px solid #000000 !important;
 }
-div[data-testid="stMarkdownContainer"]:has(.cs-off) + div[data-testid="stButton"] > button {
+div[data-testid="column"]:has(.cs-off) button {
     background: #ffffff !important; color: #EF4444 !important;
     border: 1.5px solid #E5E7EB !important;
 }
-div[data-testid="stMarkdownContainer"]:has(.cs1) + div[data-testid="stButton"] > button {
+div[data-testid="column"]:has(.cs1) button {
     background: #EFF6FF !important; color: #1D4ED8 !important;
     border: 1.5px solid #BFDBFE !important;
 }
-div[data-testid="stMarkdownContainer"]:has(.cs2) + div[data-testid="stButton"] > button {
+div[data-testid="column"]:has(.cs2) button {
     background: #F0FDF4 !important; color: #15803D !important;
     border: 1.5px solid #BBF7D0 !important;
 }
-div[data-testid="stMarkdownContainer"]:has(.cs3) + div[data-testid="stButton"] > button {
+div[data-testid="column"]:has(.cs3) button {
     background: #FEF2F2 !important; color: #B91C1C !important;
     border: 1.5px solid #FECACA !important;
 }
-div[data-testid="stMarkdownContainer"]:has(.cs-leave) + div[data-testid="stButton"] > button {
+div[data-testid="column"]:has(.cs-leave) button {
     background: #FFFBEB !important; color: #92400E !important;
     border: 1.5px solid #FDE68A !important;
 }
-div[data-testid="stMarkdownContainer"]:has(.cs-sub) + div[data-testid="stButton"] > button {
+div[data-testid="column"]:has(.cs-sub) button {
     background: #F5F3FF !important; color: #6D28D9 !important;
     border: 1.5px solid #DDD6FE !important;
 }
-div[data-testid="stMarkdownContainer"]:has(.csel) + div[data-testid="stButton"] > button {
+div[data-testid="column"]:has(.csel) button {
     box-shadow: inset 0 0 0 2.5px #3B82F6 !important;
 }
-div[data-testid="stMarkdownContainer"]:has(.ctoday) + div[data-testid="stButton"] > button {
+div[data-testid="column"]:has(.ctoday) button {
     box-shadow: inset 0 0 0 2.5px #3B82F6 !important;
 }
 </style>""", unsafe_allow_html=True)
@@ -2584,18 +2609,34 @@ div[data-testid="stMarkdownContainer"]:has(.ctoday) + div[data-testid="stButton"
                                     f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
                                     f'line-height:1.2;margin-top:1px;">{holiday}</div>')
 
+                    _BADGE = {
+                        "cs-day":   ("#FFC107","#3D2A00","#FFB300"),
+                        "cs-night": ("#1a1a1a","#ffffff","#000000"),
+                        "cs-off":   ("#f5f5f5","#EF4444","#E5E7EB"),
+                        "cs1":      ("#EFF6FF","#1D4ED8","#BFDBFE"),
+                        "cs2":      ("#F0FDF4","#15803D","#BBF7D0"),
+                        "cs3":      ("#FEF2F2","#B91C1C","#FECACA"),
+                        "cs-leave": ("#FFFBEB","#92400E","#FDE68A"),
+                        "cs-sub":   ("#F5F3FF","#6D28D9","#DDD6FE"),
+                    }
+                    _bbg, _bfg, _bbr = _BADGE.get(mcls, ("#f0f0f0","#666","#ccc"))
+                    badge_html = (
+                        f'<div style="margin-top:5px;background:{_bbg};color:{_bfg};'
+                        f'border:1.5px solid {_bbr};border-radius:6px;'
+                        f'padding:3px 4px;font-size:16px;font-weight:800;'
+                        f'text-align:center;line-height:1.3;">{btn_txt}</div>'
+                    )
                     ring = "2px solid #3B82F6" if (is_sel or is_today) else "1.5px solid #E5E7EB"
                     st.markdown(
                         f'<div class="{marker_cls}" style="background:#ffffff;border:{ring};'
-                        f'border-bottom:none;border-radius:10px 10px 0 0;padding:4px 5px 2px;min-height:46px;">'
-                        f'{num_html}{hol_html}</div>',
+                        f'border-bottom:none;border-radius:10px 10px 0 0;padding:4px 5px 4px;min-height:72px;">'
+                        f'{num_html}{hol_html}{badge_html}</div>',
                         unsafe_allow_html=True
                     )
 
-                    if st.button(btn_txt, key=f"cd_{selected_year}_{selected_month}_{dn}", use_container_width=True):
+                    if st.button("", key=f"cd_{selected_year}_{selected_month}_{dn}", use_container_width=True):
                         st.session_state[_skey] = dn
                         st.rerun()
-
     # ── 월간 요약 ──
     if shift_type == "4조2교대":
         counts = {"주간": 0, "야간": 0, "휴무": 0}
