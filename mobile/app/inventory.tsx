@@ -103,6 +103,7 @@ function filterAndProceed(
   drums: DrumItem[],
   setBatch: (fn: (prev: DrumItem[]) => DrumItem[]) => void,
   onProceed: () => void,
+  alertActiveRef: React.MutableRefObject<boolean>,
 ) {
   const invalid = drums.filter(d => !LOT_VALID.test(d.lot) || !ITEM_VALID.test(d.product));
   const valid   = drums.filter(d =>  LOT_VALID.test(d.lot) &&  ITEM_VALID.test(d.product));
@@ -118,15 +119,16 @@ function filterAndProceed(
 
   setBatch(() => valid);
 
+  alertActiveRef.current = true;
   Alert.alert(
     "⚠️ 등록 거부 — 형식 불일치",
     `아래 ${invalid.length}건은 형식이 맞지 않아 등록이 거부됐습니다. 다시 스캔해 주세요.\n\n${lines}`,
     valid.length > 0
       ? [
-          { text: "다시 스캔", style: "cancel" },
-          { text: `${valid.length}건 저장 진행`, onPress: onProceed },
+          { text: "다시 스캔", style: "cancel", onPress: () => { alertActiveRef.current = false; } },
+          { text: `${valid.length}건 저장 진행`, onPress: () => { alertActiveRef.current = false; onProceed(); } },
         ]
-      : [{ text: "확인", style: "cancel" }]
+      : [{ text: "확인", style: "cancel", onPress: () => { alertActiveRef.current = false; } }]
   );
 }
 
@@ -188,12 +190,23 @@ export default function InventoryScreen() {
   const flashAnim = useRef(new Animated.Value(0)).current;
   const torchModeRef = useRef<"off" | "auto" | "on">("off");
   const editingRef = useRef(false); // 편집 모달 열림 여부 (runOcr 내 클로저용)
+  const alertActiveRef = useRef(false); // Alert 팝업 표시 중 여부 (runOcr 내 클로저용)
 
   // torchModeRef를 torchMode와 동기화
   useEffect(() => { torchModeRef.current = torchMode; }, [torchMode]);
 
   // editingRef를 editingItem과 동기화 (편집 중 OCR 일시 중단)
   useEffect(() => { editingRef.current = editingItem !== null; }, [editingItem]);
+
+  // Alert 팝업 래퍼 — 팝업 열리면 스캔 중단, 닫히면 재개
+  const _alert = (title: string, msg: string, buttons?: { text: string; style?: string; onPress?: () => void }[]) => {
+    alertActiveRef.current = true;
+    const wrappedButtons = (buttons ?? [{ text: "확인" }]).map(b => ({
+      ...b,
+      onPress: () => { alertActiveRef.current = false; b.onPress?.(); },
+    }));
+    Alert.alert(title, msg, wrappedButtons as any);
+  };
 
   // 오토 모드: LightSensor (Android) 조도 구독
   useEffect(() => {
@@ -265,19 +278,21 @@ export default function InventoryScreen() {
     ]).start();
   };
 
-  const _setScanError = (result: { type: "noLot" | "noProduct" | "duplicate" | "error"; detail: string } | null) => {
+  const _setScanError = (result: { type: "noLot" | "noProduct" | "duplicate" | "error"; detail: string; log?: boolean } | null) => {
     if (lastScanResultTimerRef.current) clearTimeout(lastScanResultTimerRef.current);
     setLastScanResult(result);
-    if (result) {
+    if (result && result.log !== false) {
       const now = new Date(Date.now() + 9 * 3600000);
       const time = now.toISOString().slice(11, 19);
       setScanLog(prev => [{ type: result.type, detail: result.detail, time }, ...prev].slice(0, 50));
+      lastScanResultTimerRef.current = setTimeout(() => setLastScanResult(null), 3500);
+    } else if (result) {
       lastScanResultTimerRef.current = setTimeout(() => setLastScanResult(null), 3500);
     }
   };
 
   const runOcr = async () => {
-    if (cooldownRef.current || processingRef.current || !cameraRef.current || !scanActiveRef.current || editingRef.current) return;
+    if (cooldownRef.current || processingRef.current || !cameraRef.current || !scanActiveRef.current || editingRef.current || alertActiveRef.current) return;
     processingRef.current = true;
     let uri: string | undefined;
     try {
@@ -302,7 +317,7 @@ export default function InventoryScreen() {
       const parsed = parseOcrBlocks(result.blocks ?? []);
 
       if (!parsed.lotFound && !parsed.productFound) {
-        _setScanError({ type: "noLot", detail: "LOT · 품명 모두 미인식 — 라벨을 선명하게 비춰주세요" });
+        _setScanError({ type: "noLot", detail: "LOT · 품명 모두 미인식 — 라벨을 선명하게 비춰주세요", log: false });
       } else if (!parsed.lotFound) {
         _setScanError({ type: "noLot", detail: `라벨을 선명하게 비춰주세요 — LOT 인식 안됨` });
       } else if (!parsed.productFound) {
@@ -351,12 +366,12 @@ export default function InventoryScreen() {
       const count = batch.length;
       setBatch([]);
       setIngoScanDisabled(false);
-      Alert.alert(
+      _alert(
         "저장 완료",
         sector === CHECKOUT ? `${count}드럼 라인입고 처리 완료` : `${count}드럼 → ${sector} 등록 완료\n계속 스캔할 수 있습니다.`
       );
     } catch (e: any) {
-      Alert.alert("저장 실패", e.message);
+      _alert("저장 실패", e.message);
     } finally {
       setLoading(false);
     }
@@ -370,7 +385,7 @@ export default function InventoryScreen() {
       setSectorData(data);
       setMode("status");
     } catch (e: any) {
-      Alert.alert("조회 실패", e.message);
+      _alert("조회 실패", e.message);
     } finally {
       setLoading(false);
     }
@@ -527,8 +542,8 @@ export default function InventoryScreen() {
                     onPress={() => setEditingItem({ index: realIndex, lot: item.lot, product: item.product })}
                   >
                     <Text style={[styles.scanListNum, isLatest && { fontSize: 16, color: "#4AFF91" }]}>{batch.length - index}</Text>
-                    <Text style={isLatest ? styles.scanListProductLatest : styles.scanListProduct}>{item.product || "-"}</Text>
-                    <Text style={isLatest ? styles.scanListLotLatest : styles.scanListLot}>{item.lot}</Text>
+                    <Text numberOfLines={1} style={isLatest ? styles.scanListProductLatest : styles.scanListProduct}>{item.product || "-"}</Text>
+                    <Text numberOfLines={1} style={isLatest ? styles.scanListLotLatest : styles.scanListLot}>{item.lot}</Text>
                     <TouchableOpacity onPress={() => setBatch(prev => prev.filter(d => d.lot !== item.lot))}>
                       <Text style={[styles.scanListDelete, isLatest && { fontSize: 22 }]}>✕</Text>
                     </TouchableOpacity>
@@ -540,7 +555,7 @@ export default function InventoryScreen() {
         </View>
 
         {/* 하단 10%: 버튼 바 */}
-        <View style={styles.scanBottomBar}>
+        <View style={[styles.scanBottomBar, { paddingBottom: 8 + insets.bottom }]}>
           <TouchableOpacity onPress={() => setShowScanLog(true)}>
             <Text style={styles.scanListCount}>총 {batch.length}건{scanLog.length > 0 ? ` · 로그 ${scanLog.length}` : ""}</Text>
           </TouchableOpacity>
@@ -572,7 +587,7 @@ export default function InventoryScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.doneSmallBtn, batch.length === 0 && styles.btnDisabled]}
-              onPress={() => { if (batch.length > 0) filterAndProceed(batch, setBatch, () => setMode("sectorPick")); }}
+              onPress={() => { if (batch.length > 0) filterAndProceed(batch, setBatch, () => setMode("sectorPick"), alertActiveRef); }}
               disabled={batch.length === 0}
             >
               <Text style={styles.doneSmallBtnText}>완료 ({batch.length})</Text>
@@ -1182,7 +1197,7 @@ export default function InventoryScreen() {
         </TouchableOpacity>
 
         {batch.length > 0 && (
-          <TouchableOpacity style={[styles.btn, styles.registerBtn]} onPress={() => filterAndProceed(batch, setBatch, () => setMode("sectorPick"))} disabled={loading}>
+          <TouchableOpacity style={[styles.btn, styles.registerBtn]} onPress={() => filterAndProceed(batch, setBatch, () => setMode("sectorPick"), alertActiveRef)} disabled={loading}>
             <Text style={styles.btnText}>섹터 선택 → 저장</Text>
           </TouchableOpacity>
         )}
@@ -1206,7 +1221,7 @@ const styles = StyleSheet.create({
   scanListCount: { color: "#fff", fontSize: 12, fontWeight: "700" },
   scanBottomBar: {
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    backgroundColor: "#0d0d0d", paddingHorizontal: 10, paddingVertical: 8,
+    backgroundColor: "#0d0d0d", paddingHorizontal: 10, paddingTop: 8,
     borderTopWidth: 1, borderTopColor: "#333", flex: 1,
   },
   doneSmallBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
@@ -1215,7 +1230,7 @@ const styles = StyleSheet.create({
   scanListItem: {
     flexDirection: "row", alignItems: "center",
     paddingHorizontal: 12, paddingVertical: 8,
-    borderBottomWidth: 1, borderBottomColor: "#2a2a2a", gap: 8,
+    borderBottomWidth: 1, borderBottomColor: "#2a2a2a", gap: 6,
   },
   scanListItemLatest: {
     backgroundColor: "#0d2b1a", paddingVertical: 12,
@@ -1223,7 +1238,7 @@ const styles = StyleSheet.create({
   },
   scanListNum: { width: 22, color: "#888", fontSize: 12, textAlign: "center" },
   scanListProduct: { flex: 1.2, color: "#4AFF91", fontSize: 13, fontWeight: "700" },
-  scanListProductLatest: { flex: 1.2, color: "#4AFF91", fontSize: 30, fontWeight: "800" },
+  scanListProductLatest: { flex: 1, color: "#4AFF91", fontSize: 27, fontWeight: "800" },
   scanListLot: { flex: 1.5, color: "#ccc", fontSize: 12 },
   scanListLotLatest: { flex: 1.5, color: "#fff", fontSize: 22, fontWeight: "700" },
   scanListDelete: { color: "#ff5555", fontSize: 16, paddingHorizontal: 4 },
