@@ -190,6 +190,7 @@ export default function InventoryScreen() {
   const torchModeRef = useRef<"off" | "auto" | "on">("off");
   const editingRef = useRef(false); // 편집 모달 열림 여부 (runOcr 내 클로저용)
   const alertActiveRef = useRef(false); // Alert 팝업 표시 중 여부 (runOcr 내 클로저용)
+  const localApprovedRef = useRef<Set<string>>(new Set()); // 세션 내 사용자 승인 신규 품목
 
   // torchModeRef를 torchMode와 동기화
   useEffect(() => { torchModeRef.current = torchMode; }, [torchMode]);
@@ -339,6 +340,37 @@ export default function InventoryScreen() {
       } else if (Object.entries(sectorDataRef.current).find(([, drums]) => (drums as any[]).some(d => d.lot === parsed.lot))) {
         const sector = (Object.entries(sectorDataRef.current).find(([, drums]) => (drums as any[]).some(d => d.lot === parsed.lot)) ?? ["미확인"])[0];
         _setScanError({ type: "duplicate", detail: `이미 위치가 저장된 제품입니다 — ${sector}: ${parsed.lot}` });
+      } else if (!APPROVED_PRODUCTS.has(parsed.product) && !localApprovedRef.current.has(parsed.product)) {
+        // 미등록 품목 — 사용자 확인 후 저장
+        _setScanError(null);
+        cooldownRef.current = true;
+        alertActiveRef.current = true;
+        const drumItem: DrumItem = { lot: parsed.lot, product: parsed.product, maker: parsed.maker };
+        Alert.alert(
+          "미등록 품목",
+          `"${parsed.product}" 은(는) 승인 목록에 없는 품목입니다.\n신규 제품이거나 잘못 인식된 제품일 수 있습니다.\n\n신규 제품으로 저장하시겠습니까?`,
+          [
+            {
+              text: "취소",
+              style: "cancel",
+              onPress: () => {
+                alertActiveRef.current = false;
+                cooldownRef.current = false;
+              },
+            },
+            {
+              text: "저장",
+              onPress: () => {
+                localApprovedRef.current.add(parsed.product);
+                setBatch(prev => [...prev, drumItem]);
+                triggerFeedback();
+                alertActiveRef.current = false;
+                cooldownRef.current = true;
+                setTimeout(() => { cooldownRef.current = false; }, 1500);
+              },
+            },
+          ]
+        );
       } else {
         _setScanError(null);
         triggerFeedback();
@@ -346,10 +378,6 @@ export default function InventoryScreen() {
         setTimeout(() => { cooldownRef.current = false; }, 1500);
         const drumItem: DrumItem = { lot: parsed.lot, product: parsed.product, maker: parsed.maker };
         setBatch(prev => [...prev, drumItem]);
-        // 미승인 품목 경고 — 배너로 표시 (스캔 흐름 차단 없음)
-        if (!APPROVED_PRODUCTS.has(parsed.product)) {
-          _setScanError({ type: "error", detail: `⚠️ 미등록 품목: ${parsed.product} — 신규품목이거나 오인식. 확인 후 등록 바랍니다.` });
-        }
       }
     } catch (e: any) {
       _setScanError({ type: "error", detail: `카메라/OCR 오류: ${e?.message ?? "알 수 없는 오류"}` });
