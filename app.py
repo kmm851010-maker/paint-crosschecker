@@ -700,35 +700,33 @@ def page_cross_check():
                     st.caption("신규 옆 입고 칸에 ERP 실입고 수량이 자동 기입된 양식입니다. 🟥 미입고 · 🟩 일치 · 🟡 초과 · 🟠 일부입고")
                     _filled = st.session_state["cc_filled_df"]
 
-                    # HTML 테이블로 색상 표시 (Streamlit 내장 CSV 다운로드 툴바 없음)
-                    _cols = list(_filled.columns)
-                    _color_map = {}  # 입고 컬럼명 → 해당 신규 컬럼명
-                    for _ci, _ch in enumerate(_cols):
-                        if "신규" in str(_ch) and _ci + 1 < len(_cols) and "입고" in str(_cols[_ci + 1]):
-                            _color_map[_cols[_ci + 1]] = _ch
-                    _th_s = "background:#2F3542;color:#fff;padding:6px 8px;border:1px solid #ccc;white-space:nowrap;text-align:center;"
-                    _td_s = "padding:4px 8px;border:1px solid #ccc;text-align:center;"
-                    _hp = ['<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">']
-                    _hp.append("<thead><tr>" + "".join(f'<th style="{_th_s}">{_ch}</th>' for _ch in _cols) + "</tr></thead><tbody>")
-                    for _ri in _filled.index:
-                        _hp.append("<tr>")
-                        for _cc in _cols:
-                            _val = _filled.at[_ri, _cc]
-                            _bg = ""
-                            if _cc in _color_map:
-                                try: _nv = int(str(_filled.at[_ri, _color_map[_cc]]).strip() or "0")
-                                except: _nv = 0
-                                try: _iv = int(str(_val).strip() or "0")
-                                except: _iv = 0
-                                if _nv > 0:
-                                    if _iv == 0:   _bg = "background-color:#FF9999;"
-                                    elif _iv == _nv: _bg = "background-color:#C6EFCE;"
-                                    elif _iv > _nv:  _bg = "background-color:#FFEB9C;"
-                                    else:            _bg = "background-color:#FFDAB9;"
-                            _hp.append(f'<td style="{_td_s}{_bg}">{_val}</td>')
-                        _hp.append("</tr>")
-                    _hp.append("</tbody></table></div>")
-                    st.markdown("".join(_hp), unsafe_allow_html=True)
+                    def _style_filled(df):
+                        styles = pd.DataFrame("", index=df.index, columns=df.columns)
+                        _cols = list(df.columns)
+                        for _i, _h in enumerate(_cols):
+                            if "신규" in str(_h) and _i + 1 < len(_cols) and "입고" in str(_cols[_i + 1]):
+                                _inc = _cols[_i + 1]
+                                for _idx in df.index:
+                                    try:
+                                        _new_n = int(str(df.at[_idx, _h]).strip()) if str(df.at[_idx, _h]).strip() else 0
+                                    except (ValueError, TypeError):
+                                        _new_n = 0
+                                    try:
+                                        _inc_n = int(str(df.at[_idx, _inc]).strip()) if str(df.at[_idx, _inc]).strip() else 0
+                                    except (ValueError, TypeError):
+                                        _inc_n = 0
+                                    if _new_n > 0:
+                                        if _inc_n == 0:
+                                            styles.at[_idx, _inc] = "background-color: #FF9999"
+                                        elif _inc_n == _new_n:
+                                            styles.at[_idx, _inc] = "background-color: #C6EFCE"
+                                        elif _inc_n > _new_n:
+                                            styles.at[_idx, _inc] = "background-color: #FFEB9C"
+                                        else:
+                                            styles.at[_idx, _inc] = "background-color: #FFDAB9"
+                        return styles
+
+                    st.dataframe(_filled.style.apply(_style_filled, axis=None), use_container_width=True, hide_index=True)
                     from modules.excel_converter import convert_erp_filled_to_excel
                     _erp_excel = convert_erp_filled_to_excel(_filled)
                     st.download_button(
@@ -881,7 +879,7 @@ def page_image_to_excel():
                 else:
                     padded_rows.append(list(r[:len(unique_headers)]))
             result_df = pd.DataFrame(padded_rows, columns=unique_headers)
-            st.table(result_df.reset_index(drop=True))
+            st.dataframe(result_df, use_container_width=True, hide_index=True)
 
         st.info(f"총 {len(rows)}개 행, {len(headers)}개 컬럼 추출 완료")
 
@@ -3918,7 +3916,7 @@ def page_inventory_return():
                 st.warning(f"⚠️ 아래 **{len(unmatched)}건**은 일반 재고에 없어 제외됩니다.")
                 df_um = _pdum.DataFrame(unmatched)[["product", "lot_no", "return_type"]]
                 df_um.columns = ["품명", "LOT-NO", "반품유형"]
-                st.table(df_um.reset_index(drop=True))
+                st.dataframe(df_um, use_container_width=True, hide_index=True)
 
     st.markdown("---")
 
