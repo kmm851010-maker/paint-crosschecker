@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LightSensor } from "expo-sensors";
 
 import { COLORS, API_BASE_URL } from "../src/constants/config";
+import { VolumeManager } from "react-native-volume-manager";
 import { APPROVED_PRODUCTS } from "../src/constants/approvedProducts";
 import { registerDrums, getSectorInventory, setDrumReturnStatus, type DrumItem } from "../src/services/api";
 
@@ -117,18 +118,16 @@ function filterAndProceed(
     return `• ${reasons.join(", ")}`;
   }).join("\n");
 
-  setBatch(() => valid);
-
   alertActiveRef.current = true;
   Alert.alert(
     "⚠️ 등록 거부 — 형식 불일치",
-    `아래 ${invalid.length}건은 형식이 맞지 않아 등록이 거부됐습니다. 다시 스캔해 주세요.\n\n${lines}`,
+    `아래 ${invalid.length}건은 형식이 맞지 않습니다. 항목을 탭해서 수정하거나 삭제 후 다시 시도하세요.\n\n${lines}`,
     valid.length > 0
       ? [
-          { text: "다시 스캔", style: "cancel", onPress: () => { alertActiveRef.current = false; } },
-          { text: `${valid.length}건 저장 진행`, onPress: () => { alertActiveRef.current = false; onProceed(); } },
+          { text: "수정하기", style: "cancel", onPress: () => { alertActiveRef.current = false; } },
+          { text: `${valid.length}건만 저장`, onPress: () => { alertActiveRef.current = false; setBatch(() => valid); onProceed(); } },
         ]
-      : [{ text: "확인", style: "cancel", onPress: () => { alertActiveRef.current = false; } }]
+      : [{ text: "수정하기", style: "cancel", onPress: () => { alertActiveRef.current = false; } }]
   );
 }
 
@@ -197,6 +196,19 @@ export default function InventoryScreen() {
 
   // editingRef를 editingItem과 동기화 (편집 중 OCR 일시 중단)
   useEffect(() => { editingRef.current = editingItem !== null; }, [editingItem]);
+
+  // 수동 모드에서 볼륨 키 → OCR 트리거 (Android)
+  const runOcrRef = useRef<() => void>(() => {});
+  useEffect(() => { runOcrRef.current = runOcr; });
+  useEffect(() => {
+    if (!scanManual || mode !== "scanning") return;
+    VolumeManager.showNativeVolumeUI({ enabled: false });
+    const sub = VolumeManager.addVolumeListener(() => { runOcrRef.current(); });
+    return () => {
+      sub.remove();
+      VolumeManager.showNativeVolumeUI({ enabled: true });
+    };
+  }, [scanManual, mode]);
 
   // Alert 팝업 래퍼 — 팝업 열리면 스캔 중단, 닫히면 재개
   const _alert = (title: string, msg: string, buttons?: { text: string; style?: string; onPress?: () => void }[]) => {
@@ -769,7 +781,12 @@ export default function InventoryScreen() {
                   <TextInput
                     style={{ backgroundColor: "#374151", color: "#fff", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 7, fontSize: 14 }}
                     value={date}
-                    onChangeText={setDate}
+                    onChangeText={v => {
+                      const d = v.replace(/\D/g, "").slice(0, 8);
+                      if (d.length <= 4) setDate(d);
+                      else if (d.length <= 6) setDate(`${d.slice(0,4)}-${d.slice(4)}`);
+                      else setDate(`${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6)}`);
+                    }}
                     placeholder="YYYY-MM-DD"
                     placeholderTextColor="#6B7280"
                     keyboardType="numeric"
