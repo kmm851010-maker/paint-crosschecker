@@ -806,7 +806,6 @@ def page_cross_check():
                     data=excel_bytes,
                     file_name="paint_verification_report.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    type="primary",
                     use_container_width=True,
                 )
             else:
