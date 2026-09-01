@@ -2822,7 +2822,6 @@ div[data-testid="column"]:has(.ctoday) button {
 
     # ── 월별 메모 일괄 로드 (달력 셀 표시용, 4조3교대만) ──
     _month_notes = {}
-    _notes_load_err = ""
     if shift_type == "4조3교대":
         _mn_key = f"sched_month_notes_{selected_name}_{selected_year}_{selected_month}"
         if _mn_key not in st.session_state:
@@ -2831,17 +2830,9 @@ div[data-testid="column"]:has(.ctoday) button {
                 if not hasattr(_sh, "load_schedule_notes_month"):
                     importlib.reload(_sh)
                 st.session_state[_mn_key] = _sh.load_schedule_notes_month(selected_name, selected_year, selected_month)
-            except Exception as _ne:
-                _notes_load_err = str(_ne)
-                # 실패 시 캐시하지 않음 (다음 렌더에서 재시도)
+            except Exception:
+                pass  # 실패 시 캐시하지 않음 (다음 렌더에서 재시도)
         _month_notes = st.session_state.get(_mn_key, {})
-
-    # ── 디버그: 메모 로드 결과 (문제 파악 후 삭제) ──
-    with st.expander("🔍 메모 디버그 (임시)", expanded=False):
-        st.write(f"이름: `{selected_name}`, 연월: `{selected_year}-{selected_month:02d}`")
-        st.write(f"캐시키: `sched_month_notes_{selected_name}_{selected_year}_{selected_month}`")
-        st.write(f"로드 오류: `{_notes_load_err or '없음'}`")
-        st.write(f"_month_notes: {_month_notes}")
 
     # ── 요일 헤더 ──
     WD_LABELS = ["일", "월", "화", "수", "목", "금", "토"]
