@@ -640,6 +640,38 @@ def page_cross_check():
                             if is_valid_item_code(corrected) and corrected in erp_qty_map:
                                 qty = erp_qty_map[corrected]
                                 filled_df.at[row_idx, inc_col] = str(qty) if qty > 0 else ""
+
+                    # 동일 색상코드 중복 처리: 신규 합산 → 최상단 행에만, 입고도 최상단 행에만
+                    for _ni in 신규_col_indices:
+                        if _ni + 1 >= len(exp_headers):
+                            continue
+                        _inc_col = exp_headers[_ni + 1]
+                        if "입고" not in str(_inc_col):
+                            continue
+                        _신규_col = exp_headers[_ni]
+                        _code_col_idx = _ni - 3
+                        if _code_col_idx < 0:
+                            continue
+                        _code_col = exp_headers[_code_col_idx]
+                        _first_seen = {}  # corrected_code → first row_idx
+                        for _ridx, _rvals in filled_df.iterrows():
+                            _raw = str(_rvals[_code_col]).strip()
+                            _corr = auto_correct_code(_raw)
+                            if not is_valid_item_code(_corr):
+                                continue
+                            if _corr not in _first_seen:
+                                _first_seen[_corr] = _ridx
+                            else:
+                                _fidx = _first_seen[_corr]
+                                try: _fn = int(str(filled_df.at[_fidx, _신규_col]).strip() or "0")
+                                except: _fn = 0
+                                try: _dn = int(str(filled_df.at[_ridx, _신규_col]).strip() or "0")
+                                except: _dn = 0
+                                if _dn > 0:
+                                    filled_df.at[_fidx, _신규_col] = str(_fn + _dn)
+                                    filled_df.at[_ridx, _신규_col] = ""
+                                filled_df.at[_ridx, _inc_col] = ""
+
                     st.session_state["cc_filled_df"] = filled_df
 
     # ── 오른쪽: ERP 입고명세서 ──
