@@ -2911,10 +2911,11 @@ div[data-testid="column"]:has(.ctoday) button {
                     note_html = ""
                     if _cell_note:
                         note_html = (
-                            f'<div style="font-size:9px;color:#6B7280;margin-top:2px;'
+                            f'<div style="font-size:10px;color:#374151;margin-top:2px;'
                             f'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
-                            f'line-height:1.3;font-weight:500;" title="{_cell_note}">'
-                            f'{_cell_note}</div>'
+                            f'line-height:1.3;font-weight:600;background:#FEF9C3;'
+                            f'border-radius:3px;padding:1px 3px;" title="{_cell_note}">'
+                            f'📝{_cell_note}</div>'
                         )
 
                     # 대근 상세 표시 (날짜 아래 소형 텍스트)
@@ -2928,10 +2929,10 @@ div[data-testid="column"]:has(.ctoday) button {
                         )
 
                     ring = "2px solid #3B82F6" if (is_sel or is_today) else "1.5px solid #E5E7EB"
-                    # 배지를 별도 div 없이, 버튼 자체에 텍스트로 표시
+                    _cell_mh = "58px" if (_cell_note or info["sub_for"]) else "44px"
                     st.markdown(
                         f'<div class="{marker_cls}" style="background:#ffffff;border:{ring};'
-                        f'border-bottom:none;border-radius:10px 10px 0 0;padding:4px 5px 2px;min-height:44px;">'
+                        f'border-bottom:none;border-radius:10px 10px 0 0;padding:4px 5px 2px;min-height:{_cell_mh};">'
                         f'{num_html}{hol_html}{sub_html}{note_html}</div>',
                         unsafe_allow_html=True
                     )
