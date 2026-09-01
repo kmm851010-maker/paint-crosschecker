@@ -2559,10 +2559,29 @@ def page_my_schedule():
 
     today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
 
-    shift_type = st.selectbox(
-        "근무 형태", ["4조3교대", "3조3교대", "2조2교대", "4조2교대"],
-        key="sched_shift_type",
-    )
+    st.markdown("""<style>
+/* 근무표 셀렉트박스 글자 크기·색상 강화 */
+section[data-testid="stMain"] .sched-selects label {
+    font-size: 14px !important; font-weight: 700 !important; color: #CDD6F4 !important;
+}
+section[data-testid="stMain"] .sched-selects div[data-baseweb="select"] {
+    border-radius: 10px !important;
+}
+section[data-testid="stMain"] .sched-selects div[data-baseweb="select"] > div {
+    background: #1E1E2E !important; border: 1.5px solid #45475A !important;
+    border-radius: 10px !important; min-height: 48px !important;
+}
+section[data-testid="stMain"] .sched-selects span {
+    font-size: 16px !important; font-weight: 700 !important; color: #CDD6F4 !important;
+}
+</style><div class="sched-selects">""", unsafe_allow_html=True)
+
+    _sc1, _sc2, _sc3, _sc4 = st.columns([2, 2, 1, 1])
+    with _sc1:
+        shift_type = st.selectbox(
+            "근무 형태", ["4조3교대", "3조3교대", "2조2교대", "4조2교대"],
+            key="sched_shift_type",
+        )
 
     _SHIFT_TEAMS = {
         "4조3교대": ALL_MEMBERS,
@@ -2573,13 +2592,14 @@ def page_my_schedule():
     _team_label = "이름" if shift_type == "4조3교대" else "조"
     _team_code = ""  # non-4조3교대용 팀 코드 (A/B/C/D)
 
-    col_name, col_yr, col_mo = st.columns([2, 1, 1])
-    with col_name:
+    with _sc2:
         selected_name = st.selectbox(_team_label, _SHIFT_TEAMS[shift_type], key="sched_name")
-    with col_yr:
+    with _sc3:
         selected_year = st.selectbox("년도", list(range(2020, today.year + 6)), index=list(range(2020, today.year + 6)).index(today.year), key="sched_yr")
-    with col_mo:
+    with _sc4:
         selected_month = st.selectbox("월", list(range(1, 13)), index=today.month - 1, key="sched_mo")
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if shift_type != "4조3교대":
         _team_code = selected_name[0]  # "A조" → "A"
@@ -2784,6 +2804,18 @@ div[data-testid="column"]:has(.ctoday) button {
 }
 </style>""", unsafe_allow_html=True)
 
+    # ── 월별 메모 일괄 로드 (달력 셀 표시용, 4조3교대만) ──
+    _month_notes = {}
+    if shift_type == "4조3교대":
+        _mn_key = f"sched_month_notes_{selected_name}_{selected_year}_{selected_month}"
+        if _mn_key not in st.session_state:
+            try:
+                from utils.sheets import load_schedule_notes_month as _load_notes_month
+                st.session_state[_mn_key] = _load_notes_month(selected_name, selected_year, selected_month)
+            except Exception:
+                st.session_state[_mn_key] = {}
+        _month_notes = st.session_state.get(_mn_key, {})
+
     # ── 요일 헤더 ──
     WD_LABELS = ["일", "월", "화", "수", "목", "금", "토"]
     WD_COLORS = ["#EF4444", "#374151", "#374151", "#374151", "#374151", "#374151", "#3B82F6"]
@@ -2875,11 +2907,32 @@ div[data-testid="column"]:has(.ctoday) button {
                         f'padding:3px 4px;font-size:16px;font-weight:800;'
                         f'text-align:center;line-height:1.3;">{btn_txt}</div>'
                     )
+                    # 비고 메모 표시
+                    _cell_note = _month_notes.get(d.strftime("%Y-%m-%d"), "")
+                    note_html = ""
+                    if _cell_note:
+                        note_html = (
+                            f'<div style="font-size:9px;color:#6B7280;margin-top:2px;'
+                            f'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
+                            f'line-height:1.3;font-weight:500;" title="{_cell_note}">'
+                            f'{_cell_note}</div>'
+                        )
+
+                    # 대근 상세 표시 (달력 셀 배지 아래)
+                    sub_html = ""
+                    if info["sub_for"]:
+                        sub_html = (
+                            f'<div style="font-size:9px;color:#7C3AED;margin-top:2px;'
+                            f'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
+                            f'line-height:1.2;font-weight:600;">'
+                            f'↺{info["sub_for"]} 휴가</div>'
+                        )
+
                     ring = "2px solid #3B82F6" if (is_sel or is_today) else "1.5px solid #E5E7EB"
                     st.markdown(
                         f'<div class="{marker_cls}" style="background:#ffffff;border:{ring};'
                         f'border-bottom:none;border-radius:10px 10px 0 0;padding:4px 5px 4px;min-height:72px;">'
-                        f'{num_html}{hol_html}{badge_html}</div>',
+                        f'{num_html}{hol_html}{badge_html}{sub_html}{note_html}</div>',
                         unsafe_allow_html=True
                     )
 
@@ -3063,6 +3116,9 @@ div[data-testid="column"]:has(.ctoday) button {
         try:
             _save_note(selected_name, sel_date, val)
             st.session_state[_note_key] = val
+            # 달력 셀 표시용 월별 캐시 무효화
+            _mn_key2 = f"sched_month_notes_{selected_name}_{selected_year}_{selected_month}"
+            st.session_state.pop(_mn_key2, None)
         except Exception as e:
             st.error(f"저장 실패: {e}")
 

@@ -330,6 +330,21 @@ def load_schedule_note(name, selected_date):
         return ""
 
 
+def load_schedule_notes_month(name, year, month):
+    """특정 이름·월의 모든 메모를 {date_str: note} 딕셔너리로 반환 (1회 API 호출)."""
+    try:
+        ws = _get_note_sheet()
+        all_data = ws.get_all_values()
+        prefix = f"{year:04d}-{month:02d}-"
+        result = {}
+        for row in all_data[1:]:
+            if row and len(row) >= 3 and row[0] == name and row[1].startswith(prefix) and row[2].strip():
+                result[row[1]] = row[2]
+        return result
+    except Exception:
+        return {}
+
+
 # ── 통합 저장/불러오기 ──
 
 def save_all(selected_date, work_items, shift_data, safety_items, note_text, leave_list):
