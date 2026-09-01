@@ -722,6 +722,30 @@ def page_cross_check():
                         f"⚠️ **확인필요 {summary['reverse_count']}건**: "
                         "생산계획서에 없지만 ERP에 입고 기록이 있는 품목입니다."
                     )
+                    _rev_df = result_df[result_df["상태"].str.contains("확인필요", na=False)][["색상코드", "입고수량", "상태"]].copy()
+                    _rev_df.insert(0, "선택", False)
+                    _rev_key = f"cc_reverse_{st.session_state.get('cc_reverse_ver', 0)}"
+                    _edited_rev = st.data_editor(
+                        _rev_df,
+                        column_config={
+                            "선택":     st.column_config.CheckboxColumn("선택", help="확인 완료 후 체크"),
+                            "색상코드": st.column_config.TextColumn(disabled=True),
+                            "입고수량": st.column_config.NumberColumn(disabled=True),
+                            "상태":     st.column_config.TextColumn(disabled=True),
+                        },
+                        use_container_width=True,
+                        hide_index=True,
+                        num_rows="fixed",
+                        key=_rev_key,
+                    )
+                    if st.button("🗑 선택 항목 목록에서 제거", use_container_width=True, key="cc_reverse_del"):
+                        _to_del = _edited_rev[_edited_rev["선택"] == True]["색상코드"].tolist()
+                        if _to_del:
+                            st.session_state["cc_result_df"] = result_df[~result_df["색상코드"].isin(_to_del)].reset_index(drop=True)
+                            st.session_state["cc_reverse_ver"] = st.session_state.get("cc_reverse_ver", 0) + 1
+                            st.rerun()
+                        else:
+                            st.info("제거할 항목을 선택하세요.")
 
                 st.markdown("---")
                 is_plan_image = plan_name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")

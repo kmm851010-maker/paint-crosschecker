@@ -203,6 +203,37 @@ def generate_report(result_df: pd.DataFrame) -> bytes:
         cell_desc.font = FONT_NORMAL
         cell_desc.border = THIN_BORDER
 
+    # 확인필요 목록 (생산계획서에 없고 ERP에만 있는 항목)
+    reverse_items = result_df[result_df["상태"].astype(str).str.contains("확인필요", na=False)]
+    if not reverse_items.empty:
+        FILL_WARN_HEADER = PatternFill(start_color="FF9900", end_color="FF9900", fill_type="solid")
+        FILL_WARN_ROW    = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+
+        chk_start = legend_row + len(legends) + 3
+        title_cell = ws.cell(row=chk_start, column=1, value="【확인필요 목록】 — 생산계획서에 없지만 ERP에 입고 기록이 있는 품목")
+        title_cell.font = Font(name="맑은 고딕", bold=True, size=11)
+        title_cell.border = THIN_BORDER
+        ws.merge_cells(f"A{chk_start}:D{chk_start}")
+        for c in range(1, 5):
+            ws.cell(row=chk_start, column=c).border = THIN_BORDER
+
+        chk_header = chk_start + 1
+        for ci, h in enumerate(["No.", "색상코드", "입고수량", "확인"], 1):
+            c = ws.cell(row=chk_header, column=ci, value=h)
+            c.font = FONT_HEADER
+            c.fill = FILL_WARN_HEADER
+            c.alignment = ALIGN_CENTER
+            c.border = THIN_BORDER
+
+        for ri, (_, row) in enumerate(reverse_items.iterrows()):
+            r = chk_header + 1 + ri
+            for ci, val in enumerate([ri + 1, row["색상코드"], row["입고수량"], ""], 1):
+                c = ws.cell(row=r, column=ci, value=val)
+                c.font = FONT_NORMAL
+                c.fill = FILL_WARN_ROW
+                c.alignment = ALIGN_CENTER
+                c.border = THIN_BORDER
+
     output = BytesIO()
     wb.save(output)
     return output.getvalue()
