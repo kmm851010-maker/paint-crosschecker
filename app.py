@@ -331,7 +331,7 @@ def _shift_for_date_2s2(target_date, team):
 # ── 4조2교대 (4팀, 연속 교대, 8일 사이클: 주주→휴휴→야야→휴휴) ──
 _4S2_REF = datetime.date(2026, 7, 27)  # 기준일
 _4S2_CYCLE = ["주간", "주간", "휴무", "휴무", "야간", "야간", "휴무", "휴무"]
-_4S2_OFFSET = {"A": 4, "B": 0, "C": 6, "D": 2}  # 2026-08-27: D=주간2일, C=야간2일
+_4S2_OFFSET = {"A": 1, "B": 3, "C": 5, "D": 7}  # A조 2026-08-31=야간 기준 검증완료
 
 
 def _shift_for_date_4s2(target_date, team):
@@ -339,6 +339,24 @@ def _shift_for_date_4s2(target_date, team):
     offset = _4S2_OFFSET.get(team, 0)
     phase = (days_since + offset) % 8
     return _4S2_CYCLE[phase]
+
+
+_KG_COMPANY_DAYS = {(9, 1): "창립기념일"}  # 매년 고정 회사 기념일 (월, 일)
+
+
+def _get_holiday_name(date):
+    """날짜의 공휴일/기념일 이름 반환 (없으면 '')"""
+    c = _KG_COMPANY_DAYS.get((date.month, date.day))
+    if c:
+        return c
+    try:
+        import holidays as _hol
+        kr = _hol.SouthKorea(years=date.year)
+        if date in kr:
+            return kr[date]
+    except Exception:
+        pass
+    return ""
 
 
 def _shift_for_date(target_date, members):
@@ -2407,111 +2425,98 @@ def page_my_schedule():
         st.session_state[_skey] = today.day if (today.year == selected_year and today.month == selected_month) else 1
     sel_day_num = st.session_state[_skey]
 
-    # 범례
+    # 범례 (Samsung Calendar 스타일)
     if shift_type == "4조2교대":
         _legend_html = """
-<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
-  <span style="display:inline-flex;align-items:center;gap:5px;background:#0c1a38;border:1px solid #3b82f6;border-radius:20px;padding:3px 10px;font-size:12px;color:#93c5fd;font-weight:600;">☀️ 주간</span>
-  <span style="display:inline-flex;align-items:center;gap:5px;background:#1a100a;border:1px solid #f97316;border-radius:20px;padding:3px 10px;font-size:12px;color:#fdba74;font-weight:600;">🌙 야간</span>
-  <span style="display:inline-flex;align-items:center;gap:5px;background:#1a1a2e;border:1px solid #475569;border-radius:20px;padding:3px 10px;font-size:12px;color:#94a3b8;font-weight:600;">💤 휴무</span>
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#FFC107;border-radius:20px;padding:3px 12px;font-size:13px;color:#3D2A00;font-weight:700;">주 주간</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#212121;border-radius:20px;padding:3px 12px;font-size:13px;color:#fff;font-weight:700;">야 야간</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;border:1px solid #E5E7EB;border-radius:20px;padding:3px 12px;font-size:13px;color:#EF4444;font-weight:700;">휴 휴무</span>
 </div>"""
     elif shift_type in ("3조3교대", "2조2교대"):
         _legend_html = """
-<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
-  <span style="display:inline-flex;align-items:center;gap:5px;background:#0c1a38;border:1px solid #3b82f6;border-radius:20px;padding:3px 10px;font-size:12px;color:#93c5fd;font-weight:600;">🌅 1근</span>
-  <span style="display:inline-flex;align-items:center;gap:5px;background:#0b1a10;border:1px solid #22c55e;border-radius:20px;padding:3px 10px;font-size:12px;color:#86efac;font-weight:600;">☀️ 2근</span>
-  <span style="display:inline-flex;align-items:center;gap:5px;background:#1a100a;border:1px solid #f97316;border-radius:20px;padding:3px 10px;font-size:12px;color:#fdba74;font-weight:600;">🌙 3근</span>
-  <span style="display:inline-flex;align-items:center;gap:5px;background:#1a1a2e;border:1px solid #475569;border-radius:20px;padding:3px 10px;font-size:12px;color:#94a3b8;font-weight:600;">💤 휴무 (주말)</span>
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:20px;padding:3px 12px;font-size:13px;color:#1D4ED8;font-weight:700;">1근</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:20px;padding:3px 12px;font-size:13px;color:#15803D;font-weight:700;">2근</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#FEF2F2;border:1px solid #FECACA;border-radius:20px;padding:3px 12px;font-size:13px;color:#B91C1C;font-weight:700;">3근</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;border:1px solid #E5E7EB;border-radius:20px;padding:3px 12px;font-size:13px;color:#EF4444;font-weight:700;">휴 휴무(주말)</span>
 </div>"""
     else:
         _legend_html = """
-<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
-  <span style="display:inline-flex;align-items:center;gap:5px;background:#0c1a38;border:1px solid #3b82f6;border-radius:20px;padding:3px 10px;font-size:12px;color:#93c5fd;font-weight:600;">🌅 1근</span>
-  <span style="display:inline-flex;align-items:center;gap:5px;background:#0b1a10;border:1px solid #22c55e;border-radius:20px;padding:3px 10px;font-size:12px;color:#86efac;font-weight:600;">☀️ 2근</span>
-  <span style="display:inline-flex;align-items:center;gap:5px;background:#1a100a;border:1px solid #f97316;border-radius:20px;padding:3px 10px;font-size:12px;color:#fdba74;font-weight:600;">🌙 3근</span>
-  <span style="display:inline-flex;align-items:center;gap:5px;background:#1a1a2e;border:1px solid #475569;border-radius:20px;padding:3px 10px;font-size:12px;color:#94a3b8;font-weight:600;">💤 휴무</span>
-  <span style="display:inline-flex;align-items:center;gap:5px;background:#201800;border:1px solid #f59e0b;border-radius:20px;padding:3px 10px;font-size:12px;color:#fde68a;font-weight:600;">🏖️ 휴가</span>
-  <span style="display:inline-flex;align-items:center;gap:5px;background:#1c1035;border:1px solid #a855f7;border-radius:20px;padding:3px 10px;font-size:12px;color:#d8b4fe;font-weight:600;">🔄 대근</span>
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:20px;padding:3px 12px;font-size:13px;color:#1D4ED8;font-weight:700;">1근</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:20px;padding:3px 12px;font-size:13px;color:#15803D;font-weight:700;">2근</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#FEF2F2;border:1px solid #FECACA;border-radius:20px;padding:3px 12px;font-size:13px;color:#B91C1C;font-weight:700;">3근</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;border:1px solid #E5E7EB;border-radius:20px;padding:3px 12px;font-size:13px;color:#9CA3AF;font-weight:700;">휴무</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:20px;padding:3px 12px;font-size:13px;color:#92400E;font-weight:700;">🏖 휴가</span>
+  <span style="display:inline-flex;align-items:center;gap:5px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:20px;padding:3px 12px;font-size:13px;color:#6D28D9;font-weight:700;">🔄 대근</span>
 </div>"""
     st.markdown(_legend_html, unsafe_allow_html=True)
 
-    # ── 달력 CSS ──
+    # ── 달력 CSS (Samsung Calendar 라이트 스타일) ──
     st.markdown("""<style>
-/* 날짜 헤더 div (숫자 표시) + 버튼(근무 표시) 사이 간격 제거 */
 div[data-testid="stMarkdownContainer"]:has(.cmark) + div[data-testid="stButton"] {
-    margin-top: -8px !important;
+    margin-top: -6px !important;
 }
-/* 근무 버튼 공통 */
 div[data-testid="stMarkdownContainer"]:has(.cmark) + div[data-testid="stButton"] > button {
-    min-height: 56px !important; max-height: 56px !important;
-    font-size: 10.5px !important; font-weight: 600 !important;
-    padding: 4px 3px !important; white-space: pre-line !important;
-    line-height: 1.55 !important;
-    border-radius: 0 0 12px 12px !important;
+    min-height: 44px !important; max-height: 44px !important;
+    font-size: 17px !important; font-weight: 800 !important;
+    padding: 2px 3px !important; white-space: nowrap !important;
+    border-radius: 0 0 10px 10px !important;
     border-top: none !important;
-    transition: all 0.15s ease !important;
     width: 100% !important;
+    transition: filter 0.1s !important;
 }
 div[data-testid="stMarkdownContainer"]:has(.cmark) + div[data-testid="stButton"] > button:hover {
-    filter: brightness(1.15) !important;
-    transform: translateY(-1px) !important;
+    filter: brightness(0.92) !important;
 }
-/* 근무별 배경 */
+div[data-testid="stMarkdownContainer"]:has(.cs-day) + div[data-testid="stButton"] > button {
+    background: #FFC107 !important; color: #3D2A00 !important;
+    border: 1.5px solid #FFB300 !important;
+}
+div[data-testid="stMarkdownContainer"]:has(.cs-night) + div[data-testid="stButton"] > button {
+    background: #1a1a1a !important; color: #ffffff !important;
+    border: 1.5px solid #000000 !important;
+}
+div[data-testid="stMarkdownContainer"]:has(.cs-off) + div[data-testid="stButton"] > button {
+    background: #ffffff !important; color: #EF4444 !important;
+    border: 1.5px solid #E5E7EB !important;
+}
 div[data-testid="stMarkdownContainer"]:has(.cs1) + div[data-testid="stButton"] > button {
-    background: linear-gradient(180deg,#0c1a38,#0a1530) !important;
-    border: 1.5px solid #1e3a5f !important; border-top: none !important;
-    color: #93c5fd !important;
+    background: #EFF6FF !important; color: #1D4ED8 !important;
+    border: 1.5px solid #BFDBFE !important;
 }
 div[data-testid="stMarkdownContainer"]:has(.cs2) + div[data-testid="stButton"] > button {
-    background: linear-gradient(180deg,#0a1f0e,#071a0a) !important;
-    border: 1.5px solid #14532d !important; border-top: none !important;
-    color: #86efac !important;
+    background: #F0FDF4 !important; color: #15803D !important;
+    border: 1.5px solid #BBF7D0 !important;
 }
 div[data-testid="stMarkdownContainer"]:has(.cs3) + div[data-testid="stButton"] > button {
-    background: linear-gradient(180deg,#1c0e06,#160b04) !important;
-    border: 1.5px solid #7c2d12 !important; border-top: none !important;
-    color: #fdba74 !important;
+    background: #FEF2F2 !important; color: #B91C1C !important;
+    border: 1.5px solid #FECACA !important;
 }
-div[data-testid="stMarkdownContainer"]:has(.csoff) + div[data-testid="stButton"] > button {
-    background: #111827 !important;
-    border: 1.5px solid #1f2937 !important; border-top: none !important;
-    color: #6b7280 !important;
+div[data-testid="stMarkdownContainer"]:has(.cs-leave) + div[data-testid="stButton"] > button {
+    background: #FFFBEB !important; color: #92400E !important;
+    border: 1.5px solid #FDE68A !important;
 }
-div[data-testid="stMarkdownContainer"]:has(.csleave) + div[data-testid="stButton"] > button {
-    background: linear-gradient(180deg,#1a1400,#141000) !important;
-    border: 1.5px solid #78350f !important; border-top: none !important;
-    color: #fde68a !important;
+div[data-testid="stMarkdownContainer"]:has(.cs-sub) + div[data-testid="stButton"] > button {
+    background: #F5F3FF !important; color: #6D28D9 !important;
+    border: 1.5px solid #DDD6FE !important;
 }
-div[data-testid="stMarkdownContainer"]:has(.cssub) + div[data-testid="stButton"] > button {
-    background: linear-gradient(180deg,#170d2e,#100920) !important;
-    border: 1.5px solid #581c87 !important; border-top: none !important;
-    color: #d8b4fe !important;
-}
-/* 선택됨 */
 div[data-testid="stMarkdownContainer"]:has(.csel) + div[data-testid="stButton"] > button {
-    box-shadow: inset 0 0 0 1px #a855f7 !important;
+    box-shadow: inset 0 0 0 2.5px #3B82F6 !important;
 }
-/* 오늘 */
 div[data-testid="stMarkdownContainer"]:has(.ctoday) + div[data-testid="stButton"] > button {
-    box-shadow: inset 0 0 0 1px #60a5fa !important;
+    box-shadow: inset 0 0 0 2.5px #3B82F6 !important;
 }
 </style>""", unsafe_allow_html=True)
 
     # ── 요일 헤더 ──
-    WD_STYLES = [
-        ("일", "#fca5a5", "#450a0a"),
-        ("월", "#94a3b8", "#0f172a"),
-        ("화", "#94a3b8", "#0f172a"),
-        ("수", "#94a3b8", "#0f172a"),
-        ("목", "#94a3b8", "#0f172a"),
-        ("금", "#94a3b8", "#0f172a"),
-        ("토", "#93c5fd", "#0c1a38"),
-    ]
-    hdr_html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:5px;">'
-    for wd, fg, bg in WD_STYLES:
+    WD_LABELS = ["일", "월", "화", "수", "목", "금", "토"]
+    WD_COLORS = ["#EF4444", "#374151", "#374151", "#374151", "#374151", "#374151", "#3B82F6"]
+    hdr_html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px;">'
+    for wd, clr in zip(WD_LABELS, WD_COLORS):
         hdr_html += (
-            f'<div style="text-align:center;padding:7px 0;font-size:13px;font-weight:800;'
-            f'color:{fg};background:{bg};border-radius:10px 10px 4px 4px;">{wd}</div>'
+            f'<div style="text-align:center;padding:6px 0;font-size:13px;font-weight:700;color:{clr};">{wd}</div>'
         )
     hdr_html += '</div>'
     st.markdown(hdr_html, unsafe_allow_html=True)
@@ -2527,84 +2532,63 @@ div[data-testid="stMarkdownContainer"]:has(.ctoday) + div[data-testid="stButton"
     if week:
         weeks.append(week + [None] * (7 - len(week)))
 
-    # 상단 날짜 영역 — 공통 연한 보라 그라디언트
-    _TOP_BG  = "linear-gradient(160deg, #3b2d6e, #2a1f52)"
-    _TOP_BDR = "#5b4397"
-    SHIFT_TOP_BG  = {"1근": _TOP_BG, "2근": _TOP_BG, "3근": _TOP_BG, "휴무": _TOP_BG,
-                     "주간": _TOP_BG, "야간": _TOP_BG}
-    SHIFT_TOP_BDR = {"1근": _TOP_BDR, "2근": _TOP_BDR, "3근": _TOP_BDR, "휴무": "#3d3560",
-                     "주간": _TOP_BDR, "야간": _TOP_BDR}
-    SHIFT_NUM_CLR = {"1근": "#c4b5fd", "2근": "#c4b5fd", "3근": "#c4b5fd", "휴무": "#7c6fa0",
-                     "주간": "#c4b5fd", "야간": "#c4b5fd"}
-    SHIFT_LABEL   = {"1근": "🌅 1근  06:30~14:30", "2근": "☀️ 2근  14:30~22:30",
-                     "3근": "🌙 3근  22:30~06:30", "휴무": "💤 휴무",
-                     "주간": "☀️ 주간  07:00~19:00", "야간": "🌙 야간  19:00~07:00"}
-    SHIFT_MCLS    = {"1근": "cs1", "2근": "cs2", "3근": "cs3", "휴무": "csoff",
-                     "주간": "cs1", "야간": "cs3"}
+    # ── 근무 → CSS 클래스 & 버튼 텍스트 ──
+    SHIFT_MCLS  = {"1근": "cs1", "2근": "cs2", "3근": "cs3", "휴무": "cs-off",
+                   "주간": "cs-day", "야간": "cs-night"}
+    SHIFT_LABEL = {"1근": "1근", "2근": "2근", "3근": "3근", "휴무": "휴",
+                   "주간": "주", "야간": "야"}
 
     for wk in weeks:
         wcols = st.columns(7, gap="small")
         for ci, dn in enumerate(wk):
             with wcols[ci]:
                 if dn is None:
-                    # 공란: 완전 투명
-                    st.markdown('<div style="height:94px;"></div>', unsafe_allow_html=True)
+                    st.markdown('<div style="height:90px;"></div>', unsafe_allow_html=True)
                 else:
                     d = datetime.date(selected_year, selected_month, dn)
                     info = _get_day_info(d)
                     is_today = (d == today)
                     is_sel = (sel_day_num == dn)
                     wi = (d.weekday() + 1) % 7  # 0=일,6=토
+                    holiday = _get_holiday_name(d)
 
-                    # 근무 분류
+                    # 근무 분류 → CSS 클래스 & 버튼 텍스트
                     if info["is_leave"]:
-                        mcls = "csleave"
-                        top_bg, top_bdr = _TOP_BG, "#78350f"
-                        num_clr = "#c4b5fd"
-                        btn_txt = f"🏖️ {info['leave_type'] or '휴가'}"
+                        mcls = "cs-leave"
+                        btn_txt = (info['leave_type'] or '휴가')[:3]
                     elif info["sub_for"]:
-                        mcls = "cssub"
-                        top_bg, top_bdr = _TOP_BG, _TOP_BDR
-                        num_clr = "#c4b5fd"
-                        btn_txt = f"🔄 {info['sub_role']}"
+                        mcls = "cs-sub"
+                        btn_txt = "대근"
                     else:
                         s = info["shift"]
-                        mcls = SHIFT_MCLS.get(s, "csoff")
-                        top_bg  = SHIFT_TOP_BG.get(s, "#111827")
-                        top_bdr = SHIFT_TOP_BDR.get(s, "#1f2937")
-                        num_clr = SHIFT_NUM_CLR.get(s, "#4b5563")
+                        mcls = SHIFT_MCLS.get(s, "cs-off")
                         btn_txt = SHIFT_LABEL.get(s, s)
 
-                    # 선택/오늘 테두리
-                    if is_sel:
-                        ring = "2px solid #a855f7"
-                        glow = "box-shadow:0 0 12px rgba(168,85,247,0.5);"
-                    elif is_today:
-                        ring = "2px solid #60a5fa"
-                        glow = "box-shadow:0 0 10px rgba(96,165,250,0.4);"
-                    else:
-                        ring = f"1.5px solid {top_bdr}"
-                        glow = ""
-
-                    # 요일 색
-                    day_clr = "#fca5a5" if wi == 0 else ("#93c5fd" if wi == 6 else num_clr)
-                    # 오늘: 원형 강조
-                    if is_today:
-                        num_html = (f'<span style="background:#3b82f6;color:#fff;border-radius:50%;'
-                                    f'width:26px;height:26px;display:inline-flex;align-items:center;'
-                                    f'justify-content:center;font-size:14px;font-weight:900;">{dn}</span>')
-                    else:
-                        num_html = f'<span style="font-size:18px;font-weight:900;color:{day_clr};">{dn}</span>'
-
-                    # 날짜 숫자 상단 div
                     marker_cls = f"cmark {mcls}"
                     if is_sel:   marker_cls += " csel"
                     if is_today: marker_cls += " ctoday"
+
+                    # 날짜 숫자 색 (공휴일/일요일=빨강, 토요일=파랑)
+                    day_clr = "#EF4444" if (wi == 0 or holiday) else ("#3B82F6" if wi == 6 else "#111827")
+                    if is_today:
+                        num_html = (f'<span style="background:#3B82F6;color:#fff;border-radius:50%;'
+                                    f'width:24px;height:24px;display:inline-flex;align-items:center;'
+                                    f'justify-content:center;font-size:13px;font-weight:800;">{dn}</span>')
+                    else:
+                        num_html = f'<span style="font-size:15px;font-weight:700;color:{day_clr};">{dn}</span>'
+
+                    # 공휴일/기념일 라벨
+                    hol_html = ""
+                    if holiday:
+                        hol_html = (f'<div style="font-size:9px;font-weight:600;color:#EF4444;'
+                                    f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
+                                    f'line-height:1.2;margin-top:1px;">{holiday}</div>')
+
+                    ring = "2px solid #3B82F6" if (is_sel or is_today) else "1.5px solid #E5E7EB"
                     st.markdown(
-                        f'<div class="{marker_cls}" style="height:38px;background:{top_bg};'
-                        f'border:{ring};border-bottom:none;border-radius:12px 12px 0 0;'
-                        f'{glow}display:flex;align-items:center;justify-content:center;">'
-                        f'{num_html}</div>',
+                        f'<div class="{marker_cls}" style="background:#ffffff;border:{ring};'
+                        f'border-bottom:none;border-radius:10px 10px 0 0;padding:4px 5px 2px;min-height:46px;">'
+                        f'{num_html}{hol_html}</div>',
                         unsafe_allow_html=True
                     )
 
