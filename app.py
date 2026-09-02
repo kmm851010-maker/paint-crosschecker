@@ -2933,12 +2933,12 @@ div[data-testid="column"]:has(.ctoday) button {
     _cal_memo_dates_fs = {}
     for _m in st.session_state[_att_memo_key]:
         try:
-            _ms = datetime.date.fromisoformat(_m.get("start", ""))
-            _me = datetime.date.fromisoformat(_m.get("end", _m.get("start", "")))
+            _ms = datetime.date.fromisoformat(str(_m.get("start", "")))
+            _me = datetime.date.fromisoformat(str(_m.get("end", _m.get("start", ""))))
             _md = _ms
             while _md <= _me:
                 if _md.year == selected_year and _md.month == selected_month:
-                    _cal_memo_dates_fs.setdefault(_md, []).append(_m["text"])
+                    _cal_memo_dates_fs.setdefault(_md.strftime("%Y-%m-%d"), []).append(_m.get("text", ""))
                 _md += datetime.timedelta(days=1)
         except Exception:
             pass
@@ -3031,12 +3031,13 @@ div[data-testid="column"]:has(.ctoday) button {
 
                     # 특이사항 메모 (근태관리 전체 달력 연동)
                     att_memo_html = ""
-                    if d in _cal_memo_dates_fs:
-                        _atxt = " / ".join(_cal_memo_dates_fs[d])
+                    _d_str_fs = d.strftime("%Y-%m-%d")
+                    if _d_str_fs in _cal_memo_dates_fs:
+                        _atxt = " / ".join(_cal_memo_dates_fs[_d_str_fs])
                         _ashort = _atxt[:8] + ("…" if len(_atxt) > 8 else "")
                         att_memo_html = (
                             f'<div style="background:#FDE68A;color:#92400E;border-radius:3px;'
-                            f'font-size:10px;padding:1px 3px;margin-top:1px;overflow:hidden;'
+                            f'font-size:12px;padding:1px 3px;margin-top:1px;overflow:hidden;'
                             f'white-space:nowrap;text-overflow:ellipsis;font-weight:600;" title="{_atxt}">'
                             f'{_ashort}</div>'
                         )
@@ -3052,7 +3053,7 @@ div[data-testid="column"]:has(.ctoday) button {
                         )
 
                     ring = "2px solid #3B82F6" if (is_sel or is_today) else "1.5px solid #E5E7EB"
-                    _has_extra = _cell_note or info["sub_for"] or (d in _cal_memo_dates_fs)
+                    _has_extra = _cell_note or info["sub_for"] or (_d_str_fs in _cal_memo_dates_fs)
                     _cell_mh = "58px" if _has_extra else "44px"
                     st.markdown(
                         f'<div class="{marker_cls}" style="background:#ffffff;border:{ring};'
@@ -3321,16 +3322,16 @@ def page_attendance():
         except Exception:
             st.session_state[_cal_memo_key] = []
     _cal_memos = st.session_state[_cal_memo_key]
-    # 메모가 걸리는 날짜 집합 (calendar cell 하이라이트용)
-    _memo_dates = {}  # date -> list of text
+    # 메모가 걸리는 날짜 집합 (calendar cell 하이라이트용) — 키: "YYYY-MM-DD" 문자열
+    _memo_dates = {}
     for _m in _cal_memos:
         try:
-            _ms = datetime.date.fromisoformat(_m.get("start", ""))
-            _me = datetime.date.fromisoformat(_m.get("end", _m.get("start", "")))
+            _ms = datetime.date.fromisoformat(str(_m.get("start", "")))
+            _me = datetime.date.fromisoformat(str(_m.get("end", _m.get("start", ""))))
             _md = _ms
             while _md <= _me:
                 if _md.year == selected_year and _md.month == selected_month:
-                    _memo_dates.setdefault(_md, []).append(_m["text"])
+                    _memo_dates.setdefault(_md.strftime("%Y-%m-%d"), []).append(_m.get("text", ""))
                 _md += datetime.timedelta(days=1)
         except Exception:
             pass
@@ -3405,8 +3406,9 @@ def page_attendance():
                 badge = f'<div style="background:{shift_clr};color:#fff;border-radius:2px;font-size:8px;padding:0 1px;margin-top:1px;font-weight:700;">{shift_lbl[:2]}</div>'
             bg = "background:#EFF6FF;" if is_today else ""
             _memo_dot = ""
-            if d in _memo_dates:
-                _memo_txt = " / ".join(_memo_dates[d])
+            _d_str = d.strftime("%Y-%m-%d")
+            if _d_str in _memo_dates:
+                _memo_txt = " / ".join(_memo_dates[_d_str])
                 _memo_short = _memo_txt[:6] + ("…" if len(_memo_txt) > 6 else "")
                 _memo_dot = f'<div style="background:#FDE68A;color:#92400E;border-radius:2px;font-size:7px;padding:0 1px;margin-top:1px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:100%;text-align:center;font-weight:600;">{_memo_short}</div>'
             html_cal += f'<td style="{_td_s}{bg}">{num_html}{badge}{_memo_dot}</td>'
@@ -3459,10 +3461,12 @@ def page_attendance():
                             f'{"<b>" + _range_str + "</b>  " if _range_str else ""}{_m["text"]}</div>', unsafe_allow_html=True)
             with _mc2:
                 if st.button("삭제", key=f"att_memo_del_{_mi}_{selected_year}_{selected_month}", use_container_width=True):
-                    _cal_memos.pop(_mi)
-                    st.session_state[_cal_memo_key] = _cal_memos
-                    try: _cal_sn("전체", _cal_memo_date, _json.dumps(_cal_memos, ensure_ascii=False))
-                    except Exception as _e: st.error(f"저장 실패: {_e}")
+                    _del_list = [x for i, x in enumerate(_cal_memos) if i != _mi]
+                    try:
+                        _cal_sn("전체", _cal_memo_date, _json.dumps(_del_list, ensure_ascii=False))
+                        st.session_state[_cal_memo_key] = _del_list
+                    except Exception as _e:
+                        st.error(f"저장 실패: {_e}")
                     st.rerun()
 
         # 새 메모 추가
@@ -3487,10 +3491,12 @@ def page_attendance():
             if st.button("저장", key=f"att_memo_save_{selected_year}_{selected_month}", use_container_width=True):
                 if _new_text.strip():
                     _entry = {"text": _new_text.strip(), "start": str(_new_start), "end": str(_new_end)}
-                    _cal_memos.append(_entry)
-                    st.session_state[_cal_memo_key] = _cal_memos
-                    try: _cal_sn("전체", _cal_memo_date, _json.dumps(_cal_memos, ensure_ascii=False))
-                    except Exception as _e: st.error(f"저장 실패: {_e}")
+                    _new_list = list(_cal_memos) + [_entry]
+                    try:
+                        _cal_sn("전체", _cal_memo_date, _json.dumps(_new_list, ensure_ascii=False))
+                        st.session_state[_cal_memo_key] = _new_list
+                    except Exception as _e:
+                        st.error(f"저장 실패: {_e}")
                     st.rerun()
 
     # ─────────── 왼쪽: 통계 ───────────
