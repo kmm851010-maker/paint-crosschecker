@@ -3378,7 +3378,8 @@ def page_attendance():
         WD_LABELS = ["일", "월", "화", "수", "목", "금", "토"]
         WD_CLR = ["#EF4444", "#555", "#555", "#555", "#555", "#555", "#3B82F6"]
         _th_s = "font-size:10px;font-weight:700;text-align:center;padding:3px 0;border:1px solid #e5e7eb;background:#f3f4f6;"
-        _td_s = "font-size:9px;text-align:center;padding:2px 1px;border:1px solid #e5e7eb;vertical-align:top;height:44px;"
+        _td_s = "font-size:9px;text-align:center;padding:0;border:1px solid #e5e7eb;vertical-align:top;"
+        _cell_inner = "height:42px;overflow:hidden;padding:2px 1px;box-sizing:border-box;"
 
         html_cal = '<div style="margin-top:4px;"><table style="width:100%;border-collapse:collapse;">'
         html_cal += f'<thead><tr><th colspan="7" style="background:#4B2D8E;color:#fff;text-align:center;padding:5px;font-size:12px;font-weight:700;">{selected_year}년 {selected_month}월</th></tr><tr>'
@@ -3388,7 +3389,7 @@ def page_attendance():
 
         cell_idx = 0
         for _ in range(first_wd):
-            html_cal += f'<td style="{_td_s}background:#f9fafb;"></td>'; cell_idx += 1
+            html_cal += f'<td style="{_td_s}background:#f9fafb;"><div style="{_cell_inner}"></div></td>'; cell_idx += 1
 
         for dn in range(1, days_in_month + 1):
             d = datetime.date(selected_year, selected_month, dn)
@@ -3411,14 +3412,14 @@ def page_attendance():
                 _memo_txt = " / ".join(_memo_dates[_d_str])
                 _memo_short = _memo_txt[:6] + ("…" if len(_memo_txt) > 6 else "")
                 _memo_dot = f'<div style="background:#FDE68A;color:#92400E;border-radius:2px;font-size:7px;padding:0 1px;margin-top:1px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:100%;text-align:center;font-weight:600;">{_memo_short}</div>'
-            html_cal += f'<td style="{_td_s}{bg}">{num_html}{badge}{_memo_dot}</td>'
+            html_cal += f'<td style="{_td_s}{bg}"><div style="{_cell_inner}">{num_html}{badge}{_memo_dot}</div></td>'
             cell_idx += 1
             if cell_idx % 7 == 0 and dn < days_in_month:
                 html_cal += '</tr><tr>'
 
         rem = (7 - cell_idx % 7) % 7
         for _ in range(rem):
-            html_cal += f'<td style="{_td_s}background:#f9fafb;"></td>'
+            html_cal += f'<td style="{_td_s}background:#f9fafb;"><div style="{_cell_inner}"></div></td>'
         html_cal += '</tr></tbody></table></div>'
         st.markdown(html_cal, unsafe_allow_html=True)
 
