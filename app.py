@@ -1750,7 +1750,7 @@ def page_work_log():
                                     from email.header import Header
                                     import google.oauth2.credentials as _goauth
                                     import googleapiclient.discovery as _gdisco
-                                    from utils.supabase_db import _get_or_create_sheet as _gos
+                                    from utils.sheets import _get_or_create_sheet as _gos
 
                                     _recipients = [r.strip() for r in _to.split(",") if r.strip()]
 
