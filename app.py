@@ -1505,10 +1505,10 @@ def page_work_log():
             _itm = _loaded_wi.get(_nm, {})
             _row = {'작업 내용': _nm}
             for _sl, _lk in zip(_all_shifts, _shift_keys):
-                _row[_sl] = int(_itm.get(_lk, 0) or 0)
-            _ds = sum(_row[_sl] for _sl in _all_shifts)
-            _row['합계']   = _ds
-            _row['월합계'] = monthly_totals.get(_nm, 0) + _ds
+                _row[_sl] = str(int(_itm.get(_lk, 0) or 0))
+            _ds = sum(int(_row[_sl]) for _sl in _all_shifts)
+            _row['합계']   = str(_ds)
+            _row['월합계'] = str(monthly_totals.get(_nm, 0) + _ds)
             _rows.append(_row)
         _df_grid = _pd.DataFrame(_rows)
 
@@ -1561,11 +1561,11 @@ def page_work_log():
             _ev = _eval_cell(_raw)
             if str(_raw).strip() not in ('', '0', 'None', 'nan', str(_ev)):
                 _expr_evaluated = True
-            _edited_df.at[_i, _sl] = _ev
+            _edited_df.at[_i, _sl] = str(_ev)
             _row_vals[_sl] = _ev
         _ds = sum(_row_vals.values())
-        _edited_df.at[_i, '합계']   = _ds
-        _edited_df.at[_i, '월합계'] = monthly_totals.get(_nm, 0) + _ds
+        _edited_df.at[_i, '합계']   = str(_ds)
+        _edited_df.at[_i, '월합계'] = str(monthly_totals.get(_nm, 0) + _ds)
     st.session_state[_grid_key] = _edited_df
     if _expr_evaluated:
         # data_editor 캐시 초기화 → 평가된 값으로 즉시 화면 갱신
