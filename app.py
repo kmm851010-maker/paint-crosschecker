@@ -3581,7 +3581,7 @@ def page_attendance():
 
                     # 대근 내역
                     if _s["대근내역"]:
-                        with st.expander(f"🔄 대근 내역 ({_s['대근횟수']}회 · 계 {_fhh(_tdh)}H)"):
+                        with st.expander(f"대근 내역 ({_s['대근횟수']}회 · 계 {_fhh(_tdh)}H)"):
                             for _dd in _s["대근내역"]:
                                 st.write(f"{_dd['날짜']} | {_dd['구분']} | {_dd['휴가자']} {_dd['휴가구분']}으로 대근 | {_fhh(_dd['시간'])}H")
                     else:
@@ -3589,7 +3589,7 @@ def page_attendance():
 
                     # 이번달 휴가
                     if _s["휴가내역"]:
-                        with st.expander(f"🏖 {selected_month}월 휴가 내역 ({_s['휴가일수']}일)"):
+                        with st.expander(f"{selected_month}월 휴가 내역 ({_s['휴가일수']}일)"):
                             for _hh3 in _s["휴가내역"]: st.write(_hh3)
                     else:
                         st.caption("이번달 휴가 없음")
