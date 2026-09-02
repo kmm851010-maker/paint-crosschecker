@@ -1445,174 +1445,190 @@ def page_work_log():
             st.session_state.pop(_grid_key, None)
             st.rerun()
 
-    # ─── 2. 업무 현황 입력 ─────────────────────────────────────────────
-    st.subheader("2. 업무 현황 입력")
+    # ─── 2. 업무현황(좌) + 안전관리/특이사항(우) 2열 레이아웃 ───────────
     import pandas as _pd
+    _wl_left, _wl_right = st.columns([3, 1.5])
 
-    item_names = [
-        "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
-        "신나 하차 수량", "신나 공급 수량", "크롬 공급 수량",
-        "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
-        "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수",
-        "AGV 입/출고 작업 수량",
-    ]
-
-    if is_2person:
-        shift_labels = ["주간", "야간"]
-        load_keys = ["day", "night"]
-    else:
-        shift_labels = ["1근", "2근", "3근"]
-        load_keys = ["s1", "s2", "s3"]
-
-    # 월누계 (당일 제외)
-    _mt_key = f"wl_monthly_totals_{selected_date}"
-    if _mt_key not in st.session_state:
-        try:
-            from utils.supabase_db import get_monthly_totals
-            st.session_state[_mt_key] = get_monthly_totals(selected_date)
-        except Exception:
-            st.session_state[_mt_key] = {}
-    monthly_totals = st.session_state[_mt_key]
-
-    # DataFrame 구성 (캐시 우선)
-    if _grid_key in st.session_state:
-        _df_grid = st.session_state[_grid_key]
-    else:
-        _rows = []
-        for _nm in item_names:
-            _itm = _loaded_wi.get(_nm, {})
-            _row = {"작업항목": _nm}
-            _sv = []
-            for _lk, _sl in zip(load_keys, shift_labels):
-                _v = int(_itm.get(_lk, 0) or 0)
-                _row[_sl] = _v
-                _sv.append(_v)
-            _ds = sum(_sv)
-            _row["일합계"] = _ds
-            _row["월누계"] = monthly_totals.get(_nm, 0) + _ds
-            _rows.append(_row)
-        _df_grid = _pd.DataFrame(_rows)
-
-    # 컬럼 설정
-    _col_cfg = {
-        "작업항목": st.column_config.TextColumn("작업항목", width="large", disabled=True),
-        "일합계":  st.column_config.NumberColumn("일합계",  disabled=True, width="small", format="%d"),
-        "월누계":  st.column_config.NumberColumn("월누계",  disabled=True, width="small", format="%d"),
-    }
-    for _sl in shift_labels:
-        _col_cfg[_sl] = st.column_config.NumberColumn(_sl, min_value=0, step=1, width="small", format="%d")
-
-    _edited_df = st.data_editor(
-        _df_grid,
-        key=f"de_{_grid_key}",
-        column_config=_col_cfg,
-        column_order=["작업항목"] + shift_labels + ["일합계", "월누계"],
-        hide_index=True,
-        use_container_width=True,
-        num_rows="fixed",
-    )
-
-    # 합계 재계산 → 세션 캐시 갱신
-    for _i, _nm in enumerate(item_names):
-        try:
-            _sv = [int(_edited_df.at[_i, _sl] or 0) for _sl in shift_labels]
-        except (TypeError, ValueError):
-            _sv = [0] * len(shift_labels)
-        _ds = sum(_sv)
-        _edited_df.at[_i, "일합계"] = _ds
-        _edited_df.at[_i, "월누계"] = monthly_totals.get(_nm, 0) + _ds
-    st.session_state[_grid_key] = _edited_df
-
-    # work_items_data 추출 (저장용)
-    work_items_data = []
-    for _i, _nm in enumerate(item_names):
-        _wd = {"name": _nm, "s1": None, "s2": None, "s3": None, "day": None, "night": None}
-        for _sl, _lk in zip(shift_labels, load_keys):
-            try:
-                _v = int(_edited_df.at[_i, _sl] or 0)
-            except (TypeError, ValueError):
-                _v = 0
-            _wd[_lk] = _v if _v > 0 else None
-        _wd["month_total"] = int(_edited_df.at[_i, "월누계"] or 0)
-        work_items_data.append(_wd)
-
-    st.markdown("---")
-    st.subheader("3. 안전 관리 사항")
-    st.markdown("""<style>
-    .safety-section p, .safety-section span, .safety-section label{font-size:10px !important; line-height:1.1 !important;}
-    .safety-section .stCheckbox{margin:0 !important; padding:0 !important;}
-    .safety-section [data-testid="stVerticalBlock"] > div{gap:0.05rem !important;}
-    .safety-section [data-testid="stVerticalBlockBorderWrapper"]{padding:2px 6px !important;}
-    </style><div class="safety-section">""", unsafe_allow_html=True)
-    safety_questions = [
-        "작업 계획에 따라 작업 절차를 준수 하였는가?",
-        "안전장치(후방 경보장치 , 안전밸트 등) 기능의 이상 유무를 점검 하였는가?",
-        "주행시 급출발 , 급정거 , 급선회를 하지 않았는가?",
-        "화물 적재시 허용 하중을 초과하지 않았는가?",
-        "작업장소에 적합한 제한 속도를 준수 하였는가?",
-        "지게차 작업 안전 수칙에 위배 되는 작업을 하지 않았는가?"
-    ]
-    safety_items_data = []
-    for i, q in enumerate(safety_questions):
-        st.write(f"{i+1}. {q}")
+    with _wl_left:
+        item_names = [
+            "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
+            "신나 하차 수량", "신나 공급 수량", "크롬 공급 수량",
+            "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
+            "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수",
+            "AGV 입/출고 작업 수량",
+        ]
         if is_2person:
-            sc1, sc2 = st.columns(2)
-            chk_day = sc1.checkbox("주간", value=True, key=f"safe_day_{i}")
-            chk_night = sc2.checkbox("야간", value=True, key=f"safe_night_{i}")
-            safety_items_data.append({"text": q, "s1": False, "s2": False, "s3": False, "day": chk_day, "night": chk_night})
+            shift_labels = ["주간", "야간"]
+            load_keys = ["day", "night"]
         else:
-            sc1, sc2, sc3 = st.columns(3)
-            chk_s1 = sc1.checkbox("1근", value=True, key=f"safe_s1_{i}")
-            chk_s2 = sc2.checkbox("2근", value=True, key=f"safe_s2_{i}")
-            chk_s3 = sc3.checkbox("3근", value=True, key=f"safe_s3_{i}")
-            safety_items_data.append({"text": q, "s1": chk_s1, "s2": chk_s2, "s3": chk_s3, "day": False, "night": False})
+            shift_labels = ["1근", "2근", "3근"]
+            load_keys = ["s1", "s2", "s3"]
 
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown("---")
-    st.subheader("4. 특이 사항")
-    note_text = st.text_area("특이사항 내용 입력", "", height=100)
+        _mt_key = f"wl_monthly_totals_{selected_date}"
+        if _mt_key not in st.session_state:
+            try:
+                from utils.supabase_db import get_monthly_totals
+                st.session_state[_mt_key] = get_monthly_totals(selected_date)
+            except Exception:
+                st.session_state[_mt_key] = {}
+        monthly_totals = st.session_state[_mt_key]
 
-    st.markdown("---")
+        if _grid_key in st.session_state:
+            _df_grid = st.session_state[_grid_key]
+        else:
+            _rows = []
+            for _nm in item_names:
+                _itm = _loaded_wi.get(_nm, {})
+                _row = {"작업항목": _nm}
+                _sv = []
+                for _lk, _sl in zip(load_keys, shift_labels):
+                    _v = int(_itm.get(_lk, 0) or 0)
+                    _row[_sl] = _v
+                    _sv.append(_v)
+                _ds = sum(_sv)
+                _row["일합계"] = _ds
+                _row["월누계"] = monthly_totals.get(_nm, 0) + _ds
+                _rows.append(_row)
+            _df_grid = _pd.DataFrame(_rows)
 
-    # 저장
-    import time as _time
-    _fn_team = st.secrets.get("company", {}).get("team", "일일업무")
-    _last_save = st.session_state.get("_last_save_ts", 0)
-    _cooldown = 20  # 초
-    _elapsed = _time.time() - _last_save
-    _can_save = _elapsed >= _cooldown
-    if st.button("💾 전체 저장", use_container_width=True, type="primary", disabled=not _can_save):
-        try:
-            with st.spinner("저장 중..."):
-                from utils.supabase_db import save_all
-                save_all(
-                    selected_date, work_items_data, shift_data_final,
-                    safety_items_data, note_text, st.session_state.get("leave_list", [])
-                )
-            st.session_state["_last_save_ts"] = _time.time()
-            # 월누계 캐시 무효화 (저장 후 최신값 반영)
-            st.session_state.pop(f"wl_monthly_totals_{selected_date}", None)
-            with st.spinner(f"{selected_date.month}월 통합 Excel 생성 중..."):
-                _mbytes, _mcount = generate_monthly_work_log_excel(selected_date)
-            st.session_state["_monthly_bytes"] = _mbytes
-            st.session_state["_monthly_count"] = _mcount
-            st.session_state["_monthly_ym"] = (selected_date.year, selected_date.month)
-            st.success(f"✅ 저장 완료! {selected_date.month}월 통합 Excel 준비됨 ({_mcount}일)")
-        except Exception as e:
-            st.error(f"저장 실패: {type(e).__name__}: {e}")
-    if not _can_save:
-        st.caption(f"⏳ {int(_cooldown - _elapsed)}초 후 재저장 가능")
+        # ── Excel 양식 스타일 헤더 ──
+        _n_sh = len(shift_labels)
+        _w_it = 43
+        _w_sh = round((100 - _w_it - 18) / _n_sh)
+        _w_sm = 9
+        _w_mn = 100 - _w_it - _w_sh * _n_sh - _w_sm
+        _th_s = "padding:4px 5px;text-align:center;border-right:1px solid #6B4DBF;font-size:11px;font-weight:bold;"
+        _s_ths = "".join(f'<th style="{_th_s}width:{_w_sh}%;">{sl}</th>' for sl in shift_labels)
+        st.markdown(f"""<style>
+div[data-testid="stDataEditor"]>div:first-child{{border:2px solid #4B2D8E !important;border-top:none !important;border-radius:0 0 4px 4px !important;}}
+</style>
+<div style="background:#4B2D8E;color:white;padding:5px 10px;border-radius:4px 4px 0 0;font-size:12px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+  <span>2. 업무 현황</span>
+  <span style="font-size:9px;font-weight:normal;opacity:0.85;">클릭 입력 · Tab/Enter 이동</span>
+</div>
+<table style="width:100%;border-collapse:collapse;background:#D4C9E8;border-left:2px solid #4B2D8E;border-right:2px solid #4B2D8E;margin:0;">
+  <tr>
+    <th style="padding:4px 6px;text-align:left;border-right:1px solid #6B4DBF;font-size:11px;font-weight:bold;width:{_w_it}%;">작업 내용</th>
+    {_s_ths}
+    <th style="{_th_s}width:{_w_sm}%;">일합계</th>
+    <th style="padding:4px 5px;text-align:center;font-size:11px;font-weight:bold;width:{_w_mn}%;">월누계</th>
+  </tr>
+</table>""", unsafe_allow_html=True)
 
-    if st.session_state.get("_monthly_bytes"):
-        _my, _mm = st.session_state["_monthly_ym"]
-        _monthly_fname = f"{_fn_team}_{_my}년{_mm}월_작업일지.xlsx"
-        st.download_button(
-            f"📥 {_my}년 {_mm}월 통합 다운로드 ({st.session_state['_monthly_count']}일)",
-            data=st.session_state["_monthly_bytes"],
-            file_name=_monthly_fname,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
+        _col_cfg = {
+            "작업항목": st.column_config.TextColumn(" ", width="large", disabled=True),
+            "일합계":  st.column_config.NumberColumn(" ", disabled=True, width="small", format="%d"),
+            "월누계":  st.column_config.NumberColumn(" ", disabled=True, width="small", format="%d"),
+        }
+        for _sl in shift_labels:
+            _col_cfg[_sl] = st.column_config.NumberColumn(" ", min_value=0, step=1, width="small", format="%d")
+
+        _edited_df = st.data_editor(
+            _df_grid,
+            key=f"de_{_grid_key}",
+            column_config=_col_cfg,
+            column_order=["작업항목"] + shift_labels + ["일합계", "월누계"],
+            hide_index=True,
+            use_container_width=True,
+            num_rows="fixed",
         )
+
+        for _i, _nm in enumerate(item_names):
+            try:
+                _sv = [int(_edited_df.at[_i, _sl] or 0) for _sl in shift_labels]
+            except (TypeError, ValueError):
+                _sv = [0] * len(shift_labels)
+            _ds = sum(_sv)
+            _edited_df.at[_i, "일합계"] = _ds
+            _edited_df.at[_i, "월누계"] = monthly_totals.get(_nm, 0) + _ds
+        st.session_state[_grid_key] = _edited_df
+
+        work_items_data = []
+        for _i, _nm in enumerate(item_names):
+            _wd = {"name": _nm, "s1": None, "s2": None, "s3": None, "day": None, "night": None}
+            for _sl, _lk in zip(shift_labels, load_keys):
+                try:
+                    _v = int(_edited_df.at[_i, _sl] or 0)
+                except (TypeError, ValueError):
+                    _v = 0
+                _wd[_lk] = _v if _v > 0 else None
+            _wd["month_total"] = int(_edited_df.at[_i, "월누계"] or 0)
+            work_items_data.append(_wd)
+
+    # ── 오른쪽: 안전관리 + 특이사항 + 저장 ──
+    with _wl_right:
+        st.markdown("""<style>
+        .safety-section p,.safety-section span,.safety-section label{font-size:10px !important;line-height:1.1 !important;}
+        .safety-section .stCheckbox{margin:0 !important;padding:0 !important;}
+        .safety-section [data-testid="stVerticalBlock"]>div{gap:0.05rem !important;}
+        </style>""", unsafe_allow_html=True)
+        st.markdown('<div style="background:#4B2D8E;color:white;padding:5px 10px;border-radius:4px;font-size:12px;font-weight:bold;margin-bottom:4px;">3. 안전 관리 사항</div>', unsafe_allow_html=True)
+        st.markdown('<div class="safety-section">', unsafe_allow_html=True)
+        safety_questions = [
+            "작업 계획에 따라 작업 절차를 준수 하였는가?",
+            "안전장치(후방 경보장치 , 안전밸트 등) 기능의 이상 유무를 점검 하였는가?",
+            "주행시 급출발 , 급정거 , 급선회를 하지 않았는가?",
+            "화물 적재시 허용 하중을 초과하지 않았는가?",
+            "작업장소에 적합한 제한 속도를 준수 하였는가?",
+            "지게차 작업 안전 수칙에 위배 되는 작업을 하지 않았는가?"
+        ]
+        safety_items_data = []
+        for i, q in enumerate(safety_questions):
+            st.caption(f"{i+1}. {q}")
+            if is_2person:
+                sc1, sc2 = st.columns(2)
+                chk_day   = sc1.checkbox("주간", value=True, key=f"safe_day_{i}")
+                chk_night = sc2.checkbox("야간", value=True, key=f"safe_night_{i}")
+                safety_items_data.append({"text": q, "s1": False, "s2": False, "s3": False, "day": chk_day, "night": chk_night})
+            else:
+                sc1, sc2, sc3 = st.columns(3)
+                chk_s1 = sc1.checkbox("1근", value=True, key=f"safe_s1_{i}")
+                chk_s2 = sc2.checkbox("2근", value=True, key=f"safe_s2_{i}")
+                chk_s3 = sc3.checkbox("3근", value=True, key=f"safe_s3_{i}")
+                safety_items_data.append({"text": q, "s1": chk_s1, "s2": chk_s2, "s3": chk_s3, "day": False, "night": False})
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        st.markdown('<div style="background:#4B2D8E;color:white;padding:5px 10px;border-radius:4px;font-size:12px;font-weight:bold;margin:6px 0 4px;">4. 특이 사항</div>', unsafe_allow_html=True)
+        note_text = st.text_area("특이사항", "", height=80, label_visibility="collapsed")
+
+        st.markdown("---")
+        import time as _time
+        _fn_team = st.secrets.get("company", {}).get("team", "일일업무")
+        _last_save = st.session_state.get("_last_save_ts", 0)
+        _cooldown = 20
+        _elapsed = _time.time() - _last_save
+        _can_save = _elapsed >= _cooldown
+        if st.button("💾 전체 저장", use_container_width=True, type="primary", disabled=not _can_save):
+            try:
+                with st.spinner("저장 중..."):
+                    from utils.supabase_db import save_all
+                    save_all(
+                        selected_date, work_items_data, shift_data_final,
+                        safety_items_data, note_text, st.session_state.get("leave_list", [])
+                    )
+                st.session_state["_last_save_ts"] = _time.time()
+                st.session_state.pop(f"wl_monthly_totals_{selected_date}", None)
+                with st.spinner(f"{selected_date.month}월 통합 Excel 생성 중..."):
+                    _mbytes, _mcount = generate_monthly_work_log_excel(selected_date)
+                st.session_state["_monthly_bytes"] = _mbytes
+                st.session_state["_monthly_count"] = _mcount
+                st.session_state["_monthly_ym"] = (selected_date.year, selected_date.month)
+                st.success(f"✅ 저장 완료! {selected_date.month}월 Excel 준비됨 ({_mcount}일)")
+            except Exception as e:
+                st.error(f"저장 실패: {type(e).__name__}: {e}")
+        if not _can_save:
+            st.caption(f"⏳ {int(_cooldown - _elapsed)}초 후 재저장 가능")
+
+        if st.session_state.get("_monthly_bytes"):
+            _my, _mm = st.session_state["_monthly_ym"]
+            _monthly_fname = f"{_fn_team}_{_my}년{_mm}월_작업일지.xlsx"
+            st.download_button(
+                f"📥 {_my}년 {_mm}월 통합 다운로드 ({st.session_state['_monthly_count']}일)",
+                data=st.session_state["_monthly_bytes"],
+                file_name=_monthly_fname,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
 
         # ── 메일 전송 ──
         _email_cfg = st.secrets.get("email", {})
