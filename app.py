@@ -421,243 +421,222 @@ def page_cross_check():
     # ── 2단 레이아웃 ──
     col_plan, col_erp = st.columns(2)
 
+    # ── Dialog: 생산계획서 전체 변환 결과 (팝업) ──
+    @st.dialog("생산계획서 전체 변환 결과", width="large")
+    def _plan_conversion_dialog():
+        _pln_df    = st.session_state.get("cc_plan_df")
+        _pln_bytes = st.session_state.get("cc_plan_bytes")
+        _pln_name  = st.session_state.get("cc_plan_name", "")
+        _tbl_data  = st.session_state.get("cc_table_data")
+
+        if not (_tbl_data and _tbl_data.get("headers") and _tbl_data.get("rows")):
+            st.info("변환 결과가 없습니다.")
+            return
+
+        _headers  = _tbl_data["headers"]
+        _rows_raw = _tbl_data["rows"]
+        _unique_h, _seen = [], {}
+        for _h in _headers:
+            _hs = str(_h) if _h else ""
+            if _hs in _seen:
+                _seen[_hs] += 1
+                _unique_h.append(f"{_hs}_{_seen[_hs]}")
+            else:
+                _seen[_hs] = 0
+                _unique_h.append(_hs)
+        _padded = [list(r[:len(_unique_h)]) + [""] * max(0, len(_unique_h) - len(r)) for r in _rows_raw]
+        _exp_h, _exp_r = [], [[] for _ in _padded]
+        for _i, _h in enumerate(_unique_h):
+            _exp_h.append(_h)
+            for _j, _rw in enumerate(_padded):
+                _exp_r[_j].append(_rw[_i] if _i < len(_rw) else "")
+            if "신규" in str(_h):
+                _in = str(_h).replace("신규", "입고")
+                _b, _c = _in, 1
+                while _in in _exp_h:
+                    _in = f"{_b}_{_c}"; _c += 1
+                _exp_h.append(_in)
+                for _j in range(len(_padded)):
+                    _exp_r[_j].append("")
+
+        _full_df = pd.DataFrame(_exp_r, columns=_exp_h)
+        def _ts(x):
+            if x is None or str(x) in ("nan", "None", "NaN"): return ""
+            if isinstance(x, float): return str(int(x)) if x == int(x) else str(x)
+            return x if isinstance(x, str) else str(x)
+        _full_df = _full_df.apply(lambda col: col.map(_ts))
+
+        from modules.excel_converter import convert_to_excel, generate_incoming_plan_excel
+        _full_excel = convert_to_excel(list(_full_df.columns), _full_df.fillna("").values.tolist())
+        _inc_excel = None
+        if _pln_df is not None:
+            try: _inc_excel = generate_incoming_plan_excel(_pln_df)
+            except Exception: pass
+
+        # 상단 소형 버튼 행
+        _dc1, _dc2, _dc3 = st.columns([2, 2, 3])
+        with _dc1:
+            st.download_button("📥 전체 엑셀", data=_full_excel,
+                file_name="plan_full_table.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True)
+        with _dc2:
+            if _inc_excel:
+                st.download_button("📥 입고예정 리스트", data=_inc_excel,
+                    file_name="incoming_plan.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True)
+
+        st.caption(f"변환 결과 ({len(_rows_raw)}행 × {len(_exp_h)}열) — 모든 셀 직접 수정 가능")
+        _tbl_key = f"dlg_tbl_{_pln_name}_{len(_rows_raw)}"
+        _is_img  = _pln_name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
+        if _is_img and _pln_bytes:
+            _ci, _ct = st.columns(2)
+            with _ci:
+                st.caption("원본 이미지")
+                st.image(_pln_bytes, use_container_width=True)
+            with _ct:
+                _full_df = st.data_editor(_full_df, use_container_width=True, hide_index=True, num_rows="fixed", key=_tbl_key)
+        else:
+            _full_df = st.data_editor(_full_df, use_container_width=True, hide_index=True, num_rows="fixed", key=_tbl_key)
+
+        # 입고 예정 품목 리스트 (다이얼로그 내)
+        if _pln_df is not None and "신규" in _pln_df.columns:
+            st.markdown("---")
+            st.caption("📋 입고 예정 품목 리스트")
+            _cols2 = ["색상코드", "제조사", "신규"]
+            _has_rem = "비고" in _pln_df.columns
+            if _has_rem: _cols2.append("비고")
+            _inc_df = _pln_df[_pln_df["신규"] > 0][_cols2].copy()
+            _cn = ["품목코드", "제조사", "입고예정수량"]
+            if _has_rem: _cn.append("비고")
+            _inc_df.columns = _cn
+            _inc_df = _inc_df.reset_index(drop=True)
+            _inc_df.insert(_inc_df.columns.get_loc("입고예정수량"), "기입고수량", 0)
+            _inc_df["기입고수량"]   = _inc_df["기입고수량"].astype(int)
+            _inc_df["입고예정수량"] = _inc_df["입고예정수량"].astype(int)
+            _inc_df["비고"] = _inc_df.get("비고", pd.Series([""] * len(_inc_df))).fillna("").astype(str)
+            _ed_key = f"dlg_ed_{_pln_name}_{len(_inc_df)}"
+            _ed = st.data_editor(
+                _inc_df[["품목코드", "제조사", "기입고수량", "입고예정수량", "비고"]],
+                column_config={
+                    "품목코드":     st.column_config.TextColumn(disabled=True),
+                    "제조사":       st.column_config.TextColumn(disabled=True),
+                    "기입고수량":   st.column_config.NumberColumn("기입고수량", min_value=0, step=1),
+                    "입고예정수량": st.column_config.NumberColumn(disabled=True),
+                    "비고":         st.column_config.TextColumn("비고"),
+                },
+                use_container_width=True, hide_index=False, num_rows="fixed", key=_ed_key,
+            )
+            _tp = int(_ed["입고예정수량"].sum())
+            _ta = int(_ed["기입고수량"].fillna(0).sum())
+            st.success(f"총 {len(_ed)}개 품목 | 입고예정: {_tp}개 | 기입고: {_ta}개 | 잔여: {_tp - _ta}개")
+
     # ── 왼쪽: 생산계획서 ──
     with col_plan:
         st.subheader("① 생산계획서")
-        plan_file = st.file_uploader(
-            "생산계획서 업로드 (이미지 · 엑셀 · PDF · Word)",
-            type=["jpg", "jpeg", "png", "webp", "xlsx", "xls", "csv", "pdf", "docx"],
-            key="plan_upload",
-            help="인쇄물 사진, 엑셀, PDF, Word(.docx) 모두 지원",
-        )
-
-        if plan_file:
-            st.success(f"📄 {plan_file.name}")
-
-        if plan_file and "cc_plan_df" not in st.session_state:
-            if st.button("📋 입고 예정 리스트 추출", type="primary", use_container_width=True):
-                if not api_key:
-                    st.error("API Key가 설정되지 않았습니다. 관리자에게 문의하세요.")
-                    st.stop()
-                plan_bytes = plan_file.getvalue()
-                plan_fname = plan_file.name
-                with st.spinner("생산계획서 분석 중..."):
-                    try:
-                        from modules.vision_ocr import extract_production_plan
-                        result = extract_production_plan(plan_bytes, plan_fname, api_key)
-                        plan_df = pd.DataFrame(result["items"])
-                        st.session_state["cc_table_data"] = result.get("table_data")
-                    except Exception as e:
-                        st.error(f"생산계획서 분석 실패: {e}")
+        _fu_col, _btn_col = st.columns([3, 1])
+        with _fu_col:
+            plan_file = st.file_uploader(
+                "생산계획서 업로드 (이미지 · 엑셀 · PDF · Word)",
+                type=["jpg", "jpeg", "png", "webp", "xlsx", "xls", "csv", "pdf", "docx"],
+                key="plan_upload",
+                help="인쇄물 사진, 엑셀, PDF, Word(.docx) 모두 지원",
+            )
+        with _btn_col:
+            if plan_file and "cc_plan_df" not in st.session_state:
+                st.write("")
+                st.write("")
+                if st.button("📋 추출", type="primary", use_container_width=True, key="btn_extract_plan"):
+                    if not api_key:
+                        st.error("API Key가 설정되지 않았습니다.")
                         st.stop()
-                st.session_state["cc_plan_df"] = plan_df
-                st.session_state["cc_plan_bytes"] = plan_bytes
-                st.session_state["cc_plan_name"] = plan_fname
-                st.rerun()
+                    plan_bytes = plan_file.getvalue()
+                    plan_fname = plan_file.name
+                    with st.spinner("생산계획서 분석 중..."):
+                        try:
+                            from modules.vision_ocr import extract_production_plan
+                            result = extract_production_plan(plan_bytes, plan_fname, api_key)
+                            plan_df = pd.DataFrame(result["items"])
+                            st.session_state["cc_table_data"] = result.get("table_data")
+                        except Exception as e:
+                            st.error(f"생산계획서 분석 실패: {e}")
+                            st.stop()
+                    st.session_state["cc_plan_df"] = plan_df
+                    st.session_state["cc_plan_bytes"] = plan_bytes
+                    st.session_state["cc_plan_name"] = plan_fname
+                    st.rerun()
 
         if "cc_plan_df" in st.session_state:
-            plan_df = st.session_state["cc_plan_df"]
+            plan_df   = st.session_state["cc_plan_df"]
             plan_bytes = st.session_state.get("cc_plan_bytes")
-            plan_name = st.session_state.get("cc_plan_name", "")
-
-            st.markdown("---")
-
-            # 전체 표 변환 결과 (이미지 시: 원본+변환 나란히, 엑셀 시: 변환만)
+            plan_name  = st.session_state.get("cc_plan_name", "")
             table_data = st.session_state.get("cc_table_data")
+
             if table_data and table_data.get("headers") and table_data.get("rows"):
-                st.subheader("생산계획서 전체 변환 결과")
-                headers = table_data["headers"]
-                rows = table_data["rows"]
-                unique_h = []
-                seen = {}
-                for h in headers:
-                    hs = str(h) if h else ""
-                    if hs in seen:
-                        seen[hs] += 1
-                        unique_h.append(f"{hs}_{seen[hs]}")
-                    else:
-                        seen[hs] = 0
-                        unique_h.append(hs)
-                padded = [list(r[:len(unique_h)]) + [""] * max(0, len(unique_h) - len(r)) for r in rows]
+                if st.button("📊 생산계획서 전체 변환 결과", use_container_width=True, key="btn_show_plan_dlg"):
+                    _plan_conversion_dialog()
 
-                # 신규 컬럼 옆마다 입고 컬럼 삽입 (빈칸)
-                exp_headers = []
-                exp_rows = [[] for _ in padded]
-                for i, h in enumerate(unique_h):
-                    exp_headers.append(h)
-                    for j, row in enumerate(padded):
-                        exp_rows[j].append(row[i] if i < len(row) else "")
-                    if "신규" in str(h):
-                        inc_name = str(h).replace("신규", "입고")
-                        base = inc_name
-                        cnt = 1
-                        while inc_name in exp_headers:
-                            inc_name = f"{base}_{cnt}"
-                            cnt += 1
-                        exp_headers.append(inc_name)
-                        for j in range(len(padded)):
-                            exp_rows[j].append("")
-
-                full_table_df = pd.DataFrame(exp_rows, columns=exp_headers)
-                # 모든 값을 문자열로 통일 → data_editor에서 전 셀 수정 가능 보장
-                def _to_str(x):
-                    if x is None or str(x) in ("nan", "None", "NaN"):
-                        return ""
-                    if isinstance(x, float):
-                        return str(int(x)) if x == int(x) else str(x)
-                    if not isinstance(x, str):
-                        return str(x)
-                    return x
-                full_table_df = full_table_df.apply(lambda col: col.map(_to_str))
-
-                _tbl_key = f"cc_full_table_{plan_name}_{len(rows)}"
-                is_image = plan_name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
-                if is_image and plan_bytes:
-                    col_img, col_tbl = st.columns(2)
-                    with col_img:
-                        st.caption("원본 이미지")
-                        st.image(plan_bytes, use_container_width=True)
-                    with col_tbl:
-                        st.caption(f"변환 결과 ({len(rows)}행 × {len(exp_headers)}열) — 모든 셀 직접 수정 가능")
-                        full_table_df = st.data_editor(full_table_df, use_container_width=True, hide_index=True, num_rows="fixed", key=_tbl_key)
-                else:
-                    st.caption(f"변환 결과 ({len(rows)}행 × {len(exp_headers)}열) — 모든 셀 직접 수정 가능")
-                    full_table_df = st.data_editor(full_table_df, use_container_width=True, hide_index=True, num_rows="fixed", key=_tbl_key)
-
-                from modules.excel_converter import convert_to_excel
-                full_excel = convert_to_excel(list(full_table_df.columns), full_table_df.fillna("").values.tolist())
-                st.download_button(
-                    label="📥 생산계획서 전체 엑셀 다운로드",
-                    data=full_excel,
-                    file_name="plan_full_table.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                )
-                full_html = full_table_df.fillna("").to_html(index=False, border=1)
-                st.components.v1.html(
-                    f"""<style>@media print{{.no-print{{display:none}}}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #333;padding:6px;text-align:center;font-size:11px}} .print-only{{display:none}} @media print{{.print-only{{display:block}}}}</style>
-                    <button class="no-print" onclick="window.print()"
-                    style="padding:8px 20px;background:#4B2D8E;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🖨 전체 표 인쇄</button>
-                    <div class="print-only"><h3>생산계획서 전체 변환 결과</h3>{full_html}</div>""",
-                    height=42,
-                )
-                st.markdown("---")
-
-                with st.expander("📋 입고 예정 품목 리스트", expanded=False):
-                    cols = ["색상코드", "제조사", "신규"]
-                    has_remark = "비고" in plan_df.columns
-                    if has_remark:
-                        cols.append("비고")
-                    incoming_df = plan_df[plan_df["신규"] > 0][cols].copy()
-                    col_names = ["품목코드", "제조사", "입고예정수량"]
-                    if has_remark:
-                        col_names.append("비고")
-                    incoming_df.columns = col_names
-                    incoming_df = incoming_df.reset_index(drop=True)
-                    incoming_df.insert(incoming_df.columns.get_loc("입고예정수량"), "기입고수량", 0)
-                    incoming_df["기입고수량"] = incoming_df["기입고수량"].astype(int)
-                    incoming_df["입고예정수량"] = incoming_df["입고예정수량"].astype(int)
-                    if not has_remark:
-                        incoming_df["비고"] = ""
-                    else:
-                        incoming_df["비고"] = incoming_df["비고"].fillna("").astype(str)
-
-                    _editor_key = f"cc_editor_{plan_name}_{len(incoming_df)}"
-                    edited_df = st.data_editor(
-                        incoming_df[["품목코드", "제조사", "기입고수량", "입고예정수량", "비고"]],
-                        column_config={
-                            "품목코드":     st.column_config.TextColumn(disabled=True),
-                            "제조사":       st.column_config.TextColumn(disabled=True),
-                            "기입고수량":   st.column_config.NumberColumn("기입고수량", min_value=0, step=1, help="오늘 이전 기입고 수량"),
-                            "입고예정수량": st.column_config.NumberColumn(disabled=True),
-                            "비고":         st.column_config.TextColumn("비고"),
-                        },
-                        use_container_width=True,
-                        hide_index=False,
-                        num_rows="fixed",
-                        key=_editor_key,
-                    )
-
-                    _total_plan    = int(edited_df["입고예정수량"].sum())
-                    _total_already = int(edited_df["기입고수량"].fillna(0).sum())
-                    _total_remain  = _total_plan - _total_already
-                    st.success(f"총 {len(edited_df)}개 품목 | 입고예정: {_total_plan}개 | 기입고: {_total_already}개 | 잔여: {_total_remain}개")
-
-                    incoming_df = edited_df.copy()
-                    incoming_df.index += 1
-                    incoming_df.index.name = "No."
-
-                    from modules.excel_converter import generate_incoming_plan_excel
-                    incoming_excel = generate_incoming_plan_excel(plan_df)
-                    st.download_button(
-                        label="📥 입고 예정 엑셀 다운로드",
-                        data=incoming_excel,
-                        file_name="incoming_plan.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True,
-                    )
-                    p_col1, p_col2 = st.columns([1, 3])
-                    with p_col1:
-                        sort_by = st.selectbox("인쇄 정렬", ["품목코드", "제조사", "입고예정수량"], key="sort_incoming", label_visibility="collapsed")
-                    with p_col2:
-                        sort_asc = st.radio("순서", ["오름차순", "내림차순"], horizontal=True, key="sort_dir_incoming", label_visibility="collapsed")
-                    sorted_df = incoming_df.sort_values(sort_by, ascending=(sort_asc == "오름차순")).reset_index(drop=True)
-                    sorted_df.index += 1
-                    sorted_df.index.name = "No."
-                    sorted_html = sorted_df.to_html(border=1)
-                    st.components.v1.html(
-                        f"""<style>@media print{{.no-print{{display:none}}}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #333;padding:8px;text-align:center}} .print-only{{display:none}} @media print{{.print-only{{display:block}}}}</style>
-                        <button class="no-print" onclick="window.print()"
-                        style="padding:8px 20px;background:#4B2D8E;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🖨 인쇄</button>
-                        <div class="print-only"><h3>입고 예정 품목 ({sort_by} {sort_asc})</h3>{sorted_html}</div>""",
-                        height=42,
-                    )
-
-                # ── ERP 입고 반영 결과 계산 (col_erp에서 표시) ──
-                if "cc_result_df" in st.session_state:
-                    from utils.helpers import auto_correct_code, is_valid_item_code
-                    _result_df = st.session_state["cc_result_df"]
-                    erp_qty_map = {
-                        str(r.get("색상코드", "")).strip(): int(r.get("입고수량", 0) or 0)
-                        for _, r in _result_df.iterrows()
-                        if str(r.get("색상코드", "")).strip()
-                    }
+            # ERP 입고 반영 결과 계산 (cc_filled_df 갱신)
+            if "cc_result_df" in st.session_state:
+                from utils.helpers import auto_correct_code, is_valid_item_code
+                _result_df = st.session_state["cc_result_df"]
+                erp_qty_map = {
+                    str(r.get("색상코드", "")).strip(): int(r.get("입고수량", 0) or 0)
+                    for _, r in _result_df.iterrows()
+                    if str(r.get("색상코드", "")).strip()
+                }
+                if table_data and table_data.get("headers") and table_data.get("rows"):
+                    _h2, _r2 = table_data["headers"], table_data["rows"]
+                    _u2, _s2 = [], {}
+                    for _h in _h2:
+                        _hs = str(_h) if _h else ""
+                        if _hs in _s2: _s2[_hs] += 1; _u2.append(f"{_hs}_{_s2[_hs]}")
+                        else: _s2[_hs] = 0; _u2.append(_hs)
+                    _pd2 = [list(r[:len(_u2)]) + [""] * max(0, len(_u2) - len(r)) for r in _r2]
+                    _eh2, _er2 = [], [[] for _ in _pd2]
+                    for _i2, _hh in enumerate(_u2):
+                        _eh2.append(_hh)
+                        for _j2, _rr in enumerate(_pd2):
+                            _er2[_j2].append(_rr[_i2] if _i2 < len(_rr) else "")
+                        if "신규" in str(_hh):
+                            _inn = str(_hh).replace("신규", "입고")
+                            _bb, _cc = _inn, 1
+                            while _inn in _eh2: _inn = f"{_bb}_{_cc}"; _cc += 1
+                            _eh2.append(_inn)
+                            for _j2 in range(len(_pd2)): _er2[_j2].append("")
+                    def _ts2(x):
+                        if x is None or str(x) in ("nan", "None", "NaN"): return ""
+                        if isinstance(x, float): return str(int(x)) if x == int(x) else str(x)
+                        return x if isinstance(x, str) else str(x)
+                    filled_df = pd.DataFrame(_er2, columns=_eh2).apply(lambda col: col.map(_ts2))
+                    exp_headers = _eh2
                     신규_col_indices = [i for i, h in enumerate(exp_headers) if "신규" in str(h)]
-                    filled_df = full_table_df.copy()
                     for row_idx, row_vals in filled_df.iterrows():
                         for ni in 신규_col_indices:
-                            if ni + 1 >= len(exp_headers):
-                                continue
+                            if ni + 1 >= len(exp_headers): continue
                             inc_col = exp_headers[ni + 1]
-                            if "입고" not in str(inc_col):
-                                continue
+                            if "입고" not in str(inc_col): continue
                             code_col_idx = ni - 3
-                            if code_col_idx < 0:
-                                continue
+                            if code_col_idx < 0: continue
                             raw_code = str(row_vals[exp_headers[code_col_idx]]).strip()
                             corrected = auto_correct_code(raw_code)
                             if is_valid_item_code(corrected) and corrected in erp_qty_map:
                                 qty = erp_qty_map[corrected]
                                 filled_df.at[row_idx, inc_col] = str(qty) if qty > 0 else ""
-
-                    # 동일 색상코드 중복 처리: 신규 합산 → 최상단 행에만, 입고도 최상단 행에만
                     for _ni in 신규_col_indices:
-                        if _ni + 1 >= len(exp_headers):
-                            continue
+                        if _ni + 1 >= len(exp_headers): continue
                         _inc_col = exp_headers[_ni + 1]
-                        if "입고" not in str(_inc_col):
-                            continue
+                        if "입고" not in str(_inc_col): continue
                         _신규_col = exp_headers[_ni]
                         _code_col_idx = _ni - 3
-                        if _code_col_idx < 0:
-                            continue
+                        if _code_col_idx < 0: continue
                         _code_col = exp_headers[_code_col_idx]
-                        _first_seen = {}  # corrected_code → first row_idx
+                        _first_seen = {}
                         for _ridx, _rvals in filled_df.iterrows():
                             _raw = str(_rvals[_code_col]).strip()
                             _corr = auto_correct_code(_raw)
-                            if not is_valid_item_code(_corr):
-                                continue
+                            if not is_valid_item_code(_corr): continue
                             if _corr not in _first_seen:
                                 _first_seen[_corr] = _ridx
                             else:
@@ -670,31 +649,33 @@ def page_cross_check():
                                     filled_df.at[_fidx, _신규_col] = str(_fn + _dn)
                                     filled_df.at[_ridx, _신규_col] = ""
                                 filled_df.at[_ridx, _inc_col] = ""
-
                     st.session_state["cc_filled_df"] = filled_df
 
     # ── 오른쪽: ERP 입고명세서 ──
     with col_erp:
         st.subheader("② ERP 입고명세서")
-        erp_file = st.file_uploader(
-            "ERP 입고명세서 업로드",
-            type=["xlsx", "xls", "csv", "jpg", "jpeg", "png", "webp"],
-            key="erp_upload",
-            help="엑셀(.xlsx, .csv) 또는 화면 캡처 이미지",
-        )
-        if erp_file:
-            ext_erp = erp_file.name.lower().rsplit(".", 1)[-1]
-            if ext_erp in ("jpg", "jpeg", "png", "webp"):
-                st.image(erp_file, caption="ERP 명세서", use_container_width=True)
-            else:
-                st.success(f"📄 {erp_file.name}")
-
-        run_button = st.button(
-            "🔍 교차검증 실행",
-            type="primary",
-            use_container_width=True,
-            disabled=not (erp_file and "cc_plan_df" in st.session_state),
-        )
+        _fu2, _btn2 = st.columns([3, 1])
+        with _fu2:
+            erp_file = st.file_uploader(
+                "ERP 입고명세서 업로드",
+                type=["xlsx", "xls", "csv", "jpg", "jpeg", "png", "webp"],
+                key="erp_upload",
+                help="엑셀(.xlsx, .csv) 또는 화면 캡처 이미지",
+            )
+            if erp_file:
+                ext_erp = erp_file.name.lower().rsplit(".", 1)[-1]
+                if ext_erp in ("jpg", "jpeg", "png", "webp"):
+                    st.image(erp_file, caption="ERP 명세서", use_container_width=True)
+        with _btn2:
+            st.write("")
+            st.write("")
+            run_button = st.button(
+                "🔍 교차검증",
+                type="primary",
+                use_container_width=True,
+                disabled=not (erp_file and "cc_plan_df" in st.session_state),
+                key="btn_run_crosscheck",
+            )
 
         if run_button:
             if not api_key:
