@@ -3596,14 +3596,14 @@ def page_attendance():
 
                     # 올해 전체 휴가
                     if _yr_lv:
-                        with st.expander(f"📋 {selected_year}년 전체 휴가 ({len(_yr_lv)}일)"):
+                        with st.expander(f"{selected_year}년 전체 휴가 ({len(_yr_lv)}일)"):
                             _tc2 = {}
                             for _lv2 in _yr_lv: _tc2[_lv2["구분"]] = _tc2.get(_lv2["구분"], 0) + 1
                             st.info(" | ".join(f"{k}: {v}일" for k, v in _tc2.items()))
                             for _lv2 in _yr_lv: st.write(f"{_lv2['날짜']} — {_lv2['구분']}")
 
                     # 급여시간표
-                    with st.expander(f"💰 {selected_month}월 급여시간표"):
+                    with st.expander(f"{selected_month}월 급여시간표"):
                         _srows = []
                         for _fd in range(1, days_in_month + 1):
                             _fd_date = datetime.date(selected_year, selected_month, _fd)
@@ -3665,7 +3665,7 @@ def page_attendance():
                             st.info("저장된 근무 데이터가 없습니다.")
 
                     # 교대주기별 연장
-                    with st.expander("📊 교대주기별 연장 시간", expanded=False):
+                    with st.expander("교대주기별 연장 시간", expanded=False):
                         st.caption("교대 주기(연속 근무 5일)별 연장 현황. 주기당 최대 12H — 초과 시 빨간색 경고.")
                         _OT = 12
                         _tk = next((k for k, v in MEMBERS.items() if v == _nm), None)
