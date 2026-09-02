@@ -105,7 +105,7 @@ def has_saved_data(selected_date: datetime.date) -> bool:
 # ════════════════════════════════════════════════════════════════════
 
 def save_leaves(leave_list: list):
-    _sb().table("leaves").delete().gte("id", 0).execute()
+    _sb().table("leaves").delete().gt("id", 0).execute()
     if leave_list:
         rows = [{
             "name": lv["name"],
