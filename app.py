@@ -1327,9 +1327,15 @@ def page_work_log():
         return day_ot, night_ot, start, end
 
     if is_2person:
-        _leave_type_2p = shift_auto.get("leave_type", "")
+        _leave_type_2p  = shift_auto.get("leave_type", "")
+        _leave_person_2p = shift_auto.get("leave_person", "")
         _is_gonghu = _leave_type_2p == "공휴"
-        _default_note = "공휴일 휴일연장대근" if _is_gonghu else "대휴 연장4H"
+        if _is_gonghu:
+            _default_note = "공휴일 휴일연장대근"
+        elif _leave_person_2p and _leave_type_2p:
+            _default_note = f"{_leave_person_2p} {_leave_type_2p}로 대근"
+        else:
+            _default_note = "대근"
 
         if _is_gonghu:
             st.info(
