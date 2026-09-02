@@ -777,8 +777,8 @@ def page_cross_check():
                                     styles.at[_idx, _inc] = "background-color: #FFEB9C"
                     return styles
 
-                # 내부 스크롤 없음: height 미지정 → 페이지 스크롤로 처리
-                st.dataframe(_filled.style.apply(_style_filled, axis=None), use_container_width=True, hide_index=True)
+                st.dataframe(_filled.style.apply(_style_filled, axis=None), use_container_width=True, hide_index=True,
+                    height=len(_filled) * 35 + 38)
 
             # ── 확인필요 목록 ──
             if summary['reverse_count'] > 0:
@@ -803,6 +803,7 @@ def page_cross_check():
                     hide_index=True,
                     num_rows="fixed",
                     key=_rev_key,
+                    height=len(_rev_df) * 35 + 38,
                 )
                 if st.button("선택 항목 목록에서 제거", use_container_width=False, key="cc_reverse_del"):
                     _to_del = _edited_rev[_edited_rev["선택"] == True]["색상코드"].tolist()
