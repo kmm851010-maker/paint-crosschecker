@@ -409,14 +409,6 @@ def page_cross_check():
     from utils.formatter import style_result_table, format_summary
 
     st.title("생산계획 vs 입고 교차검증")
-    st.caption("① 생산계획서 첨부 → 입고 리스트 확인 → ② ERP 첨부 → 교차검증")
-
-    if "cc_plan_df" in st.session_state:
-        if st.button("🔄 새 생산계획서로 다시 시작", use_container_width=True):
-            for key in list(st.session_state.keys()):
-                if key.startswith("cc_"):
-                    del st.session_state[key]
-            st.rerun()
 
     # ── 2단 레이아웃 ──
     col_plan, col_erp = st.columns(2)
@@ -527,11 +519,16 @@ def page_cross_check():
         with _dc2:
             if _pln_df is not None and "신규" in _pln_df.columns:
                 if st.button("입고예정리스트 확인", use_container_width=True, key="btn_open_incoming_dlg"):
-                    _incoming_items_dialog()
+                    st.session_state["cc_open_incoming"] = True
+                    st.rerun()
 
         st.caption(f"변환 결과 ({len(_rows_raw)}행 × {len(_exp_h)}열) — 모든 셀 직접 수정 가능")
         _tbl_key = f"dlg_tbl_{_pln_name}_{len(_rows_raw)}"
-        _tbl_h   = len(_rows_raw) * 35 + 42   # 전체 행 스크롤 없이 표시
+        _tbl_h   = len(_rows_raw) * 35 + 42
+        # 열 너비 동적 계산: 다이얼로그 너비(약 1300px) ÷ 열 수, 최소 45px
+        _n_cols = len(_exp_h)
+        _col_w  = max(45, 1300 // max(1, _n_cols))
+        _col_cfg = {_h: st.column_config.TextColumn(_h, width=_col_w) for _h in _exp_h}
         _is_img  = _pln_name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
         if _is_img and _pln_bytes:
             _ci, _ct = st.columns(2)
@@ -540,10 +537,15 @@ def page_cross_check():
                 st.image(_pln_bytes, use_container_width=True)
             with _ct:
                 _full_df = st.data_editor(_full_df, use_container_width=True, hide_index=True,
-                    num_rows="fixed", key=_tbl_key, height=_tbl_h)
+                    num_rows="fixed", key=_tbl_key, height=_tbl_h, column_config=_col_cfg)
         else:
             _full_df = st.data_editor(_full_df, use_container_width=True, hide_index=True,
-                num_rows="fixed", key=_tbl_key, height=_tbl_h)
+                num_rows="fixed", key=_tbl_key, height=_tbl_h, column_config=_col_cfg)
+
+    # 입고예정리스트 팝업: 변환결과 팝업 내 버튼 → rerun → 여기서 단독 트리거
+    if st.session_state.get("cc_open_incoming"):
+        st.session_state.pop("cc_open_incoming")
+        _incoming_items_dialog()
 
     # ── 왼쪽: 생산계획서 ──
     with col_plan:
@@ -667,7 +669,17 @@ def page_cross_check():
 
     # ── 오른쪽: ERP 입고명세서 ──
     with col_erp:
-        st.subheader("② ERP 입고명세서")
+        _erp_hdr, _erp_rst = st.columns([5, 1])
+        with _erp_hdr:
+            st.subheader("② ERP 입고명세서")
+        with _erp_rst:
+            if "cc_plan_df" in st.session_state:
+                st.write("")
+                if st.button("🔄", help="새로고침", use_container_width=True, key="btn_reset_cc"):
+                    for _k in list(st.session_state.keys()):
+                        if _k.startswith("cc_"):
+                            del st.session_state[_k]
+                    st.rerun()
         _fu2, _btn2 = st.columns([3, 1])
         with _fu2:
             erp_file = st.file_uploader(
