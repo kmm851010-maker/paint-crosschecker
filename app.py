@@ -1404,7 +1404,7 @@ def page_work_log():
     st.markdown("---")
 
     # 기존 데이터 불러오기
-    # 휴가 데이터 Google Sheets에서 로드 (최초 1회)
+    # 휴가 데이터 로드 (최초 1회)
     if "leave_loaded" not in st.session_state:
         st.session_state["leave_loaded"] = True
         try:
@@ -1493,7 +1493,7 @@ def page_work_log():
         "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수",
                     "AGV 입/출고 작업 수량"
     ]
-    # Google Sheets에서 월누계 자동 로드 (날짜별 1회만 — 이후 세션 캐시 사용)
+    # 월누계 자동 로드 (날짜별 1회만 — 이후 세션 캐시 사용)
     _mt_key = f"wl_monthly_totals_{selected_date}"
     if _mt_key not in st.session_state:
         try:
@@ -1657,16 +1657,16 @@ def page_work_log():
 
     st.markdown("---")
 
-    # Google Sheets 저장
+    # 저장
     import time as _time
     _fn_team = st.secrets.get("company", {}).get("team", "일일업무")
     _last_save = st.session_state.get("_last_save_ts", 0)
     _cooldown = 20  # 초
     _elapsed = _time.time() - _last_save
     _can_save = _elapsed >= _cooldown
-    if st.button("💾 전체 저장 (Google Sheets)", use_container_width=True, type="primary", disabled=not _can_save):
+    if st.button("💾 전체 저장", use_container_width=True, type="primary", disabled=not _can_save):
         try:
-            with st.spinner("저장 중... Google Sheets에 업로드하고 있습니다."):
+            with st.spinner("저장 중..."):
                 from utils.supabase_db import save_all
                 save_all(
                     selected_date, work_items_data, shift_data_final,
@@ -1818,7 +1818,7 @@ def page_statistics():
     target_month = datetime.date(year, month, 1)
     days_in_month = calendar.monthrange(year, month)[1]
 
-    # Google Sheets에서 해당 월 데이터 로드
+    # 해당 월 데이터 로드
     try:
         from utils.supabase_db import load_daily_detail_month
         daily_details = load_daily_detail_month(target_month.year, target_month.month)
