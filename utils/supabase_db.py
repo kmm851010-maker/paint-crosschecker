@@ -77,7 +77,10 @@ def get_monthly_totals(selected_date: datetime.date) -> dict:
     try:
         month_prefix = selected_date.replace(day=1).strftime("%Y-%m-")
         today_str = selected_date.strftime("%Y-%m-%d")
-        res = _sb().table("work_items").select("name,total,date").like("date", f"{month_prefix}%").execute()
+        _y, _m = selected_date.year, selected_date.replace(day=1).month
+        _d1 = f"{_y:04d}-{_m:02d}-01"
+        _d2 = f"{_y:04d}-{_m:02d}-{calendar.monthrange(_y, _m)[1]:02d}"
+        res = _sb().table("work_items").select("name,total,date").gte("date", _d1).lte("date", _d2).execute()
         monthly = {}
         for r in res.data:
             if r["date"] == today_str:
@@ -151,7 +154,10 @@ def load_daily_detail_month(year: int, month: int) -> dict:
     """해당 월 전체 일지상세 반환: {date_str: detail_dict}"""
     try:
         prefix = f"{year:04d}-{month:02d}-"
-        res = _sb().table("daily_detail").select("date,data").like("date", f"{prefix}%").execute()
+        import calendar as _cal
+        _d1 = f"{year:04d}-{month:02d}-01"
+        _d2 = f"{year:04d}-{month:02d}-{_cal.monthrange(year, month)[1]:02d}"
+        res = _sb().table("daily_detail").select("date,data").gte("date", _d1).lte("date", _d2).execute()
         return {r["date"]: r["data"] for r in res.data}
     except Exception:
         return {}
@@ -206,7 +212,10 @@ def load_schedule_notes_month(name: str, year: int, month: int) -> dict:
     """특정 이름·월의 모든 메모를 {date_str: note} 딕셔너리로 반환."""
     try:
         prefix = f"{year:04d}-{month:02d}-"
-        res = _sb().table("schedule_notes").select("note_date,note").eq("name", name).like("note_date", f"{prefix}%").execute()
+        import calendar as _cal
+        _d1 = f"{year:04d}-{month:02d}-01"
+        _d2 = f"{year:04d}-{month:02d}-{_cal.monthrange(year, month)[1]:02d}"
+        res = _sb().table("schedule_notes").select("note_date,note").eq("name", name).gte("note_date", _d1).lte("note_date", _d2).execute()
         return {r["note_date"]: r["note"] for r in res.data if r["note"]}
     except Exception:
         return {}
@@ -229,7 +238,10 @@ def load_monthly_data(year: int, month: int):
     """
     try:
         prefix = f"{year:04d}-{month:02d}-"
-        res = _sb().table("work_items").select("*").like("date", f"{prefix}%").execute()
+        import calendar as _cal2
+        _d1 = f"{year:04d}-{month:02d}-01"
+        _d2 = f"{year:04d}-{month:02d}-{_cal2.monthrange(year, month)[1]:02d}"
+        res = _sb().table("work_items").select("*").gte("date", _d1).lte("date", _d2).execute()
         work_by_date = {}
         for r in res.data:
             item = {
