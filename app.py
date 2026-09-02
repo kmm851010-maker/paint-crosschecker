@@ -421,7 +421,55 @@ def page_cross_check():
     # ── 2단 레이아웃 ──
     col_plan, col_erp = st.columns(2)
 
-    # ── Dialog: 생산계획서 전체 변환 결과 (팝업) ──
+    # ── Dialog 1: 입고예정 품목 리스트 ──
+    @st.dialog("입고예정 품목 리스트", width="large")
+    def _incoming_items_dialog():
+        _pln_df   = st.session_state.get("cc_plan_df")
+        _pln_name = st.session_state.get("cc_plan_name", "")
+        if _pln_df is None or "신규" not in _pln_df.columns:
+            st.info("입고예정 품목이 없습니다.")
+            return
+        from modules.excel_converter import generate_incoming_plan_excel
+        _inc_excel = None
+        try: _inc_excel = generate_incoming_plan_excel(_pln_df)
+        except Exception: pass
+
+        _cols2 = ["색상코드", "제조사", "신규"]
+        _has_rem = "비고" in _pln_df.columns
+        if _has_rem: _cols2.append("비고")
+        _inc_df = _pln_df[_pln_df["신규"] > 0][_cols2].copy()
+        _cn = ["품목코드", "제조사", "입고예정수량"]
+        if _has_rem: _cn.append("비고")
+        _inc_df.columns = _cn
+        _inc_df = _inc_df.reset_index(drop=True)
+        _inc_df.insert(_inc_df.columns.get_loc("입고예정수량"), "기입고수량", 0)
+        _inc_df["기입고수량"]   = _inc_df["기입고수량"].astype(int)
+        _inc_df["입고예정수량"] = _inc_df["입고예정수량"].astype(int)
+        _inc_df["비고"] = _inc_df.get("비고", pd.Series([""] * len(_inc_df))).fillna("").astype(str)
+
+        if _inc_excel:
+            st.download_button("입고예정 엑셀 다운로드", data=_inc_excel,
+                file_name="incoming_plan.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+        _ed_key = f"inc_dlg_ed_{_pln_name}_{len(_inc_df)}"
+        _ed = st.data_editor(
+            _inc_df[["품목코드", "제조사", "기입고수량", "입고예정수량", "비고"]],
+            column_config={
+                "품목코드":     st.column_config.TextColumn(disabled=True),
+                "제조사":       st.column_config.TextColumn(disabled=True),
+                "기입고수량":   st.column_config.NumberColumn("기입고수량", min_value=0, step=1),
+                "입고예정수량": st.column_config.NumberColumn(disabled=True),
+                "비고":         st.column_config.TextColumn("비고"),
+            },
+            use_container_width=True, hide_index=False, num_rows="fixed", key=_ed_key,
+            height=min(len(_inc_df) * 35 + 40, 700),
+        )
+        _tp = int(_ed["입고예정수량"].sum())
+        _ta = int(_ed["기입고수량"].fillna(0).sum())
+        st.success(f"총 {len(_ed)}개 품목 | 입고예정: {_tp}개 | 기입고: {_ta}개 | 잔여: {_tp - _ta}개")
+
+    # ── Dialog 2: 생산계획서 전체 변환 결과 ──
     @st.dialog("생산계획서 전체 변환 결과", width="large")
     def _plan_conversion_dialog():
         _pln_df    = st.session_state.get("cc_plan_df")
@@ -466,29 +514,24 @@ def page_cross_check():
             return x if isinstance(x, str) else str(x)
         _full_df = _full_df.apply(lambda col: col.map(_ts))
 
-        from modules.excel_converter import convert_to_excel, generate_incoming_plan_excel
+        from modules.excel_converter import convert_to_excel
         _full_excel = convert_to_excel(list(_full_df.columns), _full_df.fillna("").values.tolist())
-        _inc_excel = None
-        if _pln_df is not None:
-            try: _inc_excel = generate_incoming_plan_excel(_pln_df)
-            except Exception: pass
 
-        # 상단 소형 버튼 행
+        # 상단 소형 버튼 행 (이모티콘 없음)
         _dc1, _dc2, _dc3 = st.columns([2, 2, 3])
         with _dc1:
-            st.download_button("📥 전체 엑셀", data=_full_excel,
+            st.download_button("전체 엑셀 다운로드", data=_full_excel,
                 file_name="plan_full_table.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True)
         with _dc2:
-            if _inc_excel:
-                st.download_button("📥 입고예정 리스트", data=_inc_excel,
-                    file_name="incoming_plan.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True)
+            if _pln_df is not None and "신규" in _pln_df.columns:
+                if st.button("입고예정리스트 확인", use_container_width=True, key="btn_open_incoming_dlg"):
+                    _incoming_items_dialog()
 
         st.caption(f"변환 결과 ({len(_rows_raw)}행 × {len(_exp_h)}열) — 모든 셀 직접 수정 가능")
         _tbl_key = f"dlg_tbl_{_pln_name}_{len(_rows_raw)}"
+        _tbl_h   = len(_rows_raw) * 35 + 42   # 전체 행 스크롤 없이 표시
         _is_img  = _pln_name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
         if _is_img and _pln_bytes:
             _ci, _ct = st.columns(2)
@@ -496,41 +539,11 @@ def page_cross_check():
                 st.caption("원본 이미지")
                 st.image(_pln_bytes, use_container_width=True)
             with _ct:
-                _full_df = st.data_editor(_full_df, use_container_width=True, hide_index=True, num_rows="fixed", key=_tbl_key)
+                _full_df = st.data_editor(_full_df, use_container_width=True, hide_index=True,
+                    num_rows="fixed", key=_tbl_key, height=_tbl_h)
         else:
-            _full_df = st.data_editor(_full_df, use_container_width=True, hide_index=True, num_rows="fixed", key=_tbl_key)
-
-        # 입고 예정 품목 리스트 (다이얼로그 내)
-        if _pln_df is not None and "신규" in _pln_df.columns:
-            st.markdown("---")
-            st.caption("📋 입고 예정 품목 리스트")
-            _cols2 = ["색상코드", "제조사", "신규"]
-            _has_rem = "비고" in _pln_df.columns
-            if _has_rem: _cols2.append("비고")
-            _inc_df = _pln_df[_pln_df["신규"] > 0][_cols2].copy()
-            _cn = ["품목코드", "제조사", "입고예정수량"]
-            if _has_rem: _cn.append("비고")
-            _inc_df.columns = _cn
-            _inc_df = _inc_df.reset_index(drop=True)
-            _inc_df.insert(_inc_df.columns.get_loc("입고예정수량"), "기입고수량", 0)
-            _inc_df["기입고수량"]   = _inc_df["기입고수량"].astype(int)
-            _inc_df["입고예정수량"] = _inc_df["입고예정수량"].astype(int)
-            _inc_df["비고"] = _inc_df.get("비고", pd.Series([""] * len(_inc_df))).fillna("").astype(str)
-            _ed_key = f"dlg_ed_{_pln_name}_{len(_inc_df)}"
-            _ed = st.data_editor(
-                _inc_df[["품목코드", "제조사", "기입고수량", "입고예정수량", "비고"]],
-                column_config={
-                    "품목코드":     st.column_config.TextColumn(disabled=True),
-                    "제조사":       st.column_config.TextColumn(disabled=True),
-                    "기입고수량":   st.column_config.NumberColumn("기입고수량", min_value=0, step=1),
-                    "입고예정수량": st.column_config.NumberColumn(disabled=True),
-                    "비고":         st.column_config.TextColumn("비고"),
-                },
-                use_container_width=True, hide_index=False, num_rows="fixed", key=_ed_key,
-            )
-            _tp = int(_ed["입고예정수량"].sum())
-            _ta = int(_ed["기입고수량"].fillna(0).sum())
-            st.success(f"총 {len(_ed)}개 품목 | 입고예정: {_tp}개 | 기입고: {_ta}개 | 잔여: {_tp - _ta}개")
+            _full_df = st.data_editor(_full_df, use_container_width=True, hide_index=True,
+                num_rows="fixed", key=_tbl_key, height=_tbl_h)
 
     # ── 왼쪽: 생산계획서 ──
     with col_plan:
@@ -544,10 +557,10 @@ def page_cross_check():
                 help="인쇄물 사진, 엑셀, PDF, Word(.docx) 모두 지원",
             )
         with _btn_col:
+            st.write("")
+            st.write("")
             if plan_file and "cc_plan_df" not in st.session_state:
-                st.write("")
-                st.write("")
-                if st.button("📋 추출", type="primary", use_container_width=True, key="btn_extract_plan"):
+                if st.button("추출", type="primary", use_container_width=True, key="btn_extract_plan"):
                     if not api_key:
                         st.error("API Key가 설정되지 않았습니다.")
                         st.stop()
@@ -566,16 +579,17 @@ def page_cross_check():
                     st.session_state["cc_plan_bytes"] = plan_bytes
                     st.session_state["cc_plan_name"] = plan_fname
                     st.rerun()
+            elif "cc_plan_df" in st.session_state:
+                table_data = st.session_state.get("cc_table_data")
+                if table_data and table_data.get("headers") and table_data.get("rows"):
+                    if st.button("변환결과", use_container_width=True, key="btn_show_plan_dlg"):
+                        _plan_conversion_dialog()
 
         if "cc_plan_df" in st.session_state:
             plan_df   = st.session_state["cc_plan_df"]
             plan_bytes = st.session_state.get("cc_plan_bytes")
             plan_name  = st.session_state.get("cc_plan_name", "")
             table_data = st.session_state.get("cc_table_data")
-
-            if table_data and table_data.get("headers") and table_data.get("rows"):
-                if st.button("📊 생산계획서 전체 변환 결과", use_container_width=True, key="btn_show_plan_dlg"):
-                    _plan_conversion_dialog()
 
             # ERP 입고 반영 결과 계산 (cc_filled_df 갱신)
             if "cc_result_df" in st.session_state:
@@ -670,7 +684,7 @@ def page_cross_check():
             st.write("")
             st.write("")
             run_button = st.button(
-                "🔍 교차검증",
+                "교차검증",
                 type="primary",
                 use_container_width=True,
                 disabled=not (erp_file and "cc_plan_df" in st.session_state),
