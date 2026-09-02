@@ -3442,7 +3442,7 @@ def page_attendance():
 
         # 새 메모 추가
         with st.expander("+ 메모 추가", expanded=False):
-            _new_text = st.text_input("내용", key=f"att_memo_new_text_{selected_year}_{selected_month}", placeholder="예: 설비 수리기간")
+            _new_text = st.text_input("내용", key=f"att_memo_new_text_{selected_year}_{selected_month}", )
             _use_range = st.checkbox("기간 지정", key=f"att_memo_use_range_{selected_year}_{selected_month}")
             if _use_range:
                 _rc1, _rc2 = st.columns(2)
@@ -3455,13 +3455,13 @@ def page_attendance():
                                              min_value=datetime.date(selected_year, selected_month, 1),
                                              max_value=datetime.date(selected_year, selected_month, days_in_month))
             else:
-                _new_start = None; _new_end = None
+                _new_start = st.date_input("지정일", value=today, key=f"att_memo_single_{selected_year}_{selected_month}",
+                                           min_value=datetime.date(selected_year, selected_month, 1),
+                                           max_value=datetime.date(selected_year, selected_month, days_in_month))
+                _new_end = _new_start
             if st.button("저장", key=f"att_memo_save_{selected_year}_{selected_month}", use_container_width=True):
                 if _new_text.strip():
-                    _entry = {"text": _new_text.strip()}
-                    if _use_range and _new_start:
-                        _entry["start"] = str(_new_start)
-                        _entry["end"] = str(_new_end if _new_end else _new_start)
+                    _entry = {"text": _new_text.strip(), "start": str(_new_start), "end": str(_new_end)}
                     _cal_memos.append(_entry)
                     st.session_state[_cal_memo_key] = _cal_memos
                     try: _cal_sn("전체", _cal_memo_date, _json.dumps(_cal_memos, ensure_ascii=False))
