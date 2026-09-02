@@ -1514,14 +1514,30 @@ def page_work_log():
 
     # Excel 양식 비율: 작업내용 185px, 근무열 66px, 합계 63px, 월합계 70px
     _W = {'item': 185, 'shift': 66, 'sum': 63, 'mon': 70}
+
+    def _eval_cell(v):
+        import re as _re
+        s = str(v).strip() if v is not None else ''
+        if not s or s in ('0', 'None', 'nan'):
+            return 0
+        if _re.match(r'^[\d\s\+\-\*\/\(\)\.]+$', s):
+            try:
+                return max(0, int(eval(s)))  # noqa: S307 – 숫자+연산자만 허용
+            except Exception:
+                pass
+        try:
+            return max(0, int(float(s)))
+        except Exception:
+            return 0
+
     _col_cfg_w = {
         '작업 내용': st.column_config.TextColumn('작업 내용', width=_W['item'], disabled=True),
-        '합계':   st.column_config.NumberColumn('합계',   width=_W['sum'], disabled=True, format='%d'),
-        '월합계': st.column_config.NumberColumn('월합계', width=_W['mon'], disabled=True, format='%d'),
+        '합계':   st.column_config.TextColumn('합계',   width=_W['sum'], disabled=True),
+        '월합계': st.column_config.TextColumn('월합계', width=_W['mon'], disabled=True),
     }
     for _sl in _all_shifts:
-        _col_cfg_w[_sl] = st.column_config.NumberColumn(
-            _sl, width=_W['shift'], min_value=0, step=1, format='%d',
+        _col_cfg_w[_sl] = st.column_config.TextColumn(
+            _sl, width=_W['shift'],
             disabled=(is_2person and _sl in _dis_2p) or (not is_2person and _sl in _dis_3sh),
         )
 
@@ -1536,23 +1552,31 @@ def page_work_log():
         height=495,
     )
 
+    _expr_evaluated = False
     for _i, _nm in enumerate(item_names):
-        try:
-            _ds = sum(int(_edited_df.at[_i, _sl] or 0) for _sl in _all_shifts)
-        except (TypeError, ValueError):
-            _ds = 0
+        # 연산식 평가 후 정수로 치환
+        _row_vals = {}
+        for _sl in _all_shifts:
+            _raw = _edited_df.at[_i, _sl]
+            _ev = _eval_cell(_raw)
+            if str(_raw).strip() not in ('', '0', 'None', 'nan', str(_ev)):
+                _expr_evaluated = True
+            _edited_df.at[_i, _sl] = _ev
+            _row_vals[_sl] = _ev
+        _ds = sum(_row_vals.values())
         _edited_df.at[_i, '합계']   = _ds
         _edited_df.at[_i, '월합계'] = monthly_totals.get(_nm, 0) + _ds
     st.session_state[_grid_key] = _edited_df
+    if _expr_evaluated:
+        # data_editor 캐시 초기화 → 평가된 값으로 즉시 화면 갱신
+        st.session_state.pop(f'de_{_grid_key}', None)
+        st.rerun()
 
     work_items_data = []
     for _i, _nm in enumerate(item_names):
         _wd = {'name': _nm, 'month_total': int(_edited_df.at[_i, '월합계'] or 0)}
         for _sl, _lk in zip(_all_shifts, _shift_keys):
-            try:
-                _v = int(_edited_df.at[_i, _sl] or 0)
-            except (TypeError, ValueError):
-                _v = 0
+            _v = int(_edited_df.at[_i, _sl] or 0)
             _wd[_lk] = _v if _v > 0 else None
         work_items_data.append(_wd)
 
