@@ -3377,11 +3377,11 @@ def page_attendance():
 
         WD_LABELS = ["일", "월", "화", "수", "목", "금", "토"]
         WD_CLR = ["#EF4444", "#555", "#555", "#555", "#555", "#555", "#3B82F6"]
-        _th_s = "font-size:13px;font-weight:700;text-align:center;padding:3px 0;border:1px solid #e5e7eb;background:#f3f4f6;"
-        _td_s = "font-size:12px;text-align:center;padding:2px 1px;border:1px solid #e5e7eb;vertical-align:top;height:39px;"
+        _th_s = "font-size:10px;font-weight:700;text-align:center;padding:3px 0;border:1px solid #e5e7eb;background:#f3f4f6;"
+        _td_s = "font-size:9px;text-align:center;padding:2px 1px;border:1px solid #e5e7eb;vertical-align:top;height:30px;"
 
         html_cal = '<div style="margin-top:4px;"><table style="width:100%;border-collapse:collapse;">'
-        html_cal += f'<thead><tr><th colspan="7" style="background:#4B2D8E;color:#fff;text-align:center;padding:5px;font-size:16px;font-weight:700;">{selected_year}년 {selected_month}월</th></tr><tr>'
+        html_cal += f'<thead><tr><th colspan="7" style="background:#4B2D8E;color:#fff;text-align:center;padding:5px;font-size:12px;font-weight:700;">{selected_year}년 {selected_month}월</th></tr><tr>'
         for wd, clr in zip(WD_LABELS, WD_CLR):
             html_cal += f'<th style="{_th_s}color:{clr};">{wd}</th>'
         html_cal += '</tr></thead><tbody><tr>'
@@ -3397,19 +3397,20 @@ def page_attendance():
             hol = _get_holiday_name(d)
             shift_lbl, shift_clr = _mini_shift(d)
             day_clr = "#EF4444" if (wi == 0 or hol) else ("#3B82F6" if wi == 6 else "#374151")
-            num_html = (f'<span style="display:inline-block;background:#3B82F6;color:#fff;border-radius:50%;width:20px;height:20px;line-height:20px;font-size:12px;font-weight:800;">{dn}</span>'
-                        if is_today else f'<span style="color:{day_clr};font-size:12px;font-weight:700;">{dn}</span>')
+            num_html = (f'<span style="display:inline-block;background:#3B82F6;color:#fff;border-radius:50%;width:15px;height:15px;line-height:15px;font-size:9px;font-weight:800;">{dn}</span>'
+                        if is_today else f'<span style="color:{day_clr};font-size:9px;font-weight:700;">{dn}</span>')
             if shift_lbl == "휴무":
-                badge = '<div style="font-size:10px;color:#9CA3AF;">휴</div>'
+                badge = '<div style="font-size:8px;color:#9CA3AF;">휴</div>'
             else:
-                badge = f'<div style="background:{shift_clr};color:#fff;border-radius:2px;font-size:10px;padding:0 1px;margin-top:1px;font-weight:700;">{shift_lbl[:2]}</div>'
+                txt_clr = "#fff" if shift_lbl in ("3근", "야간", "대근") else ("#fff" if shift_lbl == "1근" else "#fff")
+                badge = f'<div style="background:{shift_clr};color:#fff;border-radius:2px;font-size:8px;padding:0 1px;margin-top:1px;font-weight:700;">{shift_lbl[:2]}</div>'
             bg = "background:#EFF6FF;" if is_today else ""
             _memo_dot = ""
             _d_str = d.strftime("%Y-%m-%d")
             if _d_str in _memo_dates:
                 _memo_txt = " / ".join(_memo_dates[_d_str])
                 _memo_short = _memo_txt[:6] + ("…" if len(_memo_txt) > 6 else "")
-                _memo_dot = f'<div style="background:#FDE68A;color:#92400E;border-radius:2px;font-size:9px;padding:0 1px;margin-top:1px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:100%;text-align:center;font-weight:600;">{_memo_short}</div>'
+                _memo_dot = f'<div style="background:#FDE68A;color:#92400E;border-radius:2px;font-size:7px;padding:0 1px;margin-top:1px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:100%;text-align:center;font-weight:600;">{_memo_short}</div>'
             html_cal += f'<td style="{_td_s}{bg}">{num_html}{badge}{_memo_dot}</td>'
             cell_idx += 1
             if cell_idx % 7 == 0 and dn < days_in_month:
