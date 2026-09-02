@@ -3286,6 +3286,32 @@ def page_attendance():
 
     days_in_month = _cal.monthrange(selected_year, selected_month)[1]
 
+    # ── 달력 메모 로드 (연월 기준) ──
+    import json as _json
+    from utils.sheets import save_schedule_note as _cal_sn, load_schedule_note as _cal_ln
+    _cal_memo_date = datetime.date(selected_year, selected_month, 1)
+    _cal_memo_key = f"att_cal_memos_{selected_year}_{selected_month}"
+    if _cal_memo_key not in st.session_state:
+        try:
+            _raw = _cal_ln("전체", _cal_memo_date)
+            st.session_state[_cal_memo_key] = _json.loads(_raw) if _raw else []
+        except Exception:
+            st.session_state[_cal_memo_key] = []
+    _cal_memos = st.session_state[_cal_memo_key]
+    # 메모가 걸리는 날짜 집합 (calendar cell 하이라이트용)
+    _memo_dates = {}  # date -> list of text
+    for _m in _cal_memos:
+        try:
+            _ms = datetime.date.fromisoformat(_m.get("start", ""))
+            _me = datetime.date.fromisoformat(_m.get("end", _m.get("start", "")))
+            _md = _ms
+            while _md <= _me:
+                if _md.year == selected_year and _md.month == selected_month:
+                    _memo_dates.setdefault(_md, []).append(_m["text"])
+                _md += datetime.timedelta(days=1)
+        except Exception:
+            pass
+
     # ── 2컬럼 레이아웃 ──
     col_stats, col_cal = st.columns([3, 2])
 
@@ -3355,7 +3381,10 @@ def page_attendance():
                 txt_clr = "#fff" if shift_lbl in ("3근", "야간", "대근") else ("#fff" if shift_lbl == "1근" else "#fff")
                 badge = f'<div style="background:{shift_clr};color:#fff;border-radius:2px;font-size:8px;padding:0 1px;margin-top:1px;font-weight:700;">{shift_lbl[:2]}</div>'
             bg = "background:#EFF6FF;" if is_today else ""
-            html_cal += f'<td style="{_td_s}{bg}">{num_html}{badge}</td>'
+            _memo_dot = ""
+            if d in _memo_dates:
+                _memo_dot = '<div style="width:4px;height:4px;background:#F59E0B;border-radius:50%;margin:1px auto 0;"></div>'
+            html_cal += f'<td style="{_td_s}{bg}">{num_html}{badge}{_memo_dot}</td>'
             cell_idx += 1
             if cell_idx % 7 == 0 and dn < days_in_month:
                 html_cal += '</tr><tr>'
@@ -3390,25 +3419,54 @@ def page_attendance():
                     st.markdown(f'<span style="background:{_tc};color:#fff;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">{_lb}</span> **{_ts[_sk]}**', unsafe_allow_html=True)
             st.markdown(f'<span style="background:#6B7280;color:#fff;border-radius:4px;padding:1px 7px;font-size:11px;">휴무</span> {_ts["휴무_근무자"]}', unsafe_allow_html=True)
 
-        # ── 특이사항 메모 (오늘, 4조3교대) ──
-        if shift_type == "4조3교대":
-            st.markdown("---")
-            from utils.sheets import save_schedule_note as _sn, load_schedule_note as _ln
-            _nk = f"att_note_{selected_name}_{today}"
-            if _nk not in st.session_state:
-                try: st.session_state[_nk] = _ln(selected_name, today)
-                except Exception: st.session_state[_nk] = ""
-            def _on_att_note():
-                v = st.session_state.get(f"att_ni_{selected_name}_{today}", "")
-                try: _sn(selected_name, today, v); st.session_state[_nk] = v
-                except Exception as _e: st.error(f"저장 실패: {_e}")
-            st.caption("📝 특이사항 메모 (오늘)")
-            st.text_input("메모", value=st.session_state[_nk],
-                          key=f"att_ni_{selected_name}_{today}",
-                          placeholder="메모 입력 후 엔터...",
-                          on_change=_on_att_note, label_visibility="collapsed")
-            if st.session_state[_nk]:
-                st.caption(f"✅ {st.session_state[_nk]}")
+        # ── 특이사항 메모 (달력 전체, 연월 기준) ──
+        st.markdown("---")
+        st.caption("특이사항 메모")
+
+        # 기존 메모 목록
+        for _mi, _m in enumerate(_cal_memos):
+            _mstart = _m.get("start", ""); _mend = _m.get("end", "")
+            _range_str = f"{_mstart} ~ {_mend}" if _mend and _mend != _mstart else (_mstart if _mstart else "")
+            _label = f"{_range_str}  {_m['text']}" if _range_str else _m["text"]
+            _mc1, _mc2 = st.columns([5, 1])
+            with _mc1:
+                st.markdown(f'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:6px;padding:4px 10px;font-size:12px;color:#92400E;">'
+                            f'{"<b>" + _range_str + "</b>  " if _range_str else ""}{_m["text"]}</div>', unsafe_allow_html=True)
+            with _mc2:
+                if st.button("삭제", key=f"att_memo_del_{_mi}_{selected_year}_{selected_month}", use_container_width=True):
+                    _cal_memos.pop(_mi)
+                    st.session_state[_cal_memo_key] = _cal_memos
+                    try: _cal_sn("전체", _cal_memo_date, _json.dumps(_cal_memos, ensure_ascii=False))
+                    except Exception as _e: st.error(f"저장 실패: {_e}")
+                    st.rerun()
+
+        # 새 메모 추가
+        with st.expander("+ 메모 추가", expanded=False):
+            _new_text = st.text_input("내용", key=f"att_memo_new_text_{selected_year}_{selected_month}", placeholder="예: 설비 수리기간")
+            _use_range = st.checkbox("기간 지정", key=f"att_memo_use_range_{selected_year}_{selected_month}")
+            if _use_range:
+                _rc1, _rc2 = st.columns(2)
+                with _rc1:
+                    _new_start = st.date_input("시작일", value=today, key=f"att_memo_start_{selected_year}_{selected_month}",
+                                               min_value=datetime.date(selected_year, selected_month, 1),
+                                               max_value=datetime.date(selected_year, selected_month, days_in_month))
+                with _rc2:
+                    _new_end = st.date_input("종료일", value=today, key=f"att_memo_end_{selected_year}_{selected_month}",
+                                             min_value=datetime.date(selected_year, selected_month, 1),
+                                             max_value=datetime.date(selected_year, selected_month, days_in_month))
+            else:
+                _new_start = None; _new_end = None
+            if st.button("저장", key=f"att_memo_save_{selected_year}_{selected_month}", use_container_width=True):
+                if _new_text.strip():
+                    _entry = {"text": _new_text.strip()}
+                    if _use_range and _new_start:
+                        _entry["start"] = str(_new_start)
+                        _entry["end"] = str(_new_end if _new_end else _new_start)
+                    _cal_memos.append(_entry)
+                    st.session_state[_cal_memo_key] = _cal_memos
+                    try: _cal_sn("전체", _cal_memo_date, _json.dumps(_cal_memos, ensure_ascii=False))
+                    except Exception as _e: st.error(f"저장 실패: {_e}")
+                    st.rerun()
 
     # ─────────── 왼쪽: 통계 ───────────
     with col_stats:
