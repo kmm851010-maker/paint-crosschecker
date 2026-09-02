@@ -120,10 +120,8 @@ def save_work_items(selected_date, work_items):
         if rows:
             ws.append_rows(rows, value_input_option="RAW")
     _retry(_write)
-    st.cache_data.clear()
 
 
-@st.cache_data(ttl=60)
 def load_work_items(selected_date):
     try:
         date_str = selected_date.strftime("%Y-%m-%d")
@@ -141,7 +139,6 @@ def load_work_items(selected_date):
         return None
 
 
-@st.cache_data(ttl=60)
 def get_monthly_totals(selected_date):
     """해당 월 누계 반환. 월별+레거시 시트 합산. 선택 날짜 제외."""
     try:
@@ -170,7 +167,6 @@ def get_monthly_totals(selected_date):
         return {}
 
 
-@st.cache_data(ttl=60)
 def has_saved_data(selected_date):
     try:
         date_str = selected_date.strftime("%Y-%m-%d")
@@ -192,10 +188,8 @@ def save_leaves(leave_list):
         ws.clear()
         ws.append_rows(rows, value_input_option="RAW")
     _retry(_write)
-    st.cache_data.clear()
 
 
-@st.cache_data(ttl=60)
 def load_leaves():
     try:
         ws = _get_or_create_sheet("휴가등록")
@@ -231,7 +225,6 @@ def save_daily_detail(selected_date, shift_data, safety_items, note_text):
     }, ensure_ascii=False)
 
     _retry(lambda: ws.append_row([date_str, detail]))
-    st.cache_data.clear()
 
 
 def delete_daily_details_for_leave(leave):
@@ -272,10 +265,8 @@ def delete_daily_details_for_leave(leave):
         return len(rows_to_delete)
     except Exception:
         return 0
-    st.cache_data.clear()
 
 
-@st.cache_data(ttl=60)
 def load_daily_detail(selected_date):
     try:
         ws = _get_or_create_sheet("일지상세")
@@ -324,10 +315,8 @@ def save_schedule_note(name, selected_date, note_text):
         if note_text.strip():
             ws.append_row([name, date_str, note_text.strip()], value_input_option="RAW")
     _retry(_write)
-    st.cache_data.clear()
 
 
-@st.cache_data(ttl=60)
 def load_schedule_note(name, selected_date):
     try:
         ws = _get_note_sheet()
@@ -341,7 +330,6 @@ def load_schedule_note(name, selected_date):
         return ""
 
 
-@st.cache_data(ttl=60)
 def load_schedule_notes_month(name, year, month):
     """특정 이름·월의 모든 메모를 {date_str: note} 딕셔너리로 반환 (1회 API 호출)."""
     try:
@@ -364,10 +352,8 @@ def save_all(selected_date, work_items, shift_data, safety_items, note_text, lea
     save_daily_detail(selected_date, shift_data, safety_items, note_text)
     save_leaves(leave_list)
     return True
-    st.cache_data.clear()
 
 
-@st.cache_data(ttl=60)
 def load_monthly_data(year, month):
     """해당 월 모든 작업일지 데이터를 날짜별로 반환.
     Returns: (work_by_date: {date_str: [item_dict, ...]}, detail_by_date: {date_str: {shift, safety, note}})
@@ -417,7 +403,6 @@ def load_monthly_data(year, month):
     return work_by_date, detail_by_date
 
 
-@st.cache_data(ttl=60)
 def load_all(selected_date):
     work = load_work_items(selected_date)
     detail = load_daily_detail(selected_date)
