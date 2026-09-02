@@ -92,6 +92,7 @@ def _load_status_map(ws):
     return lot_map
 
 
+@st.cache_data(ttl=60)
 def get_sector_inventory() -> dict:
     """재고현황 시트에서 섹터별 드럼 목록 반환 (백엔드 대체)"""
     ws = _get_or_create_sheet("재고현황")
@@ -143,6 +144,7 @@ def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: 
     ws_status.update([[now]], f"F{row_idx}")
     ws_history.append_row([new_lot, new_product, new_maker, old_sector, new_sector, now])
 
+    st.cache_data.clear()
     return True
 
 
@@ -160,4 +162,5 @@ def set_return_status(drums: list, status: str):
             row_idx = lot_map[lot]["idx"]
             ws_status.update([[status]], f"G{row_idx}")
             ws_status.update([[now]], f"F{row_idx}")
+    st.cache_data.clear()
     return True
