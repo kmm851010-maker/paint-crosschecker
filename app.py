@@ -1557,14 +1557,17 @@ def page_work_log():
     )
 
     _expr_evaluated = False
+    _vals_changed = False
     for _i, _nm in enumerate(item_names):
-        # 연산식 평가 후 정수로 치환
         _row_vals = {}
         for _sl in _all_shifts:
             _raw = _edited_df.at[_i, _sl]
             _ev = _eval_cell(_raw)
-            if str(_raw).strip() not in ('', '0', 'None', 'nan', str(_ev)):
+            _raw_s = str(_raw).strip()
+            if _raw_s not in ('', '0', 'None', 'nan', str(_ev)):
                 _expr_evaluated = True
+            if _raw_s != str(_df_grid.at[_i, _sl]).strip():
+                _vals_changed = True
             _edited_df.at[_i, _sl] = str(_ev)
             _row_vals[_sl] = _ev
         _ds = sum(_row_vals.values())
@@ -1572,8 +1575,9 @@ def page_work_log():
         _edited_df.at[_i, '월합계'] = str(monthly_totals.get(_nm, 0) + _ds)
     st.session_state[_grid_key] = _edited_df
     if _expr_evaluated:
-        # 키 버전을 올리면 다음 rerun에서 완전히 새 data_editor가 생성됨
         st.session_state[_de_ver_key] = _de_ver + 1
+        st.rerun()
+    elif _vals_changed:
         st.rerun()
 
     work_items_data = []
