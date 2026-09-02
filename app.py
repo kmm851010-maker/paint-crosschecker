@@ -1416,84 +1416,55 @@ def page_work_log():
         except Exception:
             pass
 
-    # 작업일지 자동 불러오기 (저장 데이터 있으면 즉시 복원 / 날짜 변경 감지)
-    load_key = f"wl_autoloaded_{selected_date}"
-    _prev_date = st.session_state.get("wl_current_date")
-    _date_changed = _prev_date is not None and _prev_date != str(selected_date)
+    # ─── 작업일지 자동 로드 (날짜별 캐시) ───────────────────────────────
+    _grid_key = f"wl_grid_{selected_date}"
+    _fetched_key = f"wl_fetched_{selected_date}"
 
-    if load_key not in st.session_state or _date_changed:
-        _item_names = [
-            "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
-            "신나 하차 수량", "신나 공급 수량", "크롬 공급 수량",
-            "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
-            "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수",
-            "AGV 입/출고 작업 수량"
-        ]
-        if is_2person:
-            _shift_labels = ["주간", "야간"]
-            _load_keys = ["day", "night"]
-        else:
-            _shift_labels = ["1근", "2근", "3근"]
-            _load_keys = ["s1", "s2", "s3"]
-        # 입력 위젯 초기화 (이전 날짜 값 제거)
-        for idx in range(len(_item_names)):
-            for lbl in _shift_labels:
-                st.session_state[f"wl_{lbl}_{idx}"] = ""
-
-        if load_key not in st.session_state:
-            # 이 날짜 첫 방문 — Sheets에서 로드
-            st.session_state[load_key] = True
+    if _grid_key not in st.session_state:
+        if _fetched_key not in st.session_state:
             try:
                 from utils.supabase_db import load_all
-                all_data = load_all(selected_date)
-                work_items = all_data.get("work_items") or {}
-                st.session_state[f"wl_loaded_{selected_date}"] = work_items
-                st.session_state[f"wl_detail_{selected_date}"] = all_data.get("detail")
+                _all_data = load_all(selected_date)
+                _loaded_wi = _all_data.get("work_items") or {}
+                st.session_state[f"wl_detail_{selected_date}"] = _all_data.get("detail") or {}
+                if _loaded_wi:
+                    st.toast(f"📂 {selected_date.strftime('%Y-%m-%d')} 저장 데이터 자동 불러옴")
             except Exception:
-                work_items = {}
+                _loaded_wi = {}
+            st.session_state[_fetched_key] = True
         else:
-            # 날짜가 바뀌었지만 이미 캐시에 있음 — Sheets 호출 없이 캐시 사용
-            work_items = st.session_state.get(f"wl_loaded_{selected_date}") or {}
+            _loaded_wi = {}  # 새로 작성 후 재진입
+    else:
+        _loaded_wi = {}
 
-        if work_items:
-            for idx, nm in enumerate(_item_names):
-                item = work_items.get(nm, {})
-                for j, lk in enumerate(_load_keys):
-                    val = item.get(lk, 0)
-                    st.session_state[f"wl_{_shift_labels[j]}_{idx}"] = str(val) if val > 0 else ""
-            st.toast(f"📂 {selected_date.strftime('%Y-%m-%d')} 저장 데이터 자동 불러옴")
-
-        st.session_state["wl_current_date"] = str(selected_date)
-        st.rerun()
-
-    # 새로 작성 버튼
-    if st.session_state.get(f"wl_loaded_{selected_date}"):
-        if st.button("🆕 새로 작성 (저장 데이터 무시)", key="new_write"):
-            _item_names = [
-                "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
-                "신나 하차 수량", "신나 공급 수량", "크롬 공급 수량",
-                "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
-                "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수",
-                    "AGV 입/출고 작업 수량"
-            ]
-            for idx in range(len(_item_names)):
-                for label in ["1근", "2근", "3근", "주간", "야간"]:
-                    st.session_state[f"wl_{label}_{idx}"] = ""
-            st.session_state[f"wl_loaded_{selected_date}"] = {}
-            st.rerun()
-
-    loaded_data = st.session_state.get(f"wl_loaded_{selected_date}") or {}
     loaded_detail = st.session_state.get(f"wl_detail_{selected_date}") or {}
 
+    # 새로 작성 버튼
+    if _grid_key in st.session_state:
+        if st.button("🆕 새로 작성 (저장 데이터 무시)", key="new_write"):
+            st.session_state.pop(_grid_key, None)
+            st.rerun()
+
+    # ─── 2. 업무 현황 입력 ─────────────────────────────────────────────
     st.subheader("2. 업무 현황 입력")
+    import pandas as _pd
+
     item_names = [
         "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
         "신나 하차 수량", "신나 공급 수량", "크롬 공급 수량",
         "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
         "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수",
-                    "AGV 입/출고 작업 수량"
+        "AGV 입/출고 작업 수량",
     ]
-    # 월누계 자동 로드 (날짜별 1회만 — 이후 세션 캐시 사용)
+
+    if is_2person:
+        shift_labels = ["주간", "야간"]
+        load_keys = ["day", "night"]
+    else:
+        shift_labels = ["1근", "2근", "3근"]
+        load_keys = ["s1", "s2", "s3"]
+
+    # 월누계 (당일 제외)
     _mt_key = f"wl_monthly_totals_{selected_date}"
     if _mt_key not in st.session_state:
         try:
@@ -1502,131 +1473,77 @@ def page_work_log():
         except Exception:
             st.session_state[_mt_key] = {}
     monthly_totals = st.session_state[_mt_key]
-    month_totals_default = [monthly_totals.get(name, 0) for name in item_names]
 
-    if is_2person:
-        shift_labels = ["주간", "야간"]
+    # DataFrame 구성 (캐시 우선)
+    if _grid_key in st.session_state:
+        _df_grid = st.session_state[_grid_key]
     else:
-        shift_labels = ["1근", "2근", "3근"]
+        _rows = []
+        for _nm in item_names:
+            _itm = _loaded_wi.get(_nm, {})
+            _row = {"작업항목": _nm}
+            _sv = []
+            for _lk, _sl in zip(load_keys, shift_labels):
+                _v = int(_itm.get(_lk, 0) or 0)
+                _row[_sl] = _v
+                _sv.append(_v)
+            _ds = sum(_sv)
+            _row["일합계"] = _ds
+            _row["월누계"] = monthly_totals.get(_nm, 0) + _ds
+            _rows.append(_row)
+        _df_grid = _pd.DataFrame(_rows)
 
-    def safe_calc(expr):
-        """안전한 수식 계산. '10+10' → 20, '5' → 5, '' → 0"""
-        if not expr or not expr.strip():
-            return 0
-        expr = expr.strip()
-        import re
-        if re.match(r'^[\d\s\+\-\*\.]+$', expr):
-            try:
-                return max(0, int(eval(expr)))
-            except Exception:
-                return 0
+    # 컬럼 설정
+    _col_cfg = {
+        "작업항목": st.column_config.TextColumn("작업항목", width="large", disabled=True),
+        "일합계":  st.column_config.NumberColumn("일합계",  disabled=True, width="small", format="%d"),
+        "월누계":  st.column_config.NumberColumn("월누계",  disabled=True, width="small", format="%d"),
+    }
+    for _sl in shift_labels:
+        _col_cfg[_sl] = st.column_config.NumberColumn(_sl, min_value=0, step=1, width="small", format="%d")
+
+    _edited_df = st.data_editor(
+        _df_grid,
+        key=f"de_{_grid_key}",
+        column_config=_col_cfg,
+        column_order=["작업항목"] + shift_labels + ["일합계", "월누계"],
+        hide_index=True,
+        use_container_width=True,
+        num_rows="fixed",
+    )
+
+    # 합계 재계산 → 세션 캐시 갱신
+    for _i, _nm in enumerate(item_names):
         try:
-            return max(0, int(float(expr)))
-        except (ValueError, TypeError):
-            return 0
+            _sv = [int(_edited_df.at[_i, _sl] or 0) for _sl in shift_labels]
+        except (TypeError, ValueError):
+            _sv = [0] * len(shift_labels)
+        _ds = sum(_sv)
+        _edited_df.at[_i, "일합계"] = _ds
+        _edited_df.at[_i, "월누계"] = monthly_totals.get(_nm, 0) + _ds
+    st.session_state[_grid_key] = _edited_df
 
-    # 업무현황 + 안전관리 스타일
+    # work_items_data 추출 (저장용)
+    work_items_data = []
+    for _i, _nm in enumerate(item_names):
+        _wd = {"name": _nm, "s1": None, "s2": None, "s3": None, "day": None, "night": None}
+        for _sl, _lk in zip(shift_labels, load_keys):
+            try:
+                _v = int(_edited_df.at[_i, _sl] or 0)
+            except (TypeError, ValueError):
+                _v = 0
+            _wd[_lk] = _v if _v > 0 else None
+        _wd["month_total"] = int(_edited_df.at[_i, "월누계"] or 0)
+        work_items_data.append(_wd)
+
+    st.markdown("---")
+    st.subheader("3. 안전 관리 사항")
     st.markdown("""<style>
-    /* 업무현황 */
-    .work-section p, .work-section span, .work-section strong{font-size:11px !important; line-height:1.2 !important;}
-    .work-section input{font-size:11px !important; padding:1px 4px !important; height:28px !important;}
-    div[data-testid="stTextInput"] input{border:2px solid #8B6BBF !important; border-radius:4px !important; background:#ffffff !important;}
-    div[data-testid="stTextInput"] input:focus{border-color:#4B2D8E !important; box-shadow:0 0 0 2px rgba(75,45,142,0.2) !important; background:#ffffff !important;}
-    .work-section .stTextInput > div{min-height:0 !important;}
-    .work-section .stTextInput{margin-bottom:0 !important; padding-bottom:0 !important;}
-    .work-section [data-testid="stVerticalBlock"] > div{gap:0.15rem !important;}
-    .work-section [data-testid="stVerticalBlockBorderWrapper"]{padding:3px 8px !important;}
-    .work-row{border:1px solid #D0C5E0; border-radius:4px; padding:1px 2px; margin-bottom:2px; background:#FAFAFE;}
-    .work-header{border:2px solid #4B2D8E; border-radius:4px; padding:3px 2px; margin-bottom:3px; background:#F0EDF5;}
-    /* 안전관리 */
     .safety-section p, .safety-section span, .safety-section label{font-size:10px !important; line-height:1.1 !important;}
     .safety-section .stCheckbox{margin:0 !important; padding:0 !important;}
     .safety-section [data-testid="stVerticalBlock"] > div{gap:0.05rem !important;}
     .safety-section [data-testid="stVerticalBlockBorderWrapper"]{padding:2px 6px !important;}
-    </style><div class="work-section">""", unsafe_allow_html=True)
-
-    # 헤더 행
-    with st.container(border=True):
-        if is_2person:
-            hdr = st.columns([3, 1, 1, 1, 1])
-            hdr[0].markdown("**작업 항목**")
-            hdr[1].markdown("**주간**")
-            hdr[2].markdown("**야간**")
-        else:
-            hdr = st.columns([3, 1, 1, 1, 1, 1])
-            hdr[0].markdown("**작업 항목**")
-            hdr[1].markdown("**1근**")
-            hdr[2].markdown("**2근**")
-            hdr[3].markdown("**3근**")
-        hdr[-2].markdown("**일합계**")
-        hdr[-1].markdown("**월누계**")
-
-    work_items_data = []
-    for i, name in enumerate(item_names):
-        with st.container(border=True):
-            if is_2person:
-                row = st.columns([3, 1, 1, 1, 1])
-                load_keys = ["day", "night"]
-            else:
-                row = st.columns([3, 1, 1, 1, 1, 1])
-                load_keys = ["s1", "s2", "s3"]
-
-            row[0].markdown(f"**{name}**")
-
-            vals = []
-            for j, lk in enumerate(load_keys):
-                raw = row[j + 1].text_input(f"_{i}_{j}", key=f"wl_{shift_labels[j]}_{i}", label_visibility="collapsed")
-                vals.append(safe_calc(raw))
-
-            daily_sum = sum(vals)
-            row[-2].markdown(f"**{daily_sum}**")
-
-            # 월누계 = 이전 누적(오늘 제외) + 오늘 일합계
-            prev_total = month_totals_default[i]
-            running_month = prev_total + daily_sum
-            row[-1].markdown(f"**{running_month}**")
-
-        if is_2person:
-            work_items_data.append({
-                "name": name, "s1": None, "s2": None, "s3": None,
-                "day": vals[0] or None, "night": vals[1] or None, "month_total": running_month
-            })
-        else:
-            work_items_data.append({
-                "name": name, "s1": vals[0] or None, "s2": vals[1] or None, "s3": vals[2] or None,
-                "day": None, "night": None, "month_total": running_month
-            })
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # -- 방향키 입력 셀 이동 (JavaScript) --
-    _n_items = len(item_names)
-    _n_cols = 2 if is_2person else 3
-    import streamlit.components.v1 as _components
-    _components.html(
-        "<script>(function(){var ROWS=" + str(_n_items) + ",COLS=" + str(_n_cols) + ";"
-        "function getInput(r,c){return window.parent.document.querySelector('input[aria-label=\"_'+r+'_'+c+'\"]');}"
-        "function setup(){for(var r=0;r<ROWS;r++){for(var c=0;c<COLS;c++){(function(row,col){"
-        "var el=getInput(row,col);if(!el||el._wl_bound)return;el._wl_bound=true;"
-        "el.addEventListener('keydown',function(e){"
-        "var nr=row,nc=col;"
-        "if(e.key==='ArrowRight')nc=Math.min(col+1,COLS-1);"
-        "else if(e.key==='ArrowLeft')nc=Math.max(col-1,0);"
-        "else if(e.key==='ArrowDown')nr=Math.min(row+1,ROWS-1);"
-        "else if(e.key==='ArrowUp')nr=Math.max(row-1,0);"
-        "else return;"
-        "if(nr!==row||nc!==col){e.preventDefault();var t=getInput(nr,nc);if(t){t.focus();t.select();}}"
-        "});}})(r,c);}}}"
-        "setTimeout(setup,800);"
-        "new MutationObserver(function(){setTimeout(setup,300);})"
-        ".observe(window.parent.document.body,{childList:true,subtree:true});"
-        "})();</script>",
-        height=0
-    )
-
-    st.markdown("---")
-    st.subheader("3. 안전 관리 사항")
-    st.markdown('<div class="safety-section">', unsafe_allow_html=True)
+    </style><div class="safety-section">""", unsafe_allow_html=True)
     safety_questions = [
         "작업 계획에 따라 작업 절차를 준수 하였는가?",
         "안전장치(후방 경보장치 , 안전밸트 등) 기능의 이상 유무를 점검 하였는가?",
@@ -1673,15 +1590,6 @@ def page_work_log():
                     safety_items_data, note_text, st.session_state.get("leave_list", [])
                 )
             st.session_state["_last_save_ts"] = _time.time()
-            # 저장 후 캐시 갱신 (날짜 이동 후 돌아와도 저장된 값 표시)
-            _saved_cache = {}
-            for _wi in work_items_data:
-                _saved_cache[_wi["name"]] = {
-                    "s1": _wi["s1"] or 0, "s2": _wi["s2"] or 0, "s3": _wi["s3"] or 0,
-                    "day": _wi["day"] or 0, "night": _wi["night"] or 0,
-                    "month_total": _wi.get("month_total", 0),
-                }
-            st.session_state[f"wl_loaded_{selected_date}"] = _saved_cache
             # 월누계 캐시 무효화 (저장 후 최신값 반영)
             st.session_state.pop(f"wl_monthly_totals_{selected_date}", None)
             with st.spinner(f"{selected_date.month}월 통합 Excel 생성 중..."):
@@ -3378,7 +3286,7 @@ def page_attendance():
         WD_LABELS = ["일", "월", "화", "수", "목", "금", "토"]
         WD_CLR = ["#EF4444", "#555", "#555", "#555", "#555", "#555", "#3B82F6"]
         _th_s = "font-size:10px;font-weight:700;text-align:center;padding:3px 0;border:1px solid #e5e7eb;background:#f3f4f6;"
-        _td_s = "font-size:9px;text-align:center;padding:2px 1px;border:1px solid #e5e7eb;vertical-align:top;height:30px;"
+        _td_s = "font-size:9px;text-align:center;padding:2px 1px;border:1px solid #e5e7eb;vertical-align:top;height:30px;position:relative;overflow:hidden;"
 
         html_cal = '<div style="margin-top:4px;"><table style="width:100%;border-collapse:collapse;">'
         html_cal += f'<thead><tr><th colspan="7" style="background:#4B2D8E;color:#fff;text-align:center;padding:5px;font-size:12px;font-weight:700;">{selected_year}년 {selected_month}월</th></tr><tr>'
@@ -3404,14 +3312,13 @@ def page_attendance():
             else:
                 txt_clr = "#fff" if shift_lbl in ("3근", "야간", "대근") else ("#fff" if shift_lbl == "1근" else "#fff")
                 badge = f'<div style="background:{shift_clr};color:#fff;border-radius:2px;font-size:8px;padding:0 1px;margin-top:1px;font-weight:700;">{shift_lbl[:2]}</div>'
-            bg = "background:#EFF6FF;" if is_today else ""
-            _memo_dot = ""
             _d_str = d.strftime("%Y-%m-%d")
-            if _d_str in _memo_dates:
-                _memo_txt = " / ".join(_memo_dates[_d_str])
-                _memo_short = _memo_txt[:6] + ("…" if len(_memo_txt) > 6 else "")
-                _memo_dot = f'<div style="background:#FDE68A;color:#92400E;border-radius:2px;font-size:7px;padding:0 1px;margin-top:1px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:100%;text-align:center;font-weight:600;">{_memo_short}</div>'
-            html_cal += f'<td style="{_td_s}{bg}">{num_html}{badge}{_memo_dot}</td>'
+            _has_memo = _d_str in _memo_dates
+            bg = "background:#EFF6FF;" if is_today else ""
+            _memo_overlay = ""
+            if _has_memo:
+                _memo_overlay = '<div style="position:absolute;top:1px;right:1px;width:5px;height:5px;background:#F59E0B;border-radius:50%;"></div>'
+            html_cal += f'<td style="{_td_s}{bg}">{num_html}{badge}{_memo_overlay}</td>'
             cell_idx += 1
             if cell_idx % 7 == 0 and dn < days_in_month:
                 html_cal += '</tr><tr>'

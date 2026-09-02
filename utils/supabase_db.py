@@ -272,23 +272,20 @@ def load_all(selected_date: datetime.date) -> dict:
 
 def get_sector_inventory() -> dict:
     """섹터별 드럼 목록 반환."""
-    try:
-        res = _sb().table("inventory").select("*").execute()
-        sectors = {}
-        for r in res.data:
-            sector = r.get("sector") or "미분류"
-            sectors.setdefault(sector, []).append({
-                "lot": r["lot"],
-                "product": r.get("product", ""),
-                "maker": r.get("maker", ""),
-                "registered": r.get("registered_at", ""),
-                "updated": r.get("updated_at", ""),
-                "returnStatus": r.get("return_status", ""),
-                "scanDisabled": r.get("scan_disabled", ""),
-            })
-        return sectors
-    except Exception:
-        return {}
+    res = _sb().table("inventory").select("*").execute()
+    sectors = {}
+    for r in res.data:
+        sector = r.get("sector") or "미분류"
+        sectors.setdefault(sector, []).append({
+            "lot": r["lot"],
+            "product": r.get("product", ""),
+            "maker": r.get("maker", ""),
+            "registered": r.get("registered_at", ""),
+            "updated": r.get("updated_at", ""),
+            "returnStatus": r.get("return_status", ""),
+            "scanDisabled": r.get("scan_disabled", ""),
+        })
+    return sectors
 
 
 def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: str, new_sector: str):
