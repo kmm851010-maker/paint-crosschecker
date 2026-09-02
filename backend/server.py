@@ -236,7 +236,7 @@ class InventoryRegisterRequest(BaseModel):
 @app.post("/api/inventory/parse-barcode")
 async def parse_barcode_endpoint(req: ParseBarcodeRequest):
     """바코드 텍스트에서 LOT/품명/제조사 파싱"""
-    from utils.inventory_sheets import parse_barcode
+    from utils.inventory_supabase import parse_barcode
     result = parse_barcode(req.raw_text)
     if not result:
         raise HTTPException(status_code=400, detail="바코드 형식이 올바르지 않습니다. (최소 16자리 필요)")
@@ -246,7 +246,7 @@ async def parse_barcode_endpoint(req: ParseBarcodeRequest):
 @app.post("/api/inventory/register")
 async def inventory_register(req: InventoryRegisterRequest):
     """드럼 목록을 섹터에 등록/이동, 라인입고 시 재고에서 제거"""
-    from utils.inventory_sheets import save_drums_to_sector, checkout_drums, CHECKOUT_SECTOR, RETURN_SECTOR
+    from utils.inventory_supabase import save_drums_to_sector, checkout_drums, CHECKOUT_SECTOR, RETURN_SECTOR
     drums = [d.model_dump() for d in req.drums]
     try:
         if req.sector in (CHECKOUT_SECTOR, RETURN_SECTOR):
@@ -266,7 +266,7 @@ class ScanDisabledRequest(BaseModel):
 @app.post("/api/inventory/scan-disabled")
 async def set_scan_disabled_endpoint(req: ScanDisabledRequest):
     """스캔불가 플래그 설정/해제"""
-    from utils.inventory_sheets import set_scan_disabled
+    from utils.inventory_supabase import set_scan_disabled
     drums = [d.model_dump() for d in req.drums]
     try:
         set_scan_disabled(drums, req.disabled)
@@ -283,7 +283,7 @@ class ReturnStatusRequest(BaseModel):
 @app.post("/api/inventory/return-status")
 async def set_return_status_endpoint(req: ReturnStatusRequest):
     """반품상태 플래그 설정/해제 (섹터 변경 없음)"""
-    from utils.inventory_sheets import set_return_status
+    from utils.inventory_supabase import set_return_status
     drums = [d.model_dump() for d in req.drums]
     try:
         set_return_status(drums, req.status)
@@ -308,7 +308,7 @@ class UpdateDrumRequest(BaseModel):
 @app.post("/api/inventory/update-drum")
 async def update_drum_endpoint(req: UpdateDrumRequest):
     """드럼 정보 수정 (LOT/품명/제조사/섹터)"""
-    from utils.inventory_sheets import update_drum_fields
+    from utils.inventory_supabase import update_drum_fields
     try:
         update_drum_fields(req.old_lot, req.new_lot, req.new_product, req.new_maker, req.new_sector)
     except ValueError as e:
@@ -320,24 +320,20 @@ async def update_drum_endpoint(req: UpdateDrumRequest):
 
 @app.get("/api/debug/inventory-sheet")
 async def debug_inventory_sheet():
-    """재고현황 시트 원시 데이터 진단용"""
-    import os as _os
-    from utils.inventory_sheets import _retry, _get_spreadsheet
-    sp = _retry(_get_spreadsheet)
-    sid = _os.getenv("SPREADSHEET_ID", "MISSING")
-    sheets = [ws.title for ws in sp.worksheets()]
+    """재고현황 Supabase 진단용"""
+    from utils.inventory_supabase import get_sector_inventory as _gsi
     try:
-        ws = sp.worksheet("재고현황")
-        data = ws.get_all_values()
-        return {"spreadsheet_id": sid, "sheets": sheets, "row_count": len(data), "preview": data[:6]}
+        sectors = _gsi()
+        total = sum(len(v) for v in sectors.values())
+        return {"source": "supabase", "sector_count": len(sectors), "drum_count": total}
     except Exception as e:
-        return {"spreadsheet_id": sid, "sheets": sheets, "error": str(e)}
+        return {"source": "supabase", "error": str(e)}
 
 
 @app.get("/api/inventory/sectors")
 async def get_inventory_sectors():
     """섹터별 보관 드럼 현황 조회"""
-    from utils.inventory_sheets import get_sector_inventory
+    from utils.inventory_supabase import get_sector_inventory
     try:
         sectors = get_sector_inventory()
     except Exception as e:
@@ -348,7 +344,7 @@ async def get_inventory_sectors():
 @app.get("/api/inventory/history")
 async def get_inventory_history_endpoint(from_dt: str = "", to_dt: str = ""):
     """재고 이력 조회 (from_dt/to_dt: 'YYYY-MM-DD HH:MM', 기본값 오늘 KST 00:00~23:59)"""
-    from utils.inventory_sheets import get_inventory_history
+    from utils.inventory_supabase import get_inventory_history
     import datetime as _dt
     _today = (_dt.datetime.utcnow() + _dt.timedelta(hours=9)).strftime("%Y-%m-%d")
     if not from_dt:
