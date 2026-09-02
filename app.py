@@ -197,20 +197,26 @@ st.markdown("""
         border: none;
         border-radius: 10px;
         font-weight: 700;
+        color: white !important;
     }
     .stButton > button[kind="primary"]:hover {
         background: linear-gradient(135deg, #3A2270 0%, #5A3090 100%);
+        color: white !important;
     }
     /* 다운로드 버튼 */
     .stDownloadButton > button {
         border: 2px solid #4B2D8E;
         border-radius: 10px;
-        color: #4B2D8E;
+        color: #4B2D8E !important;
         font-weight: 600;
+    }
+    .stDownloadButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #4B2D8E 0%, #6B3FA0 100%);
+        color: white !important;
     }
     .stDownloadButton > button:hover {
         background: #4B2D8E;
-        color: white;
+        color: white !important;
     }
     /* 서브헤더 */
     h2, h3 {
@@ -409,255 +415,259 @@ def page_cross_check():
     from utils.formatter import style_result_table, format_summary
 
     st.title("생산계획 vs 입고 교차검증")
-    st.caption("① 생산계획서 첨부 → 입고 리스트 확인 → ② ERP 첨부 → 교차검증")
-
-    if "cc_plan_df" in st.session_state:
-        if st.button("🔄 새 생산계획서로 다시 시작", use_container_width=True):
-            for key in list(st.session_state.keys()):
-                if key.startswith("cc_"):
-                    del st.session_state[key]
-            st.rerun()
 
     # ── 2단 레이아웃 ──
     col_plan, col_erp = st.columns(2)
 
+    # ── Dialog 1: 입고예정 품목 리스트 ──
+    @st.dialog("입고예정 품목 리스트", width="large")
+    def _incoming_items_dialog():
+        _pln_df   = st.session_state.get("cc_plan_df")
+        _pln_name = st.session_state.get("cc_plan_name", "")
+        if _pln_df is None or "신규" not in _pln_df.columns:
+            st.info("입고예정 품목이 없습니다.")
+            return
+        from modules.excel_converter import generate_incoming_plan_excel
+        _inc_excel = None
+        try: _inc_excel = generate_incoming_plan_excel(_pln_df)
+        except Exception: pass
+
+        _cols2 = ["색상코드", "제조사", "신규"]
+        _has_rem = "비고" in _pln_df.columns
+        if _has_rem: _cols2.append("비고")
+        _inc_df = _pln_df[_pln_df["신규"] > 0][_cols2].copy()
+        _cn = ["품목코드", "제조사", "입고예정수량"]
+        if _has_rem: _cn.append("비고")
+        _inc_df.columns = _cn
+        _inc_df = _inc_df.reset_index(drop=True)
+        _inc_df.insert(_inc_df.columns.get_loc("입고예정수량"), "기입고수량", 0)
+        _inc_df["기입고수량"]   = _inc_df["기입고수량"].astype(int)
+        _inc_df["입고예정수량"] = _inc_df["입고예정수량"].astype(int)
+        _inc_df["비고"] = _inc_df.get("비고", pd.Series([""] * len(_inc_df))).fillna("").astype(str)
+
+        if _inc_excel:
+            st.download_button("입고예정 엑셀 다운로드", data=_inc_excel,
+                file_name="incoming_plan.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+        _ed_key = f"inc_dlg_ed_{_pln_name}_{len(_inc_df)}"
+        _ed = st.data_editor(
+            _inc_df[["품목코드", "제조사", "기입고수량", "입고예정수량", "비고"]],
+            column_config={
+                "품목코드":     st.column_config.TextColumn(disabled=True),
+                "제조사":       st.column_config.TextColumn(disabled=True),
+                "기입고수량":   st.column_config.NumberColumn("기입고수량", min_value=0, step=1),
+                "입고예정수량": st.column_config.NumberColumn(disabled=True),
+                "비고":         st.column_config.TextColumn("비고"),
+            },
+            use_container_width=True, hide_index=False, num_rows="fixed", key=_ed_key,
+            height=min(len(_inc_df) * 35 + 40, 700),
+        )
+        _tp = int(_ed["입고예정수량"].sum())
+        _ta = int(_ed["기입고수량"].fillna(0).sum())
+        st.success(f"총 {len(_ed)}개 품목 | 입고예정: {_tp}개 | 기입고: {_ta}개 | 잔여: {_tp - _ta}개")
+
+    # ── Dialog 2: 생산계획서 전체 변환 결과 ──
+    @st.dialog("생산계획서 전체 변환 결과", width="large")
+    def _plan_conversion_dialog():
+        st.markdown(
+            "<style>"
+            "[data-testid='stDialog']>div{max-width:96vw!important;width:96vw!important;}"
+            "[data-testid='stDialog'] [data-testid='stDataFrame']{overflow-x:visible!important;}"
+            "</style>",
+            unsafe_allow_html=True,
+        )
+        _pln_df    = st.session_state.get("cc_plan_df")
+        _pln_bytes = st.session_state.get("cc_plan_bytes")
+        _pln_name  = st.session_state.get("cc_plan_name", "")
+        _tbl_data  = st.session_state.get("cc_table_data")
+
+        if not (_tbl_data and _tbl_data.get("headers") and _tbl_data.get("rows")):
+            st.info("변환 결과가 없습니다.")
+            return
+
+        _headers  = _tbl_data["headers"]
+        _rows_raw = _tbl_data["rows"]
+        _unique_h, _seen = [], {}
+        for _h in _headers:
+            _hs = str(_h) if _h else ""
+            if _hs in _seen:
+                _seen[_hs] += 1
+                _unique_h.append(f"{_hs}_{_seen[_hs]}")
+            else:
+                _seen[_hs] = 0
+                _unique_h.append(_hs)
+        _padded = [list(r[:len(_unique_h)]) + [""] * max(0, len(_unique_h) - len(r)) for r in _rows_raw]
+        _exp_h, _exp_r = [], [[] for _ in _padded]
+        for _i, _h in enumerate(_unique_h):
+            _exp_h.append(_h)
+            for _j, _rw in enumerate(_padded):
+                _exp_r[_j].append(_rw[_i] if _i < len(_rw) else "")
+            if "신규" in str(_h):
+                _in = str(_h).replace("신규", "입고")
+                _b, _c = _in, 1
+                while _in in _exp_h:
+                    _in = f"{_b}_{_c}"; _c += 1
+                _exp_h.append(_in)
+                for _j in range(len(_padded)):
+                    _exp_r[_j].append("")
+
+        _full_df = pd.DataFrame(_exp_r, columns=_exp_h)
+        def _ts(x):
+            if x is None or str(x) in ("nan", "None", "NaN"): return ""
+            if isinstance(x, float): return str(int(x)) if x == int(x) else str(x)
+            return x if isinstance(x, str) else str(x)
+        _full_df = _full_df.apply(lambda col: col.map(_ts))
+
+        from modules.excel_converter import convert_to_excel
+        _full_excel = convert_to_excel(list(_full_df.columns), _full_df.fillna("").values.tolist())
+
+        # 상단 소형 버튼 행 (이모티콘 없음)
+        _dc1, _dc2, _dc3 = st.columns([2, 2, 3])
+        with _dc1:
+            st.download_button("전체 엑셀 다운로드", data=_full_excel,
+                file_name="plan_full_table.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True)
+        with _dc2:
+            if _pln_df is not None and "신규" in _pln_df.columns:
+                if st.button("입고예정리스트 확인", use_container_width=True, key="btn_open_incoming_dlg"):
+                    st.session_state["cc_open_incoming"] = True
+                    st.rerun()
+
+        st.caption(f"변환 결과 ({len(_rows_raw)}행 × {len(_exp_h)}열)")
+        _tbl_key = f"dlg_tbl_{_pln_name}_{len(_rows_raw)}"
+        _tbl_h   = len(_rows_raw) * 35 + 42  # 전체 행 높이 = 내부 수직 스크롤 없음
+        _is_img  = _pln_name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
+        if _is_img and _pln_bytes:
+            _ci, _ct = st.columns(2)
+            with _ci:
+                st.caption("원본 이미지")
+                st.image(_pln_bytes, use_container_width=True)
+            with _ct:
+                _full_df = st.data_editor(_full_df, use_container_width=True, hide_index=True,
+                    num_rows="fixed", key=_tbl_key, height=_tbl_h)
+        else:
+            _full_df = st.data_editor(_full_df, use_container_width=True, hide_index=True,
+                num_rows="fixed", key=_tbl_key, height=_tbl_h)
+
+    # 입고예정리스트 팝업: 변환결과 팝업 내 버튼 → rerun → 여기서 단독 트리거
+    if st.session_state.get("cc_open_incoming"):
+        st.session_state.pop("cc_open_incoming")
+        _incoming_items_dialog()
+
     # ── 왼쪽: 생산계획서 ──
     with col_plan:
         st.subheader("① 생산계획서")
-        plan_file = st.file_uploader(
-            "생산계획서 업로드 (이미지 · 엑셀 · PDF · Word)",
-            type=["jpg", "jpeg", "png", "webp", "xlsx", "xls", "csv", "pdf", "docx"],
-            key="plan_upload",
-            help="인쇄물 사진, 엑셀, PDF, Word(.docx) 모두 지원",
-        )
-
-        if plan_file:
-            st.success(f"📄 {plan_file.name}")
-
-        if plan_file and "cc_plan_df" not in st.session_state:
-            if st.button("📋 입고 예정 리스트 추출", type="primary", use_container_width=True):
-                if not api_key:
-                    st.error("API Key가 설정되지 않았습니다. 관리자에게 문의하세요.")
-                    st.stop()
-                plan_bytes = plan_file.getvalue()
-                plan_fname = plan_file.name
-                with st.spinner("생산계획서 분석 중..."):
-                    try:
-                        from modules.vision_ocr import extract_production_plan
-                        result = extract_production_plan(plan_bytes, plan_fname, api_key)
-                        plan_df = pd.DataFrame(result["items"])
-                        st.session_state["cc_table_data"] = result.get("table_data")
-                    except Exception as e:
-                        st.error(f"생산계획서 분석 실패: {e}")
+        _fu_col, _btn_col = st.columns([3, 1])
+        with _fu_col:
+            plan_file = st.file_uploader(
+                "생산계획서 업로드 (이미지 · 엑셀 · PDF · Word)",
+                type=["jpg", "jpeg", "png", "webp", "xlsx", "xls", "csv", "pdf", "docx"],
+                key="plan_upload",
+                help="인쇄물 사진, 엑셀, PDF, Word(.docx) 모두 지원",
+            )
+        with _btn_col:
+            st.write("")
+            st.write("")
+            if plan_file and "cc_plan_df" not in st.session_state:
+                if st.button("추출", type="primary", use_container_width=True, key="btn_extract_plan"):
+                    if not api_key:
+                        st.error("API Key가 설정되지 않았습니다.")
                         st.stop()
-                st.session_state["cc_plan_df"] = plan_df
-                st.session_state["cc_plan_bytes"] = plan_bytes
-                st.session_state["cc_plan_name"] = plan_fname
-                st.rerun()
+                    plan_bytes = plan_file.getvalue()
+                    plan_fname = plan_file.name
+                    with st.spinner("생산계획서 분석 중..."):
+                        try:
+                            from modules.vision_ocr import extract_production_plan
+                            result = extract_production_plan(plan_bytes, plan_fname, api_key)
+                            plan_df = pd.DataFrame(result["items"])
+                            st.session_state["cc_table_data"] = result.get("table_data")
+                        except Exception as e:
+                            st.error(f"생산계획서 분석 실패: {e}")
+                            st.stop()
+                    st.session_state["cc_plan_df"] = plan_df
+                    st.session_state["cc_plan_bytes"] = plan_bytes
+                    st.session_state["cc_plan_name"] = plan_fname
+                    st.rerun()
+            elif "cc_plan_df" in st.session_state:
+                table_data = st.session_state.get("cc_table_data")
+                if table_data and table_data.get("headers") and table_data.get("rows"):
+                    if st.button("변환결과", use_container_width=True, key="btn_show_plan_dlg"):
+                        _plan_conversion_dialog()
 
         if "cc_plan_df" in st.session_state:
-            plan_df = st.session_state["cc_plan_df"]
+            plan_df   = st.session_state["cc_plan_df"]
             plan_bytes = st.session_state.get("cc_plan_bytes")
-            plan_name = st.session_state.get("cc_plan_name", "")
-
-            st.markdown("---")
-
-            # 전체 표 변환 결과 (이미지 시: 원본+변환 나란히, 엑셀 시: 변환만)
+            plan_name  = st.session_state.get("cc_plan_name", "")
             table_data = st.session_state.get("cc_table_data")
-            if table_data and table_data.get("headers") and table_data.get("rows"):
-                st.subheader("생산계획서 전체 변환 결과")
-                headers = table_data["headers"]
-                rows = table_data["rows"]
-                unique_h = []
-                seen = {}
-                for h in headers:
-                    hs = str(h) if h else ""
-                    if hs in seen:
-                        seen[hs] += 1
-                        unique_h.append(f"{hs}_{seen[hs]}")
-                    else:
-                        seen[hs] = 0
-                        unique_h.append(hs)
-                padded = [list(r[:len(unique_h)]) + [""] * max(0, len(unique_h) - len(r)) for r in rows]
 
-                # 신규 컬럼 옆마다 입고 컬럼 삽입 (빈칸)
-                exp_headers = []
-                exp_rows = [[] for _ in padded]
-                for i, h in enumerate(unique_h):
-                    exp_headers.append(h)
-                    for j, row in enumerate(padded):
-                        exp_rows[j].append(row[i] if i < len(row) else "")
-                    if "신규" in str(h):
-                        inc_name = str(h).replace("신규", "입고")
-                        base = inc_name
-                        cnt = 1
-                        while inc_name in exp_headers:
-                            inc_name = f"{base}_{cnt}"
-                            cnt += 1
-                        exp_headers.append(inc_name)
-                        for j in range(len(padded)):
-                            exp_rows[j].append("")
-
-                full_table_df = pd.DataFrame(exp_rows, columns=exp_headers)
-                # 모든 값을 문자열로 통일 → data_editor에서 전 셀 수정 가능 보장
-                def _to_str(x):
-                    if x is None or str(x) in ("nan", "None", "NaN"):
-                        return ""
-                    if isinstance(x, float):
-                        return str(int(x)) if x == int(x) else str(x)
-                    if not isinstance(x, str):
-                        return str(x)
-                    return x
-                full_table_df = full_table_df.apply(lambda col: col.map(_to_str))
-
-                _tbl_key = f"cc_full_table_{plan_name}_{len(rows)}"
-                is_image = plan_name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
-                if is_image and plan_bytes:
-                    col_img, col_tbl = st.columns(2)
-                    with col_img:
-                        st.caption("원본 이미지")
-                        st.image(plan_bytes, use_container_width=True)
-                    with col_tbl:
-                        st.caption(f"변환 결과 ({len(rows)}행 × {len(exp_headers)}열) — 모든 셀 직접 수정 가능")
-                        full_table_df = st.data_editor(full_table_df, use_container_width=True, hide_index=True, num_rows="fixed", key=_tbl_key)
-                else:
-                    st.caption(f"변환 결과 ({len(rows)}행 × {len(exp_headers)}열) — 모든 셀 직접 수정 가능")
-                    full_table_df = st.data_editor(full_table_df, use_container_width=True, hide_index=True, num_rows="fixed", key=_tbl_key)
-
-                from modules.excel_converter import convert_to_excel
-                full_excel = convert_to_excel(list(full_table_df.columns), full_table_df.fillna("").values.tolist())
-                st.download_button(
-                    label="📥 생산계획서 전체 엑셀 다운로드",
-                    data=full_excel,
-                    file_name="plan_full_table.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
+            # ERP 입고 반영 결과 계산 (소스 데이터 변경 시에만 재계산, 사용자 편집 보존)
+            if "cc_result_df" in st.session_state:
+                from utils.helpers import auto_correct_code, is_valid_item_code
+                _result_df = st.session_state["cc_result_df"]
+                erp_qty_map = {
+                    str(r.get("색상코드", "")).strip(): int(r.get("입고수량", 0) or 0)
+                    for _, r in _result_df.iterrows()
+                    if str(r.get("색상코드", "")).strip()
+                }
+                # 소스 해시: ERP 입고 데이터 + 생산계획 테이블이 바뀔 때만 재계산
+                _src_hash = str(hash(str(sorted(erp_qty_map.items())) + str(table_data)))[-10:]
+                _skip_recompute = (
+                    "cc_filled_df" in st.session_state and
+                    st.session_state.get("cc_filled_src_hash") == _src_hash
                 )
-                full_html = full_table_df.fillna("").to_html(index=False, border=1)
-                st.components.v1.html(
-                    f"""<style>@media print{{.no-print{{display:none}}}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #333;padding:6px;text-align:center;font-size:11px}} .print-only{{display:none}} @media print{{.print-only{{display:block}}}}</style>
-                    <button class="no-print" onclick="window.print()"
-                    style="padding:8px 20px;background:#4B2D8E;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🖨 전체 표 인쇄</button>
-                    <div class="print-only"><h3>생산계획서 전체 변환 결과</h3>{full_html}</div>""",
-                    height=42,
-                )
-                st.markdown("---")
-
-                with st.expander("📋 입고 예정 품목 리스트", expanded=False):
-                    cols = ["색상코드", "제조사", "신규"]
-                    has_remark = "비고" in plan_df.columns
-                    if has_remark:
-                        cols.append("비고")
-                    incoming_df = plan_df[plan_df["신규"] > 0][cols].copy()
-                    col_names = ["품목코드", "제조사", "입고예정수량"]
-                    if has_remark:
-                        col_names.append("비고")
-                    incoming_df.columns = col_names
-                    incoming_df = incoming_df.reset_index(drop=True)
-                    incoming_df.insert(incoming_df.columns.get_loc("입고예정수량"), "기입고수량", 0)
-                    incoming_df["기입고수량"] = incoming_df["기입고수량"].astype(int)
-                    incoming_df["입고예정수량"] = incoming_df["입고예정수량"].astype(int)
-                    if not has_remark:
-                        incoming_df["비고"] = ""
-                    else:
-                        incoming_df["비고"] = incoming_df["비고"].fillna("").astype(str)
-
-                    _editor_key = f"cc_editor_{plan_name}_{len(incoming_df)}"
-                    edited_df = st.data_editor(
-                        incoming_df[["품목코드", "제조사", "기입고수량", "입고예정수량", "비고"]],
-                        column_config={
-                            "품목코드":     st.column_config.TextColumn(disabled=True),
-                            "제조사":       st.column_config.TextColumn(disabled=True),
-                            "기입고수량":   st.column_config.NumberColumn("기입고수량", min_value=0, step=1, help="오늘 이전 기입고 수량"),
-                            "입고예정수량": st.column_config.NumberColumn(disabled=True),
-                            "비고":         st.column_config.TextColumn("비고"),
-                        },
-                        use_container_width=True,
-                        hide_index=False,
-                        num_rows="fixed",
-                        key=_editor_key,
-                    )
-
-                    _total_plan    = int(edited_df["입고예정수량"].sum())
-                    _total_already = int(edited_df["기입고수량"].fillna(0).sum())
-                    _total_remain  = _total_plan - _total_already
-                    st.success(f"총 {len(edited_df)}개 품목 | 입고예정: {_total_plan}개 | 기입고: {_total_already}개 | 잔여: {_total_remain}개")
-
-                    incoming_df = edited_df.copy()
-                    incoming_df.index += 1
-                    incoming_df.index.name = "No."
-
-                    from modules.excel_converter import generate_incoming_plan_excel
-                    incoming_excel = generate_incoming_plan_excel(plan_df)
-                    st.download_button(
-                        label="📥 입고 예정 엑셀 다운로드",
-                        data=incoming_excel,
-                        file_name="incoming_plan.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True,
-                    )
-                    p_col1, p_col2 = st.columns([1, 3])
-                    with p_col1:
-                        sort_by = st.selectbox("인쇄 정렬", ["품목코드", "제조사", "입고예정수량"], key="sort_incoming", label_visibility="collapsed")
-                    with p_col2:
-                        sort_asc = st.radio("순서", ["오름차순", "내림차순"], horizontal=True, key="sort_dir_incoming", label_visibility="collapsed")
-                    sorted_df = incoming_df.sort_values(sort_by, ascending=(sort_asc == "오름차순")).reset_index(drop=True)
-                    sorted_df.index += 1
-                    sorted_df.index.name = "No."
-                    sorted_html = sorted_df.to_html(border=1)
-                    st.components.v1.html(
-                        f"""<style>@media print{{.no-print{{display:none}}}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #333;padding:8px;text-align:center}} .print-only{{display:none}} @media print{{.print-only{{display:block}}}}</style>
-                        <button class="no-print" onclick="window.print()"
-                        style="padding:8px 20px;background:#4B2D8E;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;">🖨 인쇄</button>
-                        <div class="print-only"><h3>입고 예정 품목 ({sort_by} {sort_asc})</h3>{sorted_html}</div>""",
-                        height=42,
-                    )
-
-                # ── ERP 입고 반영 결과 계산 (col_erp에서 표시) ──
-                if "cc_result_df" in st.session_state:
-                    from utils.helpers import auto_correct_code, is_valid_item_code
-                    _result_df = st.session_state["cc_result_df"]
-                    erp_qty_map = {
-                        str(r.get("색상코드", "")).strip(): int(r.get("입고수량", 0) or 0)
-                        for _, r in _result_df.iterrows()
-                        if str(r.get("색상코드", "")).strip()
-                    }
+                if table_data and table_data.get("headers") and table_data.get("rows") and not _skip_recompute:
+                    _h2, _r2 = table_data["headers"], table_data["rows"]
+                    _u2, _s2 = [], {}
+                    for _h in _h2:
+                        _hs = str(_h) if _h else ""
+                        if _hs in _s2: _s2[_hs] += 1; _u2.append(f"{_hs}_{_s2[_hs]}")
+                        else: _s2[_hs] = 0; _u2.append(_hs)
+                    _pd2 = [list(r[:len(_u2)]) + [""] * max(0, len(_u2) - len(r)) for r in _r2]
+                    _eh2, _er2 = [], [[] for _ in _pd2]
+                    for _i2, _hh in enumerate(_u2):
+                        _eh2.append(_hh)
+                        for _j2, _rr in enumerate(_pd2):
+                            _er2[_j2].append(_rr[_i2] if _i2 < len(_rr) else "")
+                        if "신규" in str(_hh):
+                            _inn = str(_hh).replace("신규", "입고")
+                            _bb, _cc = _inn, 1
+                            while _inn in _eh2: _inn = f"{_bb}_{_cc}"; _cc += 1
+                            _eh2.append(_inn)
+                            for _j2 in range(len(_pd2)): _er2[_j2].append("")
+                    def _ts2(x):
+                        if x is None or str(x) in ("nan", "None", "NaN"): return ""
+                        if isinstance(x, float): return str(int(x)) if x == int(x) else str(x)
+                        return x if isinstance(x, str) else str(x)
+                    filled_df = pd.DataFrame(_er2, columns=_eh2).apply(lambda col: col.map(_ts2))
+                    exp_headers = _eh2
                     신규_col_indices = [i for i, h in enumerate(exp_headers) if "신규" in str(h)]
-                    filled_df = full_table_df.copy()
                     for row_idx, row_vals in filled_df.iterrows():
                         for ni in 신규_col_indices:
-                            if ni + 1 >= len(exp_headers):
-                                continue
+                            if ni + 1 >= len(exp_headers): continue
                             inc_col = exp_headers[ni + 1]
-                            if "입고" not in str(inc_col):
-                                continue
+                            if "입고" not in str(inc_col): continue
                             code_col_idx = ni - 3
-                            if code_col_idx < 0:
-                                continue
+                            if code_col_idx < 0: continue
                             raw_code = str(row_vals[exp_headers[code_col_idx]]).strip()
                             corrected = auto_correct_code(raw_code)
                             if is_valid_item_code(corrected) and corrected in erp_qty_map:
                                 qty = erp_qty_map[corrected]
                                 filled_df.at[row_idx, inc_col] = str(qty) if qty > 0 else ""
-
-                    # 동일 색상코드 중복 처리: 신규 합산 → 최상단 행에만, 입고도 최상단 행에만
                     for _ni in 신규_col_indices:
-                        if _ni + 1 >= len(exp_headers):
-                            continue
+                        if _ni + 1 >= len(exp_headers): continue
                         _inc_col = exp_headers[_ni + 1]
-                        if "입고" not in str(_inc_col):
-                            continue
+                        if "입고" not in str(_inc_col): continue
                         _신규_col = exp_headers[_ni]
                         _code_col_idx = _ni - 3
-                        if _code_col_idx < 0:
-                            continue
+                        if _code_col_idx < 0: continue
                         _code_col = exp_headers[_code_col_idx]
-                        _first_seen = {}  # corrected_code → first row_idx
+                        _first_seen = {}
                         for _ridx, _rvals in filled_df.iterrows():
                             _raw = str(_rvals[_code_col]).strip()
                             _corr = auto_correct_code(_raw)
-                            if not is_valid_item_code(_corr):
-                                continue
+                            if not is_valid_item_code(_corr): continue
                             if _corr not in _first_seen:
                                 _first_seen[_corr] = _ridx
                             else:
@@ -670,31 +680,44 @@ def page_cross_check():
                                     filled_df.at[_fidx, _신규_col] = str(_fn + _dn)
                                     filled_df.at[_ridx, _신규_col] = ""
                                 filled_df.at[_ridx, _inc_col] = ""
-
                     st.session_state["cc_filled_df"] = filled_df
+                    st.session_state["cc_filled_src_hash"] = _src_hash
 
     # ── 오른쪽: ERP 입고명세서 ──
     with col_erp:
-        st.subheader("② ERP 입고명세서")
-        erp_file = st.file_uploader(
-            "ERP 입고명세서 업로드",
-            type=["xlsx", "xls", "csv", "jpg", "jpeg", "png", "webp"],
-            key="erp_upload",
-            help="엑셀(.xlsx, .csv) 또는 화면 캡처 이미지",
-        )
-        if erp_file:
-            ext_erp = erp_file.name.lower().rsplit(".", 1)[-1]
-            if ext_erp in ("jpg", "jpeg", "png", "webp"):
-                st.image(erp_file, caption="ERP 명세서", use_container_width=True)
-            else:
-                st.success(f"📄 {erp_file.name}")
-
-        run_button = st.button(
-            "🔍 교차검증 실행",
-            type="primary",
-            use_container_width=True,
-            disabled=not (erp_file and "cc_plan_df" in st.session_state),
-        )
+        _erp_hdr, _erp_rst = st.columns([5, 1])
+        with _erp_hdr:
+            st.subheader("② ERP 입고명세서")
+        with _erp_rst:
+            if "cc_plan_df" in st.session_state:
+                st.write("")
+                if st.button("🔄", help="새로고침", use_container_width=True, key="btn_reset_cc"):
+                    for _k in list(st.session_state.keys()):
+                        if _k.startswith("cc_"):
+                            del st.session_state[_k]
+                    st.rerun()
+        _fu2, _btn2 = st.columns([3, 1])
+        with _fu2:
+            erp_file = st.file_uploader(
+                "ERP 입고명세서 업로드",
+                type=["xlsx", "xls", "csv", "jpg", "jpeg", "png", "webp"],
+                key="erp_upload",
+                help="엑셀(.xlsx, .csv) 또는 화면 캡처 이미지",
+            )
+            if erp_file:
+                ext_erp = erp_file.name.lower().rsplit(".", 1)[-1]
+                if ext_erp in ("jpg", "jpeg", "png", "webp"):
+                    st.image(erp_file, caption="ERP 명세서", use_container_width=True)
+        with _btn2:
+            st.write("")
+            st.write("")
+            run_button = st.button(
+                "교차검증",
+                type="primary",
+                use_container_width=True,
+                disabled=not (erp_file and "cc_plan_df" in st.session_state),
+                key="btn_run_crosscheck",
+            )
 
         if run_button:
             if not api_key:
@@ -713,69 +736,98 @@ def page_cross_check():
             st.session_state["cc_result_df"] = result_df
             st.rerun()
 
-        # ── 검증 결과 표시 ──
-        if "cc_result_df" in st.session_state:
-            erp_df = st.session_state["cc_erp_df"]
-            result_df = st.session_state["cc_result_df"]
-            plan_bytes = st.session_state["cc_plan_bytes"]
-            plan_name = st.session_state["cc_plan_name"]
+    # ── 교차검증 결과 (①② 컬럼 아래 전체 너비) ──
+    if "cc_result_df" in st.session_state:
+        erp_df    = st.session_state["cc_erp_df"]
+        result_df = st.session_state["cc_result_df"]
+        plan_bytes = st.session_state["cc_plan_bytes"]
+        plan_name  = st.session_state["cc_plan_name"]
 
-            if "cc_result_df" in st.session_state and not result_df.empty:
-                summary = format_summary(result_df)
+        if not result_df.empty:
+            summary = format_summary(result_df)
 
-            if not result_df.empty:
-                # ── ERP 입고 반영 결과 ──
-                if "cc_filled_df" in st.session_state:
-                    st.markdown("---")
+        if not result_df.empty:
+            # ── ERP 입고 반영 결과 ──
+            if "cc_filled_df" in st.session_state:
+                _filled = st.session_state["cc_filled_df"]
+                st.markdown("---")
+                _res_hdr, _dl_col = st.columns([5, 1])
+                with _res_hdr:
                     st.subheader("ERP 입고 반영 결과")
                     st.caption("신규 옆 입고 칸에 ERP 실입고 수량이 자동 기입된 양식입니다. 🟥 미입고 · 🟩 일치 · 🟡 초과 · 🟠 일부입고")
-                    _filled = st.session_state["cc_filled_df"]
-
-                    def _style_filled(df):
-                        styles = pd.DataFrame("", index=df.index, columns=df.columns)
-                        _cols = list(df.columns)
-                        for _i, _h in enumerate(_cols):
-                            if "신규" in str(_h) and _i + 1 < len(_cols) and "입고" in str(_cols[_i + 1]):
-                                _inc = _cols[_i + 1]
-                                for _idx in df.index:
-                                    try:
-                                        _new_n = int(str(df.at[_idx, _h]).strip()) if str(df.at[_idx, _h]).strip() else 0
-                                    except (ValueError, TypeError):
-                                        _new_n = 0
-                                    try:
-                                        _inc_n = int(str(df.at[_idx, _inc]).strip()) if str(df.at[_idx, _inc]).strip() else 0
-                                    except (ValueError, TypeError):
-                                        _inc_n = 0
-                                    if _new_n > 0:
-                                        if _inc_n == 0:
-                                            styles.at[_idx, _inc] = "background-color: #FF9999"
-                                        elif _inc_n == _new_n:
-                                            styles.at[_idx, _inc] = "background-color: #C6EFCE"
-                                        elif _inc_n > _new_n:
-                                            styles.at[_idx, _inc] = "background-color: #FFEB9C"
-                                        else:
-                                            styles.at[_idx, _inc] = "background-color: #FFDAB9"
-                                    elif _new_n == 0 and _inc_n > 0:
-                                        styles.at[_idx, _inc] = "background-color: #FFEB9C"
-                        return styles
-
-                    st.dataframe(_filled.style.apply(_style_filled, axis=None), use_container_width=True, hide_index=True)
+                with _dl_col:
                     from modules.excel_converter import convert_erp_filled_to_excel
                     _erp_excel = convert_erp_filled_to_excel(_filled)
+                    st.write("")
+                    st.write("")
                     st.download_button(
-                        label="📥 ERP 입고 반영 엑셀 다운로드",
+                        label="ERP 입고반영 엑셀",
                         data=_erp_excel,
                         file_name="plan_erp_result.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary",
                         use_container_width=True,
                     )
 
-                # ── 확인필요 목록 ──
-                if summary['reverse_count'] > 0:
-                    st.markdown("---")
-                    st.warning(
-                        f"⚠️ **확인필요 {summary['reverse_count']}건**: "
-                        "생산계획서에 없지만 ERP에 입고 기록이 있는 품목입니다."
+                # 상태 컬럼 동적 계산 (신규/입고 비교)
+                _disp_filled = _filled.copy()
+                _orig_cols = list(_filled.columns)
+                _insert_offset = 0
+                for _fi, _fh in enumerate(_orig_cols):
+                    if "신규" in str(_fh):
+                        _iq_fi = _fi + 1
+                        if _iq_fi < len(_orig_cols) and "입고" in str(_orig_cols[_iq_fi]):
+                            _h_sq2, _h_iq2 = _fh, _orig_cols[_iq_fi]
+                            def _row_st(_row, _hs=_h_sq2, _hi=_h_iq2):
+                                try: _sq = int(str(_row[_hs]).strip() or "0")
+                                except: _sq = 0
+                                try: _iq = int(str(_row[_hi]).strip() or "0")
+                                except: _iq = 0
+                                if _sq == 0: return ""
+                                if _iq == 0: return "🟥 미입고"
+                                if _iq == _sq: return "🟩 일치"
+                                if _iq > _sq: return "🟡 초과"
+                                return "🟠 일부"
+                            _st_nm = f"__st_{_fh}"
+                            _disp_filled.insert(_fi + _insert_offset + 2, _st_nm, _disp_filled.apply(_row_st, axis=1))
+                            _insert_offset += 1
+                _col_cfg_filled = {}
+                for _fcol in list(_disp_filled.columns):
+                    _fcol_s = str(_fcol)
+                    if _fcol_s.startswith("__st_"):
+                        _col_cfg_filled[_fcol_s] = st.column_config.TextColumn("상태", disabled=True, width="small")
+                    elif any(k in _fcol_s for k in ["재고", "신규", "입고"]):
+                        _col_cfg_filled[_fcol_s] = st.column_config.TextColumn(_fcol_s)
+                    else:
+                        _col_cfg_filled[_fcol_s] = st.column_config.TextColumn(_fcol_s, disabled=True)
+                _filled_hash = str(hash(str(_filled.values.tolist())))[-6:]
+                _edited_filled = st.data_editor(
+                    _disp_filled,
+                    column_config=_col_cfg_filled,
+                    use_container_width=True,
+                    hide_index=True,
+                    num_rows="fixed",
+                    key=f"cc_filled_editor_{_filled_hash}",
+                    height=len(_disp_filled) * 35 + 38,
+                )
+                _status_cols2 = [c for c in _edited_filled.columns if str(c).startswith("__st_")]
+                _clean_edited = _edited_filled.drop(columns=_status_cols2)
+                _old_filled_ref = st.session_state.get("cc_filled_df")
+                _data_changed = (_old_filled_ref is None or
+                                 not _clean_edited.equals(_old_filled_ref))
+                st.session_state["cc_filled_df"] = _clean_edited
+                if _data_changed:
+                    st.rerun()
+
+            # ── 확인필요 목록 ──
+            if summary['reverse_count'] > 0:
+                st.markdown("---")
+                _rev_l, _rev_c, _rev_r = st.columns([1, 2, 1])
+                with _rev_c:
+                    st.markdown(
+                        f"<div style='text-align:center;font-size:14px'>⚠️ <b>확인필요 {summary['reverse_count']}건</b>: "
+                        "생산계획서에 없지만 ERP에 입고 기록이 있는 품목입니다.</div>",
+                        unsafe_allow_html=True,
                     )
                     _rev_df = result_df[result_df["상태"].str.contains("확인필요", na=False)][["색상코드", "입고수량", "상태"]].copy()
                     _rev_df.insert(0, "선택", False)
@@ -792,8 +844,9 @@ def page_cross_check():
                         hide_index=True,
                         num_rows="fixed",
                         key=_rev_key,
+                        height=len(_rev_df) * 35 + 38,
                     )
-                    if st.button("🗑 선택 항목 목록에서 제거", use_container_width=True, key="cc_reverse_del"):
+                    if st.button("선택 항목 제거", use_container_width=True, key="cc_reverse_del"):
                         _to_del = _edited_rev[_edited_rev["선택"] == True]["색상코드"].tolist()
                         if _to_del:
                             st.session_state["cc_result_df"] = result_df[~result_df["색상코드"].isin(_to_del)].reset_index(drop=True)
@@ -802,37 +855,27 @@ def page_cross_check():
                         else:
                             st.info("제거할 항목을 선택하세요.")
 
+            is_plan_image = plan_name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
+            if is_plan_image:
                 st.markdown("---")
-                is_plan_image = plan_name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
-                if is_plan_image:
-                    if st.button("📊 검증 결과 엑셀 생성 (원본 이미지 기반)", use_container_width=True):
-                        with st.spinner("원본 이미지를 엑셀로 변환 + 검증 결과 표시 중..."):
-                            try:
-                                from modules.image_annotator import generate_verified_excel
-                                verified_excel = generate_verified_excel(plan_bytes, plan_name, result_df, api_key)
-                                st.session_state["cc_verified_excel"] = verified_excel
-                            except Exception as e:
-                                st.error(f"검증 엑셀 생성 실패: {e}")
-                    if st.session_state.get("cc_verified_excel"):
-                        st.download_button(
-                            label="📥 검증 결과 엑셀 다운로드 (입고/미입고 색상 표시)",
-                            data=st.session_state["cc_verified_excel"],
-                            file_name="verified_result.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True,
-                        )
-
-                st.markdown("---")
-                excel_bytes = generate_report(result_df)
-                st.download_button(
-                    label="📥 교차검증 결과 엑셀 다운로드",
-                    data=excel_bytes,
-                    file_name="paint_verification_report.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                )
-            else:
-                st.info("신규 요청 수량이 있는 항목이 없습니다.")
+                if st.button("검증 결과 엑셀 생성 (원본 이미지 기반)", use_container_width=True):
+                    with st.spinner("원본 이미지를 엑셀로 변환 + 검증 결과 표시 중..."):
+                        try:
+                            from modules.image_annotator import generate_verified_excel
+                            verified_excel = generate_verified_excel(plan_bytes, plan_name, result_df, api_key)
+                            st.session_state["cc_verified_excel"] = verified_excel
+                        except Exception as e:
+                            st.error(f"검증 엑셀 생성 실패: {e}")
+                if st.session_state.get("cc_verified_excel"):
+                    st.download_button(
+                        label="검증 결과 엑셀 다운로드 (입고/미입고 색상 표시)",
+                        data=st.session_state["cc_verified_excel"],
+                        file_name="verified_result.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                    )
+        else:
+            st.info("신규 요청 수량이 있는 항목이 없습니다.")
 
 
 # ══════════════════════════════════════
@@ -1110,15 +1153,6 @@ def page_work_log():
                     right=_t if c_idx == 10 else Side()
                 )
 
-    def generate_work_log_excel(selected_date, shift_data, work_items, safety_items, note_text):
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "일일업무보고"
-        _fill_work_log_sheet(ws, selected_date, shift_data, work_items, safety_items, note_text)
-        output = io.BytesIO()
-        wb.save(output)
-        return output.getvalue()
-
     def generate_monthly_work_log_excel(up_to_date):
         """당월 1일~up_to_date까지 저장된 작업일지를 날짜별 탭으로 묶어 반환.
         Returns: (bytes, int) - Excel 바이트, 포함된 날짜 수
@@ -1304,28 +1338,6 @@ def page_work_log():
         day_min = total_min - night_min
         return round(day_min / 60 * 2) / 2, round(night_min / 60 * 2) / 2
 
-    def _ot_widget(start_key, end_key):
-        """연장 시간대 선택 위젯. (day_ot, night_ot, start_str, end_str) 반환"""
-        start = st.selectbox("연장 시작", _TIME_OPTS, key=start_key)
-        if start == "없음":
-            return 0.0, 0.0, "없음", "없음"
-        end = st.selectbox("연장 종료", _TIME_OPTS, key=end_key)
-        day_ot, night_ot = _calc_ot(start, end)
-        total_ot = day_ot + night_ot
-        if total_ot > 0:
-            parts = []
-            if day_ot > 0:
-                parts.append(f'<span style="background:#1565C0;color:#fff;border-radius:4px;padding:2px 7px">주간 {day_ot}H</span>')
-            if night_ot > 0:
-                parts.append(f'<span style="background:#C62828;color:#fff;border-radius:4px;padding:2px 7px">야간 {night_ot}H</span>')
-            st.markdown(
-                f'<div style="text-align:center;font-size:13px;font-weight:700;margin-top:3px">'
-                f'{" + ".join(parts)}<br>'
-                f'<small style="color:#666;font-weight:400">{start}~{end} (계 {total_ot}H)</small></div>',
-                unsafe_allow_html=True
-            )
-        return day_ot, night_ot, start, end
-
     if is_2person:
         _leave_type_2p  = shift_auto.get("leave_type", "")
         _leave_person_2p = shift_auto.get("leave_person", "")
@@ -1347,12 +1359,12 @@ def page_work_log():
         with c1:
             st.markdown("**주간** (06:30~18:30)")
             day_name = st.text_input("주간 근무자", value=shift_auto["주간_근무자"])
-            day_day_ot, day_night_ot, _, _ = _ot_widget("day_ot_start", "day_ot_end")
+            day_day_ot, day_night_ot = 0.0, 0.0
             day_note = st.text_input("주간 비고", _default_note)
         with c2:
             st.markdown("**야간** (18:30~06:30)")
             night_name = st.text_input("야간 근무자", value=shift_auto["야간_근무자"])
-            night_day_ot, night_night_ot, _, _ = _ot_widget("night_ot_start", "night_ot_end")
+            night_day_ot, night_night_ot = 0.0, 0.0
             night_note = st.text_input("야간 비고", _default_note)
         with c3:
             st.markdown("**휴무**")
@@ -1377,17 +1389,17 @@ def page_work_log():
         with c1:
             st.markdown("**1근** (06:30~14:30)")
             s1_name = st.text_input("1근 근무자", value=shift_auto["1근_근무자"])
-            s1_day_ot, s1_night_ot, _, _ = _ot_widget("s1_ot_start", "s1_ot_end")
+            s1_day_ot, s1_night_ot = 0.0, 0.0
             s1_note = st.text_input("1근 비고", "")
         with c2:
             st.markdown("**2근** (14:30~22:30)")
             s2_name = st.text_input("2근 근무자", value=shift_auto["2근_근무자"])
-            s2_day_ot, s2_night_ot, _, _ = _ot_widget("s2_ot_start", "s2_ot_end")
+            s2_day_ot, s2_night_ot = 0.0, 0.0
             s2_note = st.text_input("2근 비고", "")
         with c3:
             st.markdown("**3근** (22:30~06:30)")
             s3_name = st.text_input("3근 근무자", value=shift_auto["3근_근무자"])
-            s3_day_ot, s3_night_ot, _, _ = _ot_widget("s3_ot_start", "s3_ot_end")
+            s3_day_ot, s3_night_ot = 0.0, 0.0
             s3_note = st.text_input("3근 비고", "")
         with c4:
             st.markdown("**휴무**")
@@ -1557,14 +1569,17 @@ def page_work_log():
     )
 
     _expr_evaluated = False
+    _vals_changed = False
     for _i, _nm in enumerate(item_names):
-        # 연산식 평가 후 정수로 치환
         _row_vals = {}
         for _sl in _all_shifts:
             _raw = _edited_df.at[_i, _sl]
             _ev = _eval_cell(_raw)
-            if str(_raw).strip() not in ('', '0', 'None', 'nan', str(_ev)):
+            _raw_s = str(_raw).strip()
+            if _raw_s not in ('', '0', 'None', 'nan', str(_ev)):
                 _expr_evaluated = True
+            if _raw_s != str(_df_grid.at[_i, _sl]).strip():
+                _vals_changed = True
             _edited_df.at[_i, _sl] = str(_ev)
             _row_vals[_sl] = _ev
         _ds = sum(_row_vals.values())
@@ -1572,8 +1587,9 @@ def page_work_log():
         _edited_df.at[_i, '월합계'] = str(monthly_totals.get(_nm, 0) + _ds)
     st.session_state[_grid_key] = _edited_df
     if _expr_evaluated:
-        # 키 버전을 올리면 다음 rerun에서 완전히 새 data_editor가 생성됨
         st.session_state[_de_ver_key] = _de_ver + 1
+        st.rerun()
+    elif _vals_changed:
         st.rerun()
 
     work_items_data = []
@@ -3254,6 +3270,315 @@ div[data-testid="column"]:has(.ctoday) button {
 
 
 # ══════════════════════════════════════
+# ══════════════════════════════════════
+# 근태관리 다이얼로그 (모듈 수준)
+# ══════════════════════════════════════
+
+@st.dialog("날짜 이동", width="small")
+def _att_date_picker_dialog():
+    _init = st.session_state.get("_att_dlg_pick_init", datetime.date.today())
+    _picked = st.date_input("이동할 날짜", value=_init, key="att_date_pick_input")
+    if st.button("이동", use_container_width=True, key="att_date_pick_go"):
+        st.session_state["att_cal_year"]  = _picked.year
+        st.session_state["att_cal_month"] = _picked.month
+        st.rerun()
+
+
+@st.dialog("휴가/연장 신청서", width="large")
+def _att_lv_dialog():
+    d = st.session_state.get("_att_lv_dlg_data", {})
+    ALL_MEMBERS = d.get("ALL_MEMBERS", [])
+    today_d = d.get("today", datetime.date.today())
+
+    _TIME_30M = [f"{h:02d}:{m:02d}" for h in range(0, 24) for m in (0, 30)]
+
+    _ra, _rb = st.columns(2)
+    with _ra: _lvn = st.selectbox("대상자", ALL_MEMBERS, key="att_lv_name")
+    with _rb: _lvt = st.selectbox(
+        "구분",
+        ["연장근무", "정기휴가", "연차", "특별휴가", "명휴", "생일휴가", "공가",
+         "공상휴업", "산재", "휴직", "대휴", "교육", "결근", "조퇴", "외출", "청원휴가", "공휴"],
+        key="att_lv_type",
+    )
+
+    if _lvt == "연장근무":
+        _oc1, _oc2, _oc3, _oc4 = st.columns(4)
+        with _oc1: _ot_ds = st.date_input("시작 날짜", today_d, key="att_ot_date_s")
+        with _oc2:
+            _ts_def = "06:30" if "06:30" in _TIME_30M else _TIME_30M[0]
+            _ot_ts = st.selectbox("시작 시간", _TIME_30M, index=_TIME_30M.index(_ts_def), key="att_ot_time_s")
+        with _oc3: _ot_de = st.date_input("종료 날짜", today_d, key="att_ot_date_e")
+        with _oc4:
+            _te_def = "18:30" if "18:30" in _TIME_30M else _TIME_30M[0]
+            _ot_te = st.selectbox("종료 시간", _TIME_30M, index=_TIME_30M.index(_te_def), key="att_ot_time_e")
+
+        try:
+            _s_dt = datetime.datetime.fromisoformat(f"{_ot_ds}T{_ot_ts}")
+            _e_dt = datetime.datetime.fromisoformat(f"{_ot_de}T{_ot_te}")
+            _mins = int((_e_dt - _s_dt).total_seconds() / 60)
+            if _mins > 0:
+                st.info(f"연장 시간: **{_mins // 60}시간 {_mins % 60:02d}분** ({_ot_ts} ~ {_ot_te})")
+            else:
+                st.warning("종료가 시작보다 이릅니다.")
+        except Exception:
+            pass
+
+        if st.button("✅ 등록", use_container_width=True, key="att_add_lv"):
+            if "leave_list" not in st.session_state:
+                st.session_state["leave_list"] = []
+            st.session_state["leave_list"].append({
+                "name": _lvn, "type": "연장근무",
+                "start": f"{_ot_ds}T{_ot_ts}", "end": f"{_ot_de}T{_ot_te}", "sub": "",
+            })
+            try:
+                from utils.supabase_db import save_leaves
+                save_leaves(st.session_state["leave_list"])
+            except Exception: pass
+            st.success("등록되었습니다.")
+            st.rerun()
+
+    else:
+        _rc, _rd = st.columns(2)
+        with _rc: _lvs2 = st.date_input("시작일", today_d, key="att_lv_start")
+        with _rd: _lve2 = st.date_input("종료일", today_d, key="att_lv_end")
+
+        _gnh = []
+        if _lvt == "공휴":
+            try:
+                import holidays as _hh4; _cd3 = _lvs2; _wd3 = ["월","화","수","목","금","토","일"]
+                while _cd3 <= _lve2:
+                    _krr = _hh4.SouthKorea(years=_cd3.year)
+                    if _cd3 not in _krr: _gnh.append(f"{_cd3.strftime('%m/%d')}({_wd3[_cd3.weekday()]})")
+                    _cd3 += datetime.timedelta(days=1)
+            except Exception: pass
+        if _gnh:
+            st.warning(f"⚠️ 비공휴일 포함: **{', '.join(_gnh)}**")
+            _gc = st.checkbox("⚠️ 확인 후 등록", key="att_gc")
+        else:
+            _gc = True
+
+        if st.button("✅ 등록", use_container_width=True, key="att_add_lv"):
+            if _lvs2 > _lve2: st.error("시작일이 종료일보다 늦습니다.")
+            elif _gnh and not _gc: st.error("⛔ 확인 체크 필요")
+            else:
+                if "leave_list" not in st.session_state:
+                    st.session_state["leave_list"] = []
+                st.session_state["leave_list"].append({
+                    "name": _lvn, "type": _lvt,
+                    "start": _lvs2.isoformat(), "end": _lve2.isoformat(), "sub": "",
+                })
+                try:
+                    from utils.supabase_db import save_leaves
+                    save_leaves(st.session_state["leave_list"])
+                except Exception: pass
+                st.success("등록되었습니다.")
+                st.rerun()
+
+    if st.session_state.get("leave_list"):
+        st.markdown("---")
+        st.markdown("**등록된 일정 조회**")
+        _lyrs = sorted({datetime.date.fromisoformat(lv["start"][:10]).year for lv in st.session_state["leave_list"]}, reverse=True)
+        _lf1, _lf2 = st.columns(2)
+        with _lf1: _fyr = st.selectbox("연도", _lyrs, index=0, key="att_lf_yr")
+        with _lf2: _fmo = st.selectbox("월", list(range(1, 13)), index=today_d.month - 1, key="att_lf_mo", format_func=lambda m: f"{m}월")
+        _fss = datetime.date(_fyr, _fmo, 1)
+        _fnm = (_fmo % 12) + 1; _fny = _fyr + (1 if _fmo == 12 else 0)
+        _fse = datetime.date(_fny, _fnm, 1) - datetime.timedelta(days=1)
+        _shwn = [(i, lv) for i, lv in enumerate(st.session_state["leave_list"])
+                 if datetime.date.fromisoformat(lv["end"][:10]) >= _fss and datetime.date.fromisoformat(lv["start"][:10]) <= _fse]
+        if not _shwn: st.caption(f"{_fyr}년 {_fmo}월 등록 일정 없음")
+        else:
+            st.caption(f"{_fyr}년 {_fmo}월 — {len(_shwn)}건")
+            for _ii2, _lv5 in _shwn:
+                _ct2, _cd4 = st.columns([4, 1])
+                with _ct2:
+                    _disp_s = _lv5["start"].replace("T", " ")
+                    _disp_e = _lv5["end"].replace("T", " ")
+                    st.write(f"{_lv5['name']} | {_lv5['type']} | {_disp_s} ~ {_disp_e}")
+                with _cd4:
+                    if st.button("삭제", key=f"att_del_{_ii2}"):
+                        _deld = st.session_state["leave_list"].pop(_ii2)
+                        try:
+                            from utils.supabase_db import save_leaves, delete_daily_details_for_leave
+                            save_leaves(st.session_state["leave_list"])
+                            _rc2 = delete_daily_details_for_leave(_deld)
+                            if _rc2 > 0: st.toast(f"휴가 삭제 — 관련 저장 일지 {_rc2}일 초기화", icon="♻️")
+                        except Exception: pass
+                        st.rerun()
+
+
+@st.dialog("근무 통계 상세", width="large")
+def _att_stats_dialog():
+    d = st.session_state.get("_att_dlg_data", {})
+    if not d:
+        st.error("데이터 없음"); return
+    nm            = d["nm"]
+    s             = d["s"]
+    yr_lv         = d["yr_lv"]
+    selected_year = d["year"]
+    selected_month= d["month"]
+    days_in_month = d["days_in_month"]
+    daily_details = d["daily_details"]
+    NIGHT_HOURS   = d["NIGHT_HOURS"]
+    MEMBERS       = d["MEMBERS"]
+    _kr2          = d["_kr2"]
+    _SCOLS        = d["_SCOLS"]
+    base_leaves   = d["base_leaves"]
+    _mblks        = d["_mblks"]
+
+    _조_map = {v: k + "조" for k, v in MEMBERS.items()}
+    st.markdown(f"### {nm} ({_조_map.get(nm,'')}) — {selected_year}년 {selected_month}월")
+    _tdh = sum(dd["시간"] for dd in s["대근내역"])
+
+    def _fhh(v):
+        try: v = float(v); return int(v) if v == int(v) else v
+        except Exception: return v
+
+    def _sal_tbl(rows):
+        tots = {c: sum(r[c] for r in rows) for c in _SCOLS}
+        tots["일별합계"] = sum(r["일별합계"] for r in rows)
+        def _f(v): return f"{v:.2f}" if v else ""
+        _hs = "".join(
+            f'<th style="background:#4472C4;color:#fff;text-align:center;'
+            f'padding:5px 3px;border:1px solid #2F5496;font-size:10px;white-space:nowrap;">{c}</th>'
+            for c in _SCOLS)
+        h = (f'<div style="overflow-x:auto;margin-top:8px;">'
+             f'<table style="border-collapse:collapse;font-size:11px;width:100%;min-width:900px;">'
+             f'<thead><tr>'
+             f'<th rowspan="2" style="background:#4472C4;color:#fff;text-align:center;'
+             f'padding:6px 4px;border:1px solid #2F5496;white-space:nowrap;">날짜</th>'
+             f'<th colspan="{len(_SCOLS)}" style="background:#4472C4;color:#fff;'
+             f'text-align:center;padding:6px 4px;border:1px solid #2F5496;">일일 급여시간</th>'
+             f'<th rowspan="2" style="background:#2F5496;color:#fff;text-align:center;'
+             f'padding:6px 4px;border:1px solid #2F5496;white-space:nowrap;">일별합계</th>'
+             f'</tr><tr>{_hs}</tr></thead><tbody>')
+        for i, r in enumerate(rows):
+            bg = "#f0f4fb" if i % 2 == 0 else "#ffffff"
+            cs = "".join(f'<td style="text-align:right;padding:3px 5px;border:1px solid #D0D7E4;background:{bg};">{_f(r[c])}</td>' for c in _SCOLS)
+            h += (f'<tr><td style="text-align:center;padding:3px 5px;border:1px solid #D0D7E4;'
+                  f'background:#EEF2FA;font-weight:600;">{r["날짜"]}</td>{cs}'
+                  f'<td style="text-align:right;padding:3px 5px;border:1px solid #2F5496;'
+                  f'background:#D9E1F2;font-weight:700;color:#1F3864;">{_f(r["일별합계"])}</td></tr>')
+        tc = "".join(f'<td style="text-align:right;padding:4px 5px;border:1px solid #9DC3E6;background:#BDD7EE;font-weight:700;color:#1F3864;">{_f(tots[c])}</td>' for c in _SCOLS)
+        h += (f'<tr><td style="text-align:center;padding:4px 5px;border:1px solid #9DC3E6;'
+              f'background:#9DC3E6;font-weight:700;color:#1F3864;">근로별 월합계</td>{tc}'
+              f'<td style="text-align:right;padding:4px 5px;border:1px solid #9DC3E6;'
+              f'background:#9DC3E6;font-weight:700;color:#1F3864;">{_f(tots["일별합계"])}</td>'
+              f'</tr></tbody></table></div>')
+        return h
+
+    if s["대근내역"]:
+        with st.expander(f"대근 내역 ({s['대근횟수']}회 · 계 {_fhh(_tdh)}H)", expanded=True):
+            for _dd in s["대근내역"]:
+                st.write(f"{_dd['날짜']} | {_dd['구분']} | {_dd['휴가자']} {_dd['휴가구분']}으로 대근 | {_fhh(_dd['시간'])}H")
+    else:
+        st.caption("대근 없음")
+
+    if s["휴가내역"]:
+        with st.expander(f"{selected_month}월 휴가 내역 ({s['휴가일수']}일)", expanded=True):
+            for _hh3 in s["휴가내역"]: st.write(_hh3)
+    else:
+        st.caption("이번달 휴가 없음")
+
+    if yr_lv:
+        with st.expander(f"{selected_year}년 전체 휴가 ({len(yr_lv)}일)", expanded=True):
+            _tc2 = {}
+            for _lv2 in yr_lv: _tc2[_lv2["구분"]] = _tc2.get(_lv2["구분"], 0) + 1
+            st.info(" | ".join(f"{k}: {v}일" for k, v in _tc2.items()))
+            for _lv2 in yr_lv: st.write(f"{_lv2['날짜']} — {_lv2['구분']}")
+
+    with st.expander(f"{selected_month}월 급여시간표", expanded=False):
+        _srows = []
+        for _fd in range(1, days_in_month + 1):
+            _fd_date = datetime.date(selected_year, selected_month, _fd)
+            _fds = _fd_date.strftime("%Y-%m-%d")
+            _fhol = _fd_date in _kr2
+            _frow = {c: 0.0 for c in _SCOLS}; _frow["날짜"] = f"{selected_month:02d}/{_fd:02d}"
+            if _fds in daily_details:
+                _sh2 = daily_details[_fds].get("shift", {})
+                if _sh2.get("is_2person"):
+                    _lp=_sh2.get("leave_person","") or _sh2.get("3근_근무자","")
+                    _dw3=_sh2.get("주간_근무자","") or _sh2.get("1근_근무자","")
+                    _nw3=_sh2.get("야간_근무자","") or _sh2.get("2근_근무자","")
+                    _lv3=_sh2.get("leave_type","") or _sh2.get("3근_비고","")
+                    _nb=NIGHT_HOURS.get("야간",7.5)
+                    _dot2=float(_sh2.get("1근_연장",4) or 4); _not2=float(_sh2.get("2근_연장",4) or 4)
+                    if nm==_lp:
+                        if _lv3=="공가": _frow["공가"]=8.0
+                        elif _lv3!="공휴": _frow["휴가비근로"]=8.0
+                    elif nm==_dw3:
+                        if _fhol or _lv3=="공휴": _frow["유휴근로"]=8.0;_frow["휴일연장"]=_dot2;_frow["휴일비근로"]=8.0
+                        else: _frow["정상근로"]=8.0;_frow["연장근로"]=_dot2
+                    elif nm==_nw3:
+                        if _fhol or _lv3=="공휴": _frow["유휴근로"]=8.0;_frow["야간근로"]=_nb;_frow["휴일연장"]=_not2;_frow["휴일비근로"]=8.0
+                        else: _frow["정상근로"]=8.0;_frow["야간근로"]=_nb;_frow["연장근로"]=_not2
+                else:
+                    for _sk3,_근3 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                        if _sh2.get(_sk3)==nm:
+                            _nb3=NIGHT_HOURS.get(_근3,0);_ot3b=float(_sh2.get(f"{_근3}_연장",0) or 0)
+                            _dy3=float(_sh2.get(f"{_근3}_주간연장") or _ot3b);_ny3=float(_sh2.get(f"{_근3}_야간연장") or 0)
+                            if _fhol: _frow["유휴근로"]=8.0;_frow["휴일비근로"]=8.0;_frow["휴일연장"]=_dy3+_ny3;_frow["야간근로"]=_nb3 if _nb3>0 else 0
+                            else: _frow["정상근로"]=8.0;_frow["연장근로"]=_dy3;_frow["야간근로"]=(_nb3+_ny3) if _nb3>0 else 0
+                            break
+            else:
+                _fs=_shift_for_date(_fd_date,MEMBERS); _fs=_apply_leaves_stat(_fs,_fd_date,base_leaves)
+                if _fs.get("is_2person"):
+                    _nb4=NIGHT_HOURS.get("야간",7.5);_lp4=_fs.get("leave_person","");_dw4=_fs.get("주간_근무자","");_nw4=_fs.get("야간_근무자","");_lv4=_fs.get("leave_type","")
+                    if nm==_lp4:
+                        if _lv4=="공가": _frow["공가"]=8.0
+                        elif _lv4!="공휴": _frow["휴가비근로"]=8.0
+                    elif nm==_dw4:
+                        if _fhol or _lv4=="공휴": _frow["유휴근로"]=8.0;_frow["휴일연장"]=4.0;_frow["휴일비근로"]=8.0
+                        else: _frow["정상근로"]=8.0;_frow["연장근로"]=4.0
+                    elif nm==_nw4:
+                        if _fhol or _lv4=="공휴": _frow["유휴근로"]=8.0;_frow["야간근로"]=_nb4;_frow["휴일연장"]=4.0;_frow["휴일비근로"]=8.0
+                        else: _frow["정상근로"]=8.0;_frow["야간근로"]=_nb4;_frow["연장근로"]=4.0
+                else:
+                    for _sk4,_근4 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                        if _fs.get(_sk4)==nm:
+                            _nb4b=NIGHT_HOURS.get(_근4,0)
+                            if _fhol: _frow["유휴근로"]=8.0;_frow["휴일비근로"]=8.0;_frow["야간근로"]=_nb4b if _nb4b>0 else 0
+                            else: _frow["정상근로"]=8.0;_frow["야간근로"]=_nb4b if _nb4b>0 else 0
+                            break
+            _ft=sum(_frow[c] for c in _SCOLS); _frow["일별합계"]=_ft
+            if _ft>0: _srows.append(_frow)
+        if _srows:
+            st.markdown(_sal_tbl(_srows), unsafe_allow_html=True)
+        else:
+            st.info("저장된 근무 데이터가 없습니다.")
+
+    with st.expander("교대주기별 연장 시간", expanded=False):
+        st.caption("교대 주기(연속 근무 5일)별 연장 현황. 주기당 최대 12H — 초과 시 빨간색 경고.")
+        if not _mblks:
+            st.info("해당 월 교대 주기 없음")
+        else:
+            _OT=12; _n2=len(_mblks)
+            _TH2="background:#374151;color:#D1D5DB;padding:5px 4px;border:1px solid #4B5563;text-align:center;font-size:12px;"
+            _TDB="padding:6px 4px;border:1px solid #4B5563;text-align:center;font-size:13px;"
+            _TDG=_TDB+"background:#1F2937;color:#9CA3AF;"
+            _TDO=_TDB+"background:#1F2937;color:#E5E7EB;font-weight:600;"
+            _TDR=_TDB+"background:#DC2626;color:#fff;font-weight:700;"
+            _TDW=_TDB+"background:#78350F;color:#FDE68A;font-weight:600;"
+            _dh="".join(f'<th colspan="3" style="{_TH2}">{b[0][0].strftime("%m/%d")}~{b[-1][0].strftime("%m/%d")}</th>' for b in _mblks)
+            _cs2=('<th style="'+_TH2+'">연장(발생)</th><th style="'+_TH2+'">연장(잔여)</th><th style="'+_TH2+'">탄력근로 사용</th>')*_n2
+            _dc=""; _aw=False
+            for _b2 in _mblks:
+                _bot=int(sum(_x[1] for _x in _b2)); _rem=max(0,_OT-_bot)
+                _io=_bot>=_OT; _in2=not _io and _bot>=_OT-2; _aw=_aw or _io
+                _cst=_TDR if _io else (_TDW if _in2 else _TDO)
+                _dc+=f'<td style="{_cst}">{_bot}</td><td style="{_TDG}">{_rem}</td><td style="{_TDG}">0</td>'
+            _hot=(f'<div style="overflow-x:auto;margin-top:8px;">'
+                  f'<table style="border-collapse:collapse;font-size:12px;min-width:100%;">'
+                  f'<thead><tr><th style="{_TH2}min-width:90px;">구분</th>{_dh}</tr>'
+                  f'<tr><th style="{_TH2}"></th>{_cs2}</tr></thead>'
+                  f'<tbody><tr><td style="{_TH2}text-align:left;white-space:nowrap;">연장/잔여(H)</td>{_dc}</tr>'
+                  f'</tbody></table></div>')
+            st.markdown(_hot, unsafe_allow_html=True)
+            if _aw:
+                _wl=[f'{b[0][0].strftime("%m/%d")}~{b[-1][0].strftime("%m/%d")} ({int(sum(_x[1] for _x in b))}H)' for b in _mblks if int(sum(_x[1] for _x in b))>=_OT]
+                st.error("⚠️ 주 52시간 위배 주기: "+", ".join(_wl))
+
+
 # 근태관리 (근무표 + 근무통계 통합)
 # ══════════════════════════════════════
 def page_attendance():
@@ -3273,21 +3598,39 @@ def page_attendance():
         page_my_schedule()
         return
 
-    st.markdown("## 근태관리")
+    # ── 연/월 session state 초기화 ──
+    if "att_cal_year" not in st.session_state:
+        st.session_state["att_cal_year"] = today.year
+    if "att_cal_month" not in st.session_state:
+        st.session_state["att_cal_month"] = today.month
+    selected_year  = st.session_state["att_cal_year"]
+    selected_month = st.session_state["att_cal_month"]
 
-    # ── 공통 컨트롤 ──
-    _ac1, _ac2, _ac3, _ac4 = st.columns([2, 2, 1, 1])
-    with _ac1:
-        shift_type = st.selectbox("근무 형태", ["4조3교대", "3조3교대", "2조2교대", "4조2교대"], key="att_shift_type")
-    _SHIFT_TEAMS = {"4조3교대": ALL_MEMBERS, "3조3교대": ["A조", "B조", "C조"], "2조2교대": ["A조", "B조"], "4조2교대": ["A조", "B조", "C조", "D조"]}
-    _team_label = "이름" if shift_type == "4조3교대" else "조"
-    with _ac2:
-        selected_name = st.selectbox(_team_label, _SHIFT_TEAMS[shift_type], key="att_name")
-    with _ac3:
-        selected_year = st.selectbox("년도", list(range(2020, today.year + 6)),
-                                     index=list(range(2020, today.year + 6)).index(today.year), key="att_yr")
-    with _ac4:
-        selected_month = st.selectbox("월", list(range(1, 13)), index=today.month - 1, key="att_mo")
+    # ── 헤더 행: 제목 | 휴가/연장신청서 | 근무형태 ──
+    _h1, _h2, _h3 = st.columns([4, 1.5, 0.8])
+    with _h1:
+        st.markdown("## 근태관리")
+    with _h2:
+        if st.button("휴가/연장 신청서", key="att_lv_open", use_container_width=True):
+            st.session_state["_att_lv_dlg_data"] = {"ALL_MEMBERS": ALL_MEMBERS, "today": today}
+            if "leave_list" not in st.session_state:
+                try:
+                    from utils.supabase_db import load_leaves as _ll2
+                    st.session_state["leave_list"] = _ll2()
+                except Exception:
+                    st.session_state["leave_list"] = []
+            _att_lv_dialog()
+    with _h3:
+        shift_type = st.selectbox(
+            "근무형태",
+            ["4조3교대", "3조3교대", "2조2교대", "4조2교대"],
+            key="att_shift_type",
+            help="다른근무형태 보기",
+            label_visibility="collapsed",
+        )
+
+    _SHIFT_TEAMS = {"4조3교대": ALL_MEMBERS, "3조3교대": ["A조","B조","C조"], "2조2교대": ["A조","B조"], "4조2교대": ["A조","B조","C조","D조"]}
+    selected_name = _SHIFT_TEAMS[shift_type][0]
 
     # 휴가 목록
     leave_list = []
@@ -3326,549 +3669,408 @@ def page_attendance():
         except Exception:
             pass
 
-    # ── 2컬럼 레이아웃 ──
-    col_stats, col_cal = st.columns([3, 2])
+    # --------- 통계 사전 계산 ---------
+    NIGHT_HOURS = {"1근": 0, "2근": 0.5, "3근": 7.5, "주간": 0, "야간": 7.5}
+    daily_details = {}
+    base_leaves_s = []
+    if shift_type == "4조3교대":
+        try:
+            from utils.supabase_db import load_daily_detail_month
+            daily_details = load_daily_detail_month(selected_year, selected_month)
+        except Exception:
+            pass
+        try:
+            from utils.supabase_db import load_leaves as _ll_s
+            base_leaves_s = _ll_s()
+        except Exception:
+            pass
 
-    # ─────────── 오른쪽: 미니 달력 + 오늘 요약 ───────────
-    with col_cal:
-        if st.button("🔍 달력 전체화면", key="att_fs_btn", use_container_width=True):
-            st.session_state["att_fullscreen"] = True
-            st.rerun()
+    def _sff_s(val):
+        try: return float(val)
+        except Exception:
+            import re as _re_s; nums = _re_s.findall(r"[\d.]+", str(val)); return float(nums[0]) if nums else 0
 
-        # ── 미니 HTML 달력 ──
-        first_wd = (datetime.date(selected_year, selected_month, 1).weekday() + 1) % 7
-        MCLS = {"1근": "#1D4ED8", "2근": "#15803D", "3근": "#B91C1C", "휴무": "#9CA3AF",
-                "주간": "#B45309", "야간": "#374151", "휴가": "#D97706", "대근": "#7C3AED"}
+    stats = {nm: {"근무일수":0,"연장근로_대근":0,"연장근로_주간":0,"연장근로_야간":0,
+                  "야간근로":0,"휴가일수":0,"대근횟수":0,"휴가내역":[],"대근내역":[]}
+             for nm in ALL_MEMBERS}
 
-        def _mini_shift(d):
-            if shift_type == "3조3교대":
-                s = _shift_for_date_3s3(d, selected_name[0]); return s, MCLS.get(s, "#ccc")
-            if shift_type == "2조2교대":
-                s = _shift_for_date_2s2(d, selected_name[0]); return s, MCLS.get(s, "#ccc")
-            if shift_type == "4조2교대":
-                s = _shift_for_date_4s2(d, selected_name[0]); return s, MCLS.get(s, "#ccc")
-            shift_d = _shift_for_date(d, MEMBERS)
-            if shift_d["1근_근무자"] == selected_name: base = "1근"
-            elif shift_d["2근_근무자"] == selected_name: base = "2근"
-            elif shift_d["3근_근무자"] == selected_name: base = "3근"
-            else: base = "휴무"
+    if shift_type == "4조3교대":
+        for _day in range(1, days_in_month + 1):
+            _date = datetime.date(selected_year, selected_month, _day)
+            _dstr = _date.strftime("%Y-%m-%d")
+            if _dstr in daily_details:
+                _sh = daily_details[_dstr].get("shift", {})
+                if _sh.get("is_2person"):
+                    _dw = _sh.get("1근_근무자",""); _nw = _sh.get("2근_근무자","")
+                    _lw = _sh.get("3근_근무자",""); _lt = _sh.get("3근_비고","")
+                    if _dw in stats:
+                        _dt = _sff_s(_sh.get("1근_연장", 4))
+                        stats[_dw]["근무일수"]+=1; stats[_dw]["연장근로_대근"]+=4
+                        stats[_dw]["연장근로_주간"]+=max(0,_sff_s(_sh.get("1근_주간연장",4))-4)
+                        stats[_dw]["연장근로_야간"]+=_sff_s(_sh.get("1근_야간연장",0))
+                        stats[_dw]["대근횟수"]+=1
+                        stats[_dw]["대근내역"].append({"날짜":_dstr,"휴가자":_lw,"휴가구분":_lt,"시간":_dt,"구분":"주간"})
+                    if _nw in stats:
+                        _nt = _sff_s(_sh.get("2근_연장", 4))
+                        stats[_nw]["근무일수"]+=1; stats[_nw]["연장근로_대근"]+=4
+                        stats[_nw]["연장근로_주간"]+=_sff_s(_sh.get("2근_주간연장",0))
+                        stats[_nw]["연장근로_야간"]+=max(0,_sff_s(_sh.get("2근_야간연장",4))-4)
+                        stats[_nw]["야간근로"]+=8; stats[_nw]["대근횟수"]+=1
+                        stats[_nw]["대근내역"].append({"날짜":_dstr,"휴가자":_lw,"휴가구분":_lt,"시간":_nt,"구분":"야간"})
+                    if _lw in stats and _lt:
+                        stats[_lw]["휴가일수"]+=1; stats[_lw]["휴가내역"].append(f"{_dstr}: {_lt}")
+                else:
+                    for _sk,_nk2 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                        _wk=_sh.get(_sk,""); _ot=_sff_s(_sh.get(f"{_nk2}_연장",0))
+                        if _wk in stats:
+                            stats[_wk]["근무일수"]+=1
+                            _ed=_sh.get(f"{_nk2}_주간연장"); _en=_sh.get(f"{_nk2}_야간연장")
+                            if _ed is not None or _en is not None:
+                                _dot,_not=_sff_s(_ed or 0),_sff_s(_en or 0)
+                            elif _sh.get(f"{_nk2}_연장유형")=="야간연장":
+                                _dot,_not=0,_ot
+                            else:
+                                _dot,_not=_ot,0
+                            stats[_wk]["연장근로_주간"]+=_dot; stats[_wk]["연장근로_야간"]+=_not
+                            stats[_wk]["야간근로"]+=NIGHT_HOURS.get(_nk2,0)+_not
+                _ow=_sh.get("휴무_근무자",""); _ot2=_sh.get("휴무_구분","")
+                if _ow in stats and _ot2 not in ("교대휴무","주휴휴무",""):
+                    stats[_ow]["휴가일수"]+=1; stats[_ow]["휴가내역"].append(f"{_dstr}: {_ot2}")
+            else:
+                _ss=_shift_for_date(_date,MEMBERS)
+                _ss=_apply_leaves_stat(_ss,_date,base_leaves_s)
+                if _ss.get("is_2person"):
+                    _dw2=_ss.get("주간_근무자",""); _nw2=_ss.get("야간_근무자","")
+                    _lw2=_ss.get("leave_person",""); _lt2=_ss.get("leave_type","")
+                    if _dw2 in stats:
+                        stats[_dw2]["근무일수"]+=1; stats[_dw2]["연장근로_대근"]+=4
+                        stats[_dw2]["대근횟수"]+=1
+                        stats[_dw2]["대근내역"].append({"날짜":_dstr,"휴가자":_lw2,"휴가구분":_lt2,"시간":4,"구분":"주간"})
+                    if _nw2 in stats:
+                        stats[_nw2]["근무일수"]+=1; stats[_nw2]["연장근로_대근"]+=4
+                        stats[_nw2]["야간근로"]+=8; stats[_nw2]["대근횟수"]+=1
+                        stats[_nw2]["대근내역"].append({"날짜":_dstr,"휴가자":_lw2,"휴가구분":_lt2,"시간":4,"구분":"야간"})
+                    if _lw2 in stats and _lt2:
+                        stats[_lw2]["휴가일수"]+=1; stats[_lw2]["휴가내역"].append(f"{_dstr}: {_lt2} (예정)")
+                else:
+                    for _wk2,_sk2 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                        _w=_ss.get(_wk2,"")
+                        if _w in stats:
+                            stats[_w]["근무일수"]+=1; stats[_w]["야간근로"]+=_NIGHT_HOURS_BASE.get(_sk2,0)
+                    _ow2=_ss.get("휴무_근무자",""); _ot3=_ss.get("휴무_구분","")
+                    if _ow2 in stats and _ot3 not in ("교대휴무","주휴휴무",""):
+                        stats[_ow2]["휴가일수"]+=1; stats[_ow2]["휴가내역"].append(f"{_dstr}: {_ot3} (예정)")
+
+        year_leaves = {nm: [] for nm in ALL_MEMBERS}
+        _today_kst = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
+        for _lv in base_leaves_s:
+            try: _lvs=datetime.date.fromisoformat(_lv["start"]); _lve=datetime.date.fromisoformat(_lv["end"])
+            except Exception: continue
+            _cur2=_lvs
+            while _cur2<=_lve and _cur2<=_today_kst:
+                if _cur2.year==selected_year:
+                    _ds2=_cur2.strftime("%Y-%m-%d")
+                    if _lv["name"] in year_leaves:
+                        year_leaves[_lv["name"]].append({"날짜":_ds2,"구분":_lv["type"]})
+                _cur2+=datetime.timedelta(days=1)
+    else:
+        year_leaves = {nm: [] for nm in ALL_MEMBERS}
+
+    # --------- 근무 통계 타이틀 + 이름 버튼 ---------
+    st.markdown(f"### {selected_year}년 {selected_month}월 근무 통계")
+    if shift_type != "4조3교대":
+        st.info("상세 통계는 4조3교대 근무 형태에서만 지원됩니다.")
+    else:
+        _조_map = {v: k for k, v in MEMBERS.items()}
+        _btn_cols = st.columns(len(ALL_MEMBERS))
+        for _bi, _nm in enumerate(ALL_MEMBERS):
+            with _btn_cols[_bi]:
+                _조 = _조_map.get(_nm, "")
+                if st.button(
+                    f"{_nm}\n({_조}조)",
+                    key=f"att_stat_{_nm}",
+                    use_container_width=True,
+                ):
+                    _tk2 = next((k for k,v in MEMBERS.items() if v==_nm), None)
+                    _mblks2 = []
+                    _obd2 = {}
+                    if _tk2:
+                        _ms2 = datetime.date(selected_year, selected_month, 1)
+                        _next_mo = selected_month % 12 + 1
+                        _next_yr = selected_year + (1 if selected_month==12 else 0)
+                        _me2 = datetime.date(_next_yr, _next_mo, 1) - datetime.timedelta(days=1)
+                        _ss3 = _ms2 - datetime.timedelta(days=6)
+                        _se3 = _me2 + datetime.timedelta(days=6)
+                        for _dd2 in stats[_nm].get("대근내역", []):
+                            _obd2[_dd2["날짜"]] = _obd2.get(_dd2["날짜"], 0) + _dd2["시간"]
+                        for _ds5,_dd5 in daily_details.items():
+                            if _ds5 in _obd2: continue
+                            _sh5=_dd5.get("shift",{})
+                            if not _sh5.get("is_2person"):
+                                for _sk5,_ok5 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                                    if _sh5.get(_sk5)==_nm:
+                                        _ot5=_sff_s(_sh5.get(f"{_ok5}_연장",0))
+                                        if _ot5>0: _obd2[_ds5]=_ot5
+                                        break
+                        _wseq2 = []
+                        _dd6 = _ss3
+                        while _dd6 <= _se3:
+                            _idx3 = (_dd6-_BASE_DATE).days % 20
+                            _c1b,_c2b,_c3b,_ = _CYCLE_20[_idx3]
+                            if _tk2 in (_c1b,_c2b,_c3b):
+                                _wseq2.append((_dd6, _obd2.get(_dd6.strftime("%Y-%m-%d"),0)))
+                            _dd6 += datetime.timedelta(days=1)
+                        _blks2 = []
+                        if _wseq2:
+                            _cb2=[_wseq2[0]]
+                            for _ii3 in range(1,len(_wseq2)):
+                                if (_wseq2[_ii3][0]-_wseq2[_ii3-1][0]).days==1: _cb2.append(_wseq2[_ii3])
+                                else: _blks2.append(_cb2); _cb2=[_wseq2[_ii3]]
+                            _blks2.append(_cb2)
+                        _mblks2=[b for b in _blks2 if b[-1][0]>=_ms2 and b[0][0]<=_me2]
+
+                    try:
+                        import holidays as _hh2
+                        _kr2=_hh2.SouthKorea(years=[selected_year,selected_year-1,selected_year+1])
+                    except Exception:
+                        _kr2=set()
+
+                    _SCOLS=["정상근로","유휴근로","휴일근로","연장근로","휴일연장","야간근로","휴일비근로","휴가비근로","스틸아카데미","항군교육","사내교육(1)","사내교육(1.5)","사외교육(1)","사외교육(1.5)","공가"]
+
+                    st.session_state["_att_dlg_data"] = {
+                        "nm": _nm, "s": stats[_nm],
+                        "yr_lv": year_leaves.get(_nm, []),
+                        "year": selected_year, "month": selected_month,
+                        "days_in_month": days_in_month,
+                        "daily_details": daily_details,
+                        "NIGHT_HOURS": NIGHT_HOURS,
+                        "MEMBERS": MEMBERS, "ALL_MEMBERS": ALL_MEMBERS,
+                        "_kr2": _kr2, "_SCOLS": _SCOLS,
+                        "base_leaves": base_leaves_s,
+                        "_obd": _obd2, "_mblks": _mblks2,
+                    }
+                    _att_stats_dialog()
+
+    # --------- Galaxy 달력 ---------
+    MCLS = {"1근": "#1565C0", "2근": "#2E7D32", "3근": "#C62828", "휴무": "#9E9E9E",
+            "주간": "#E65100", "야간": "#37474F", "휴가": "#F57F17", "대근": "#6A1B9A"}
+
+    def _mini_shift(d):
+        if shift_type == "3조3교대":
+            s = _shift_for_date_3s3(d, selected_name[0]); return s, MCLS.get(s, "#ccc")
+        if shift_type == "2조2교대":
+            s = _shift_for_date_2s2(d, selected_name[0]); return s, MCLS.get(s, "#ccc")
+        if shift_type == "4조2교대":
+            s = _shift_for_date_4s2(d, selected_name[0]); return s, MCLS.get(s, "#ccc")
+        shift_d = _shift_for_date(d, MEMBERS)
+        if shift_d["1근_근무자"] == selected_name: base = "1근"
+        elif shift_d["2근_근무자"] == selected_name: base = "2근"
+        elif shift_d["3근_근무자"] == selected_name: base = "3근"
+        else: base = "휴무"
+        for lv in leave_list:
+            try:
+                if lv["name"] == selected_name and datetime.date.fromisoformat(lv["start"]) <= d <= datetime.date.fromisoformat(lv["end"]):
+                    return "휴가", MCLS["휴가"]
+            except Exception: pass
+        if base != "휴무":
             for lv in leave_list:
                 try:
-                    if lv["name"] == selected_name and datetime.date.fromisoformat(lv["start"]) <= d <= datetime.date.fromisoformat(lv["end"]):
-                        return "휴가", MCLS["휴가"]
+                    if lv["name"] != selected_name and datetime.date.fromisoformat(lv["start"]) <= d <= datetime.date.fromisoformat(lv["end"]):
+                        return "대근", MCLS["대근"]
                 except Exception: pass
-            if base != "휴무":
-                for lv in leave_list:
-                    try:
-                        if lv["name"] != selected_name and datetime.date.fromisoformat(lv["start"]) <= d <= datetime.date.fromisoformat(lv["end"]):
-                            return "대근", MCLS["대근"]
-                    except Exception: pass
-            return base, MCLS.get(base, "#ccc")
+        return base, MCLS.get(base, "#ccc")
 
-        WD_LABELS = ["일", "월", "화", "수", "목", "금", "토"]
-        WD_CLR = ["#EF4444", "#555", "#555", "#555", "#555", "#555", "#3B82F6"]
-        _th_s = "font-size:10px;font-weight:700;text-align:center;padding:3px 0;border:1px solid #e5e7eb;background:#f3f4f6;"
-        _td_s = "font-size:9px;text-align:center;padding:2px 1px;border:1px solid #e5e7eb;vertical-align:top;height:30px;position:relative;overflow:hidden;"
-
-        html_cal = '<div style="margin-top:4px;"><table style="width:100%;border-collapse:collapse;">'
-        html_cal += f'<thead><tr><th colspan="7" style="background:#4B2D8E;color:#fff;text-align:center;padding:5px;font-size:12px;font-weight:700;">{selected_year}년 {selected_month}월</th></tr><tr>'
-        for wd, clr in zip(WD_LABELS, WD_CLR):
-            html_cal += f'<th style="{_th_s}color:{clr};">{wd}</th>'
-        html_cal += '</tr></thead><tbody><tr>'
-
-        cell_idx = 0
-        for _ in range(first_wd):
-            html_cal += f'<td style="{_td_s}background:#f9fafb;"></td>'; cell_idx += 1
-
-        for dn in range(1, days_in_month + 1):
-            d = datetime.date(selected_year, selected_month, dn)
-            wi = (d.weekday() + 1) % 7
-            is_today = (d == today)
-            hol = _get_holiday_name(d)
-            shift_lbl, shift_clr = _mini_shift(d)
-            day_clr = "#EF4444" if (wi == 0 or hol) else ("#3B82F6" if wi == 6 else "#374151")
-            num_html = (f'<span style="display:inline-block;background:#3B82F6;color:#fff;border-radius:50%;width:15px;height:15px;line-height:15px;font-size:9px;font-weight:800;">{dn}</span>'
-                        if is_today else f'<span style="color:{day_clr};font-size:9px;font-weight:700;">{dn}</span>')
-            if shift_lbl == "휴무":
-                badge = '<div style="font-size:8px;color:#9CA3AF;">휴</div>'
+    # 달력 헤더: < year month >  오늘  날짜선택
+    st.markdown(
+        "<style>"
+        "[data-testid='stHorizontalBlock']:has([data-testid='att_cal_hdr']) button {"
+        "  min-height:0!important; padding:4px 10px!important; font-size:13px!important;"
+        "}"
+        "</style>",
+        unsafe_allow_html=True,
+    )
+    # 달력 헤더: < [년월 버튼] >  오늘
+    _gcl_p, _gcl_title, _gcl_n, _gcl_sp, _gcl_today = st.columns([0.5, 4, 0.5, 0.5, 1])
+    with _gcl_p:
+        if st.button("❮", key="att_prev_mo", use_container_width=True):
+            if selected_month == 1:
+                st.session_state["att_cal_year"]  -= 1
+                st.session_state["att_cal_month"]  = 12
             else:
-                txt_clr = "#fff" if shift_lbl in ("3근", "야간", "대근") else ("#fff" if shift_lbl == "1근" else "#fff")
-                badge = f'<div style="background:{shift_clr};color:#fff;border-radius:2px;font-size:8px;padding:0 1px;margin-top:1px;font-weight:700;">{shift_lbl[:2]}</div>'
-            _d_str = d.strftime("%Y-%m-%d")
-            _has_memo = _d_str in _memo_dates
-            bg = "background:#EFF6FF;" if is_today else ""
-            _memo_overlay = ""
-            if _has_memo:
-                _memo_overlay = '<div style="position:absolute;top:1px;right:1px;width:5px;height:5px;background:#F59E0B;border-radius:50%;"></div>'
-            html_cal += f'<td style="{_td_s}{bg}">{num_html}{badge}{_memo_overlay}</td>'
-            cell_idx += 1
-            if cell_idx % 7 == 0 and dn < days_in_month:
-                html_cal += '</tr><tr>'
+                st.session_state["att_cal_month"] -= 1
+            st.rerun()
+    with _gcl_title:
+        if st.button(
+            f"{selected_year}년 {selected_month}월",
+            key="att_ym_btn",
+            use_container_width=True,
+            help="클릭하면 날짜를 선택할 수 있습니다",
+        ):
+            st.session_state["_att_dlg_pick_init"] = datetime.date(selected_year, selected_month, 1)
+            _att_date_picker_dialog()
+    with _gcl_n:
+        if st.button("❯", key="att_next_mo", use_container_width=True):
+            if selected_month == 12:
+                st.session_state["att_cal_year"]  += 1
+                st.session_state["att_cal_month"]  = 1
+            else:
+                st.session_state["att_cal_month"] += 1
+            st.rerun()
+    with _gcl_sp:
+        pass
+    with _gcl_today:
+        if st.button("오늘", key="att_today_btn", use_container_width=True):
+            st.session_state["att_cal_year"]  = today.year
+            st.session_state["att_cal_month"] = today.month
+            st.rerun()
 
-        rem = (7 - cell_idx % 7) % 7
-        for _ in range(rem):
-            html_cal += f'<td style="{_td_s}background:#f9fafb;"></td>'
-        html_cal += '</tr></tbody></table></div>'
-        st.markdown(html_cal, unsafe_allow_html=True)
+    # 이전달 마지막 날짜
+    _prev_mo = selected_month - 1 if selected_month > 1 else 12
+    _prev_yr = selected_year if selected_month > 1 else selected_year - 1
+    _prev_days_in_mo = _cal.monthrange(_prev_yr, _prev_mo)[1]
 
-        # ── 오늘 근무배치 (compact) ──
-        st.markdown("---")
-        st.caption(f"📅 {today.strftime('%m/%d')} 오늘 근무배치")
+    first_wd = (datetime.date(selected_year, selected_month, 1).weekday() + 1) % 7
+    WD_LABELS = ["일", "월", "화", "수", "목", "금", "토"]
+    WD_CLR    = ["#E53935", "#424242", "#424242", "#424242", "#424242", "#424242", "#1565C0"]
+
+    _TH = ("font-size:26px;font-weight:700;text-align:center;padding:10px 2px 8px;"
+           "background:#fff;border-bottom:1px solid #EEEEEE;")
+    _TD     = ("vertical-align:top;padding:8px 5px 6px;border-top:1px solid #F0F0F0;"
+               "height:140px;width:14.28%;overflow:hidden;")
+    _TD_DIM = _TD + "background:#FAFAFA;"
+
+    html_cal  = '<div style="background:#fff;border-radius:16px;overflow:hidden;'
+    html_cal += 'box-shadow:0 2px 10px rgba(0,0,0,0.09);margin:6px 0 16px;">'
+    html_cal += '<table style="width:100%;border-collapse:collapse;table-layout:fixed;">'
+    html_cal += '<thead><tr>'
+    for _wd, _wc in zip(WD_LABELS, WD_CLR):
+        html_cal += f'<th style="{_TH}color:{_wc};">{_wd}</th>'
+    html_cal += '</tr></thead><tbody><tr>'
+
+    cell_idx = 0
+    for _pi in range(first_wd):
+        _pd = _prev_days_in_mo - first_wd + 1 + _pi
+        html_cal += f'<td style="{_TD_DIM}"><div style="text-align:center;font-size:28px;font-weight:700;color:#DCDCDC;">{_pd}</div></td>'
+        cell_idx += 1
+
+    for dn in range(1, days_in_month + 1):
+        d = datetime.date(selected_year, selected_month, dn)
+        wi = (d.weekday() + 1) % 7
+        is_today = (d == today)
+        hol = _get_holiday_name(d)
+        shift_lbl, shift_clr = _mini_shift(d)
+        _d_str = d.strftime("%Y-%m-%d")
+
+        if is_today:
+            _day_num_html = (
+                f'<span style="display:inline-flex;align-items:center;justify-content:center;'
+                f'background:#1A1A1A;color:#fff;border-radius:50%;'
+                f'width:42px;height:42px;font-size:22px;font-weight:900;line-height:42px;">{dn}</span>'
+            )
+        else:
+            _dc = "#E53935" if (wi == 0 or hol) else ("#1565C0" if wi == 6 else "#212121")
+            _fw = "600" if hol else "400"
+            _day_num_html = f'<span style="font-size:28px;color:{_dc};font-weight:700;">{dn}</span>'
+
+        _badge_html = ""
         if shift_type == "4조3교대":
-            _ts = _shift_for_date(today, MEMBERS)
-            _tv = [lv for lv in leave_list if
-                   datetime.date.fromisoformat(lv["start"]) <= today <= datetime.date.fromisoformat(lv["end"])]
-            if _tv:
-                _abs = {lv["name"] for lv in _tv}
-                _abs_shifts = set()
-                for _sk, _lb in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
-                    if _ts[_sk] in _abs: _abs_shifts.add(_lb)
-                for _sk, _tk, _lb in [("1근_근무자","1근_조","1근"),("2근_근무자","2근_조","2근"),("3근_근무자","3근_조","3근")]:
-                    if _ts[_sk] not in _abs:
-                        _role = ("주간" if _lb=="1근" else "야간") if "3근" in _abs_shifts else ("야간" if _lb=="3근" else "주간")
-                        _rc = {"주간":"#1D6FA4","야간":"#6D28D9"}[_role]
-                        st.markdown(f'<span style="background:{_rc};color:#fff;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">{_role}</span> **{_ts[_sk]}**', unsafe_allow_html=True)
-                for lv in _tv:
-                    st.markdown(f'🌴 ~~{lv["name"]}~~ ({lv["type"]})', unsafe_allow_html=True)
-            else:
-                for _sk, _lb, _tc in [("1근_근무자","1근","#1D4ED8"),("2근_근무자","2근","#15803D"),("3근_근무자","3근","#B91C1C")]:
-                    st.markdown(f'<span style="background:{_tc};color:#fff;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">{_lb}</span> **{_ts[_sk]}**', unsafe_allow_html=True)
-            st.markdown(f'<span style="background:#6B7280;color:#fff;border-radius:4px;padding:1px 7px;font-size:11px;">휴무</span> {_ts["휴무_근무자"]}', unsafe_allow_html=True)
-
-        # ── 특이사항 메모 (달력 전체, 연월 기준) ──
-        st.markdown("---")
-        st.caption("특이사항 메모")
-
-        # 기존 메모 목록
-        for _mi, _m in enumerate(_cal_memos):
-            _mstart = _m.get("start", ""); _mend = _m.get("end", "")
-            _range_str = f"{_mstart} ~ {_mend}" if _mend and _mend != _mstart else (_mstart if _mstart else "")
-            _label = f"{_range_str}  {_m['text']}" if _range_str else _m["text"]
-            _mc1, _mc2 = st.columns([5, 1])
-            with _mc1:
-                st.markdown(f'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:6px;padding:4px 10px;font-size:12px;color:#92400E;">'
-                            f'{"<b>" + _range_str + "</b>  " if _range_str else ""}{_m["text"]}</div>', unsafe_allow_html=True)
-            with _mc2:
-                if st.button("삭제", key=f"att_memo_del_{_mi}_{selected_year}_{selected_month}", use_container_width=True):
-                    _del_list = [x for i, x in enumerate(_cal_memos) if i != _mi]
-                    try:
-                        _cal_sn("전체", _cal_memo_date, _json.dumps(_del_list, ensure_ascii=False))
-                        st.session_state[_cal_memo_key] = _del_list
-                    except Exception as _e:
-                        st.error(f"저장 실패: {_e}")
-                    st.rerun()
-
-        # 새 메모 추가
-        with st.expander("+ 메모 추가", expanded=False):
-            _new_text = st.text_input("내용", key=f"att_memo_new_text_{selected_year}_{selected_month}", )
-            _use_range = st.checkbox("기간 지정", key=f"att_memo_use_range_{selected_year}_{selected_month}")
-            _mo_start = datetime.date(selected_year, selected_month, 1)
-            _mo_end = datetime.date(selected_year, selected_month, days_in_month)
-            _default_date = max(_mo_start, min(today, _mo_end))
-            if _use_range:
-                _rc1, _rc2 = st.columns(2)
-                with _rc1:
-                    _new_start = st.date_input("시작일", value=_default_date, key=f"att_memo_start_{selected_year}_{selected_month}",
-                                               min_value=_mo_start, max_value=_mo_end)
-                with _rc2:
-                    _new_end = st.date_input("종료일", value=_default_date, key=f"att_memo_end_{selected_year}_{selected_month}",
-                                             min_value=_mo_start, max_value=_mo_end)
-            else:
-                _new_start = st.date_input("지정일", value=_default_date, key=f"att_memo_single_{selected_year}_{selected_month}",
-                                           min_value=_mo_start, max_value=_mo_end)
-                _new_end = _new_start
-            if st.button("저장", key=f"att_memo_save_{selected_year}_{selected_month}", use_container_width=True):
-                if _new_text.strip():
-                    _entry = {"text": _new_text.strip(), "start": str(_new_start), "end": str(_new_end)}
-                    _new_list = list(_cal_memos) + [_entry]
-                    try:
-                        _cal_sn("전체", _cal_memo_date, _json.dumps(_new_list, ensure_ascii=False))
-                        st.session_state[_cal_memo_key] = _new_list
-                    except Exception as _e:
-                        st.error(f"저장 실패: {_e}")
-                    st.rerun()
-
-    # ─────────── 왼쪽: 통계 ───────────
-    with col_stats:
-        st.markdown(f"### {selected_year}년 {selected_month}월 근무 통계")
-
-        if shift_type != "4조3교대":
-            st.info("상세 통계는 4조3교대 근무 형태에서만 지원됩니다.")
-        else:
-            NIGHT_HOURS = {"1근": 0, "2근": 0.5, "3근": 7.5, "주간": 0, "야간": 7.5}
-
-            try:
-                from utils.supabase_db import load_daily_detail_month
-                daily_details = load_daily_detail_month(selected_year, selected_month)
-            except Exception:
-                daily_details = {}; all_data = []
-
-            try:
-                from utils.supabase_db import load_leaves
-                base_leaves = load_leaves()
-            except Exception:
-                base_leaves = []
-
-            def _sff(val):
-                try: return float(val)
-                except Exception:
-                    import re; nums = re.findall(r'[\d.]+', str(val)); return float(nums[0]) if nums else 0
-
-            stats = {nm: {"근무일수": 0, "연장근로_대근": 0, "연장근로_주간": 0, "연장근로_야간": 0,
-                          "야간근로": 0, "휴가일수": 0, "대근횟수": 0, "휴가내역": [], "대근내역": []}
-                     for nm in ALL_MEMBERS}
-
-            for _day in range(1, days_in_month + 1):
-                _date = datetime.date(selected_year, selected_month, _day)
-                _dstr = _date.strftime("%Y-%m-%d")
-                if _dstr in daily_details:
-                    _sh = daily_details[_dstr].get("shift", {})
-                    if _sh.get("is_2person"):
-                        _dw = _sh.get("1근_근무자",""); _nw = _sh.get("2근_근무자","")
-                        _lw = _sh.get("3근_근무자",""); _lt = _sh.get("3근_비고","")
-                        if _dw in stats:
-                            _dt = _sff(_sh.get("1근_연장", 4))
-                            stats[_dw]["근무일수"] += 1; stats[_dw]["연장근로_대근"] += 4
-                            stats[_dw]["연장근로_주간"] += max(0, _sff(_sh.get("1근_주간연장", 4)) - 4)
-                            stats[_dw]["연장근로_야간"] += _sff(_sh.get("1근_야간연장", 0))
-                            stats[_dw]["대근횟수"] += 1
-                            stats[_dw]["대근내역"].append({"날짜": _dstr, "휴가자": _lw, "휴가구분": _lt, "시간": _dt, "구분": "주간"})
-                        if _nw in stats:
-                            _nt = _sff(_sh.get("2근_연장", 4))
-                            stats[_nw]["근무일수"] += 1; stats[_nw]["연장근로_대근"] += 4
-                            stats[_nw]["연장근로_주간"] += _sff(_sh.get("2근_주간연장", 0))
-                            stats[_nw]["연장근로_야간"] += max(0, _sff(_sh.get("2근_야간연장", 4)) - 4)
-                            stats[_nw]["야간근로"] += 8; stats[_nw]["대근횟수"] += 1
-                            stats[_nw]["대근내역"].append({"날짜": _dstr, "휴가자": _lw, "휴가구분": _lt, "시간": _nt, "구분": "야간"})
-                        if _lw in stats and _lt:
-                            stats[_lw]["휴가일수"] += 1; stats[_lw]["휴가내역"].append(f"{_dstr}: {_lt}")
-                    else:
-                        for _sk, _nk2 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
-                            _wk = _sh.get(_sk,""); _ot = _sff(_sh.get(f"{_nk2}_연장", 0))
-                            if _wk in stats:
-                                stats[_wk]["근무일수"] += 1
-                                _ed = _sh.get(f"{_nk2}_주간연장"); _en = _sh.get(f"{_nk2}_야간연장")
-                                if _ed is not None or _en is not None:
-                                    _dot, _not = _sff(_ed or 0), _sff(_en or 0)
-                                elif _sh.get(f"{_nk2}_연장유형") == "야간연장":
-                                    _dot, _not = 0, _ot
-                                else:
-                                    _dot, _not = _ot, 0
-                                stats[_wk]["연장근로_주간"] += _dot; stats[_wk]["연장근로_야간"] += _not
-                                stats[_wk]["야간근로"] += NIGHT_HOURS.get(_nk2, 0) + _not
-                    _ow = _sh.get("휴무_근무자",""); _ot2 = _sh.get("휴무_구분","")
-                    if _ow in stats and _ot2 not in ("교대휴무","주휴휴무",""):
-                        stats[_ow]["휴가일수"] += 1; stats[_ow]["휴가내역"].append(f"{_dstr}: {_ot2}")
+            # 전체 4명 근무자 오버레이 (저장 데이터 우선, 없으면 자동계산)
+            _4s_COLORS = {"1근": "#1565C0", "2근": "#2E7D32", "3근": "#C62828",
+                          "주간": "#1565C0", "야간": "#C62828", "휴무": "#9E9E9E"}
+            _4s_badges = []
+            if _d_str in daily_details:
+                _sh_d = daily_details[_d_str].get("shift", {})
+                if _sh_d.get("is_2person"):
+                    _slots4 = [
+                        ("주간", _sh_d.get("1근_근무자", ""), "#1565C0"),
+                        ("야간", _sh_d.get("2근_근무자", ""), "#C62828"),
+                        ("휴무", _sh_d.get("휴무_근무자", ""), "#9E9E9E"),
+                    ]
                 else:
-                    _ss = _shift_for_date(_date, MEMBERS)
-                    _ss = _apply_leaves_stat(_ss, _date, base_leaves)
-                    if _ss.get("is_2person"):
-                        _dw2 = _ss.get("주간_근무자",""); _nw2 = _ss.get("야간_근무자","")
-                        _lw2 = _ss.get("leave_person",""); _lt2 = _ss.get("leave_type","")
-                        if _dw2 in stats:
-                            stats[_dw2]["근무일수"] += 1; stats[_dw2]["연장근로_대근"] += 4
-                            stats[_dw2]["대근횟수"] += 1
-                            stats[_dw2]["대근내역"].append({"날짜": _dstr, "휴가자": _lw2, "휴가구분": _lt2, "시간": 4, "구분": "주간"})
-                        if _nw2 in stats:
-                            stats[_nw2]["근무일수"] += 1; stats[_nw2]["연장근로_대근"] += 4
-                            stats[_nw2]["야간근로"] += 8; stats[_nw2]["대근횟수"] += 1
-                            stats[_nw2]["대근내역"].append({"날짜": _dstr, "휴가자": _lw2, "휴가구분": _lt2, "시간": 4, "구분": "야간"})
-                        if _lw2 in stats and _lt2:
-                            stats[_lw2]["휴가일수"] += 1; stats[_lw2]["휴가내역"].append(f"{_dstr}: {_lt2} (예정)")
-                    else:
-                        for _wk2, _sk2 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
-                            _w = _ss.get(_wk2,"")
-                            if _w in stats:
-                                stats[_w]["근무일수"] += 1; stats[_w]["야간근로"] += _NIGHT_HOURS_BASE.get(_sk2, 0)
-                        _ow2 = _ss.get("휴무_근무자",""); _ot3 = _ss.get("휴무_구분","")
-                        if _ow2 in stats and _ot3 not in ("교대휴무","주휴휴무",""):
-                            stats[_ow2]["휴가일수"] += 1; stats[_ow2]["휴가내역"].append(f"{_dstr}: {_ot3} (예정)")
-
-            # 올해 전체 휴가
-            year_leaves = {nm: [] for nm in ALL_MEMBERS}
-            saved_yr = set()
-            try:
-                _ypfx = f"{selected_year}-"
-                for _row in all_data[1:]:
-                    if _row and _row[0].startswith(_ypfx) and len(_row) > 1:
-                        saved_yr.add(_row[0])
-                        try:
-                            import json as _jj
-                            _det = _jj.loads(_row[1]); _shy = _det.get("shift", {})
-                            if _shy.get("is_2person"):
-                                _lwy = _shy.get("3근_근무자",""); _lty = _shy.get("3근_비고","")
-                                if _lwy in year_leaves and _lty: year_leaves[_lwy].append({"날짜": _row[0], "구분": _lty})
-                            _owy = _shy.get("휴무_근무자",""); _oty = _shy.get("휴무_구분","")
-                            if _owy in year_leaves and _oty not in ("교대휴무","주휴휴무",""):
-                                year_leaves[_owy].append({"날짜": _row[0], "구분": _oty})
-                        except Exception: pass
-            except Exception: pass
-
-            _today_kst = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
-            for _lv in base_leaves:
-                try: _lvs = datetime.date.fromisoformat(_lv["start"]); _lve = datetime.date.fromisoformat(_lv["end"])
-                except Exception: continue
-                _cur2 = _lvs
-                while _cur2 <= _lve and _cur2 <= _today_kst:
-                    if _cur2.year == selected_year:
-                        _ds2 = _cur2.strftime("%Y-%m-%d")
-                        if _ds2 not in saved_yr and _lv["name"] in year_leaves:
-                            year_leaves[_lv["name"]].append({"날짜": _ds2, "구분": _lv["type"]})
-                    _cur2 += datetime.timedelta(days=1)
-
-            def _fhh(v):
-                try: v = float(v); return int(v) if v == int(v) else v
-                except Exception: return v
-
-            _SCOLS = ["정상근로","유휴근로","휴일근로","연장근로","휴일연장","야간근로","휴일비근로","휴가비근로","스틸아카데미","항군교육","사내교육(1)","사내교육(1.5)","사외교육(1)","사외교육(1.5)","공가"]
-
-            def _sal_tbl(rows):
-                tots = {c: sum(r[c] for r in rows) for c in _SCOLS}
-                tots["일별합계"] = sum(r["일별합계"] for r in rows)
-                def _f(v): return f"{v:.2f}" if v else ""
-                _hs = "".join(f'<th style="background:#4472C4;color:#fff;text-align:center;padding:5px 3px;border:1px solid #2F5496;font-size:10px;white-space:nowrap;">{c}</th>' for c in _SCOLS)
-                h = f'<div style="overflow-x:auto;margin-top:8px;"><table style="border-collapse:collapse;font-size:11px;width:100%;min-width:900px;"><thead><tr><th rowspan="2" style="background:#4472C4;color:#fff;text-align:center;padding:6px 4px;border:1px solid #2F5496;white-space:nowrap;">날짜</th><th colspan="{len(_SCOLS)}" style="background:#4472C4;color:#fff;text-align:center;padding:6px 4px;border:1px solid #2F5496;">일일 급여시간</th><th rowspan="2" style="background:#2F5496;color:#fff;text-align:center;padding:6px 4px;border:1px solid #2F5496;white-space:nowrap;">일별합계</th></tr><tr>{_hs}</tr></thead><tbody>'
-                for i, r in enumerate(rows):
-                    bg = "#f0f4fb" if i % 2 == 0 else "#ffffff"
-                    cs = "".join(f'<td style="text-align:right;padding:3px 5px;border:1px solid #D0D7E4;background:{bg};">{_f(r[c])}</td>' for c in _SCOLS)
-                    h += f'<tr><td style="text-align:center;padding:3px 5px;border:1px solid #D0D7E4;background:#EEF2FA;font-weight:600;">{r["날짜"]}</td>{cs}<td style="text-align:right;padding:3px 5px;border:1px solid #2F5496;background:#D9E1F2;font-weight:700;color:#1F3864;">{_f(r["일별합계"])}</td></tr>'
-                tc = "".join(f'<td style="text-align:right;padding:4px 5px;border:1px solid #9DC3E6;background:#BDD7EE;font-weight:700;color:#1F3864;">{_f(tots[c])}</td>' for c in _SCOLS)
-                h += f'<tr><td style="text-align:center;padding:4px 5px;border:1px solid #9DC3E6;background:#9DC3E6;font-weight:700;color:#1F3864;">근로별 월합계</td>{tc}<td style="text-align:right;padding:4px 5px;border:1px solid #9DC3E6;background:#9DC3E6;font-weight:700;color:#1F3864;">{_f(tots["일별합계"])}</td></tr></tbody></table></div>'
-                return h
-
-            try:
-                import holidays as _hh2
-                _kr2 = _hh2.SouthKorea(years=[selected_year, selected_year - 1, selected_year + 1])
-            except Exception:
-                _kr2 = set()
-
-            for _nm in ALL_MEMBERS:
-                _s = stats[_nm]
-                _yr_lv = year_leaves.get(_nm, [])
-                _tdh = sum(d["시간"] for d in _s["대근내역"])
-                with st.container(border=True):
-                    st.markdown(f"#### {_nm}")
-
-                    # 대근 내역
-                    if _s["대근내역"]:
-                        with st.expander(f"대근 내역 ({_s['대근횟수']}회 · 계 {_fhh(_tdh)}H)"):
-                            for _dd in _s["대근내역"]:
-                                st.write(f"{_dd['날짜']} | {_dd['구분']} | {_dd['휴가자']} {_dd['휴가구분']}으로 대근 | {_fhh(_dd['시간'])}H")
-                    else:
-                        st.caption("대근 없음")
-
-                    # 이번달 휴가
-                    if _s["휴가내역"]:
-                        with st.expander(f"{selected_month}월 휴가 내역 ({_s['휴가일수']}일)"):
-                            for _hh3 in _s["휴가내역"]: st.write(_hh3)
-                    else:
-                        st.caption("이번달 휴가 없음")
-
-                    # 올해 전체 휴가
-                    if _yr_lv:
-                        with st.expander(f"{selected_year}년 전체 휴가 ({len(_yr_lv)}일)"):
-                            _tc2 = {}
-                            for _lv2 in _yr_lv: _tc2[_lv2["구분"]] = _tc2.get(_lv2["구분"], 0) + 1
-                            st.info(" | ".join(f"{k}: {v}일" for k, v in _tc2.items()))
-                            for _lv2 in _yr_lv: st.write(f"{_lv2['날짜']} — {_lv2['구분']}")
-
-                    # 급여시간표
-                    with st.expander(f"{selected_month}월 급여시간표"):
-                        _srows = []
-                        for _fd in range(1, days_in_month + 1):
-                            _fd_date = datetime.date(selected_year, selected_month, _fd)
-                            _fds = _fd_date.strftime("%Y-%m-%d")
-                            _fhol = _fd_date in _kr2
-                            _frow = {c: 0.0 for c in _SCOLS}; _frow["날짜"] = f"{selected_month:02d}/{_fd:02d}"
-                            if _fds in daily_details:
-                                _sh2 = daily_details[_fds].get("shift", {})
-                                if _sh2.get("is_2person"):
-                                    _lp = _sh2.get("leave_person","") or _sh2.get("3근_근무자","")
-                                    _dw3 = _sh2.get("주간_근무자","") or _sh2.get("1근_근무자","")
-                                    _nw3 = _sh2.get("야간_근무자","") or _sh2.get("2근_근무자","")
-                                    _lv3 = _sh2.get("leave_type","") or _sh2.get("3근_비고","")
-                                    _nb = NIGHT_HOURS.get("야간", 7.5)
-                                    _dot2 = float(_sh2.get("1근_연장", 4) or 4); _not2 = float(_sh2.get("2근_연장", 4) or 4)
-                                    if _nm == _lp:
-                                        if _lv3 == "공가": _frow["공가"] = 8.0
-                                        elif _lv3 != "공휴": _frow["휴가비근로"] = 8.0
-                                    elif _nm == _dw3:
-                                        if _fhol or _lv3 == "공휴": _frow["유휴근로"] = 8.0; _frow["휴일연장"] = _dot2; _frow["휴일비근로"] = 8.0
-                                        else: _frow["정상근로"] = 8.0; _frow["연장근로"] = _dot2
-                                    elif _nm == _nw3:
-                                        if _fhol or _lv3 == "공휴": _frow["유휴근로"] = 8.0; _frow["야간근로"] = _nb; _frow["휴일연장"] = _not2; _frow["휴일비근로"] = 8.0
-                                        else: _frow["정상근로"] = 8.0; _frow["야간근로"] = _nb; _frow["연장근로"] = _not2
-                                else:
-                                    for _sk3, _근3 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
-                                        if _sh2.get(_sk3) == _nm:
-                                            _nb3 = NIGHT_HOURS.get(_근3, 0); _ot3b = float(_sh2.get(f"{_근3}_연장", 0) or 0)
-                                            _dy3 = float(_sh2.get(f"{_근3}_주간연장") or _ot3b); _ny3 = float(_sh2.get(f"{_근3}_야간연장") or 0)
-                                            if _fhol: _frow["유휴근로"] = 8.0; _frow["휴일비근로"] = 8.0; _frow["휴일연장"] = _dy3 + _ny3; _frow["야간근로"] = _nb3 if _nb3 > 0 else 0
-                                            else: _frow["정상근로"] = 8.0; _frow["연장근로"] = _dy3; _frow["야간근로"] = (_nb3 + _ny3) if _nb3 > 0 else 0
-                                            break
-                            else:
-                                _fs = _shift_for_date(_fd_date, MEMBERS); _fs = _apply_leaves_stat(_fs, _fd_date, base_leaves)
-                                if _fs.get("is_2person"):
-                                    _nb4 = NIGHT_HOURS.get("야간", 7.5); _lp4 = _fs.get("leave_person",""); _dw4 = _fs.get("주간_근무자",""); _nw4 = _fs.get("야간_근무자",""); _lv4 = _fs.get("leave_type","")
-                                    if _nm == _lp4:
-                                        if _lv4 == "공가": _frow["공가"] = 8.0
-                                        elif _lv4 != "공휴": _frow["휴가비근로"] = 8.0
-                                    elif _nm == _dw4:
-                                        if _fhol or _lv4 == "공휴": _frow["유휴근로"] = 8.0; _frow["휴일연장"] = 4.0; _frow["휴일비근로"] = 8.0
-                                        else: _frow["정상근로"] = 8.0; _frow["연장근로"] = 4.0
-                                    elif _nm == _nw4:
-                                        if _fhol or _lv4 == "공휴": _frow["유휴근로"] = 8.0; _frow["야간근로"] = _nb4; _frow["휴일연장"] = 4.0; _frow["휴일비근로"] = 8.0
-                                        else: _frow["정상근로"] = 8.0; _frow["야간근로"] = _nb4; _frow["연장근로"] = 4.0
-                                else:
-                                    for _sk4, _근4 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
-                                        if _fs.get(_sk4) == _nm:
-                                            _nb4b = NIGHT_HOURS.get(_근4, 0)
-                                            if _fhol: _frow["유휴근로"] = 8.0; _frow["휴일비근로"] = 8.0; _frow["야간근로"] = _nb4b if _nb4b > 0 else 0
-                                            else: _frow["정상근로"] = 8.0; _frow["야간근로"] = _nb4b if _nb4b > 0 else 0
-                                            break
-                            _ft = sum(_frow[c] for c in _SCOLS); _frow["일별합계"] = _ft
-                            if _ft > 0: _srows.append(_frow)
-                        if _srows:
-                            if not daily_details: st.caption("※ 저장된 일지 없음 — 교대 스케줄 기준 기본값")
-                            st.markdown(_sal_tbl(_srows), unsafe_allow_html=True)
-                        else:
-                            st.info("저장된 근무 데이터가 없습니다.")
-
-                    # 교대주기별 연장
-                    with st.expander("교대주기별 연장 시간", expanded=False):
-                        st.caption("교대 주기(연속 근무 5일)별 연장 현황. 주기당 최대 12H — 초과 시 빨간색 경고.")
-                        _OT = 12
-                        _tk = next((k for k, v in MEMBERS.items() if v == _nm), None)
-                        if _tk is None:
-                            st.info("조 코드 미매핑")
-                        else:
-                            _ms = datetime.date(selected_year, selected_month, 1)
-                            _me = (datetime.date(selected_year, selected_month + 1, 1) if selected_month < 12 else datetime.date(selected_year + 1, 1, 1)) - datetime.timedelta(days=1)
-                            _ss2 = _ms - datetime.timedelta(days=6); _se2 = _me + datetime.timedelta(days=6)
-                            _obd = {}
-                            for _dk2 in _s.get("대근내역", []): _obd[_dk2["날짜"]] = _obd.get(_dk2["날짜"], 0) + _dk2["시간"]
-                            for _ds3, _dd3 in daily_details.items():
-                                if _ds3 in _obd: continue
-                                _sh3 = _dd3.get("shift", {})
-                                if not _sh3.get("is_2person"):
-                                    for _sk5, _ok5 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
-                                        if _sh3.get(_sk5) == _nm:
-                                            _ot5 = _sff(_sh3.get(f"{_ok5}_연장", 0))
-                                            if _ot5 > 0: _obd[_ds3] = _ot5
-                                            break
-                            _wseq = []
-                            _dd4 = _ss2
-                            while _dd4 <= _se2:
-                                _idx2 = (_dd4 - _BASE_DATE).days % 20
-                                _c1, _c2, _c3, _ = _CYCLE_20[_idx2]
-                                if _tk in (_c1, _c2, _c3):
-                                    _wseq.append((_dd4, _obd.get(_dd4.strftime("%Y-%m-%d"), 0)))
-                                _dd4 += datetime.timedelta(days=1)
-                            _blks = []
-                            if _wseq:
-                                _cb = [_wseq[0]]
-                                for _ii in range(1, len(_wseq)):
-                                    if (_wseq[_ii][0] - _wseq[_ii - 1][0]).days == 1: _cb.append(_wseq[_ii])
-                                    else: _blks.append(_cb); _cb = [_wseq[_ii]]
-                                _blks.append(_cb)
-                            _mblks = [b for b in _blks if b[-1][0] >= _ms and b[0][0] <= _me]
-                            if not _mblks:
-                                st.info("해당 월 교대 주기 없음")
-                            else:
-                                _n2 = len(_mblks)
-                                _TH2 = "background:#374151;color:#D1D5DB;padding:5px 4px;border:1px solid #4B5563;text-align:center;font-size:12px;"
-                                _TDB = "padding:6px 4px;border:1px solid #4B5563;text-align:center;font-size:13px;"
-                                _TDG = _TDB + "background:#1F2937;color:#9CA3AF;"
-                                _TDO = _TDB + "background:#1F2937;color:#E5E7EB;font-weight:600;"
-                                _TDR = _TDB + "background:#DC2626;color:#fff;font-weight:700;"
-                                _TDW = _TDB + "background:#78350F;color:#FDE68A;font-weight:600;"
-                                _dh = "".join(f'<th colspan="3" style="{_TH2}">{b[0][0].strftime("%m/%d")}~{b[-1][0].strftime("%m/%d")}</th>' for b in _mblks)
-                                _cs2 = ('<th style="' + _TH2 + '">연장(발생)</th><th style="' + _TH2 + '">연장(잔여)</th><th style="' + _TH2 + '">탄력근로 사용</th>') * _n2
-                                _dc = ""; _aw = False
-                                for _b2 in _mblks:
-                                    _bot = int(sum(_x[1] for _x in _b2)); _rem = max(0, _OT - _bot)
-                                    _io = _bot >= _OT; _in2 = not _io and _bot >= _OT - 2; _aw = _aw or _io
-                                    _cst = _TDR if _io else (_TDW if _in2 else _TDO)
-                                    _dc += f'<td style="{_cst}">{_bot}</td><td style="{_TDG}">{_rem}</td><td style="{_TDG}">0</td>'
-                                _hot = f'<div style="overflow-x:auto;margin-top:8px;"><table style="border-collapse:collapse;font-size:12px;min-width:100%;"><thead><tr><th style="{_TH2}min-width:90px;">구분</th>{_dh}</tr><tr><th style="{_TH2}"></th>{_cs2}</tr></thead><tbody><tr><td style="{_TH2}text-align:left;white-space:nowrap;">연장/잔여(H)</td>{_dc}</tr></tbody></table></div>'
-                                st.markdown(_hot, unsafe_allow_html=True)
-                                if _aw:
-                                    _wl = [f'{b[0][0].strftime("%m/%d")}~{b[-1][0].strftime("%m/%d")} ({int(sum(_x[1] for _x in b))}H)' for b in _mblks if int(sum(_x[1] for _x in b)) >= _OT]
-                                    st.error("⚠️ 주 52시간 위배 주기: " + ", ".join(_wl))
-
-    # ── 휴가신청서 ──
-    st.markdown("---")
-    if "leave_list" not in st.session_state:
-        try:
-            from utils.supabase_db import load_leaves as _ll2
-            st.session_state["leave_list"] = _ll2()
-        except Exception:
-            st.session_state["leave_list"] = []
-
-    with st.expander("📝 휴가신청서 작성", expanded=False):
-        _r1, _r2, _r3, _r4, _r5 = st.columns(5)
-        with _r1: _lvn = st.selectbox("대상자", ALL_MEMBERS, key="att_lv_name")
-        with _r2: _lvt = st.selectbox("구분", ["정기휴가","연차","특별휴가","명휴","생일휴가","공가","공상휴업","산재","휴직","대휴","교육","결근","조퇴","외출","청원휴가","공휴"], key="att_lv_type")
-        with _r3: _lvs2 = st.date_input("시작일", datetime.date.today(), key="att_lv_start")
-        with _r4: _lve2 = st.date_input("종료일", datetime.date.today(), key="att_lv_end")
-        with _r5: _lvsub = st.selectbox("대근자", [""] + ALL_MEMBERS, key="att_lv_sub")
-
-        _gnh = []
-        if _lvt == "공휴":
-            try:
-                import holidays as _hh4; _cd3 = _lvs2; _wd3 = ["월","화","수","목","금","토","일"]
-                while _cd3 <= _lve2:
-                    _krr = _hh4.SouthKorea(years=_cd3.year)
-                    if _cd3 not in _krr: _gnh.append(f"{_cd3.strftime('%m/%d')}({_wd3[_cd3.weekday()]})")
-                    _cd3 += datetime.timedelta(days=1)
-            except Exception: pass
-        if _gnh:
-            st.warning(f"⚠️ 비공휴일 포함: **{', '.join(_gnh)}**")
-            _gc = st.checkbox("⚠️ 확인 후 등록", key="att_gc")
+                    _slots4 = [
+                        ("1근", _sh_d.get("1근_근무자", ""), "#1565C0"),
+                        ("2근", _sh_d.get("2근_근무자", ""), "#2E7D32"),
+                        ("3근", _sh_d.get("3근_근무자", ""), "#C62828"),
+                        ("휴무", _sh_d.get("휴무_근무자", ""), "#9E9E9E"),
+                    ]
+            else:
+                _auto4 = _shift_for_date(d, MEMBERS)
+                _slots4 = [
+                    ("1근", _auto4.get("1근_근무자", ""), "#1565C0"),
+                    ("2근", _auto4.get("2근_근무자", ""), "#2E7D32"),
+                    ("3근", _auto4.get("3근_근무자", ""), "#C62828"),
+                    ("휴무", _auto4.get("휴무_근무자", ""), "#9E9E9E"),
+                ]
+            for _slbl, _snm, _sclr in _slots4:
+                if _snm:
+                    _short = _snm[:3]
+                    # 연한 배경 + 컬러 텍스트 (눈에 편한 파스텔 스타일)
+                    _light = _sclr + "18"  # hex alpha ~10%
+                    _4s_badges.append(
+                        f'<div style="color:{_sclr};border-left:3px solid {_sclr};'
+                        f'background:transparent;'
+                        f'font-size:11px;font-weight:600;padding:0 4px;margin-top:3px;'
+                        f'line-height:1.5;display:block;max-width:100%;overflow:hidden;'
+                        f'white-space:nowrap;text-overflow:ellipsis;">'
+                        f'{_slbl}&thinsp;{_short}</div>'
+                    )
+            _badge_html = "".join(_4s_badges)
         else:
-            _gc = True
+            # 전체 조 오버레이 (비-4조3교대)
+            _ALL_TEAM_LABELS = {"3조3교대": ["A조","B조","C조"], "2조2교대": ["A조","B조"], "4조2교대": ["A조","B조","C조","D조"]}
+            _TEAM_COLORS = {"A조":"#1565C0","B조":"#2E7D32","C조":"#C62828","D조":"#6A1B9A"}
+            _SHIFT_FN = {"3조3교대": _shift_for_date_3s3, "2조2교대": _shift_for_date_2s2, "4조2교대": _shift_for_date_4s2}
+            _teams = _ALL_TEAM_LABELS.get(shift_type, [])
+            _fn = _SHIFT_FN.get(shift_type)
+            _badges = []
+            for _tm in _teams:
+                _ts = _fn(d, _tm[0]) if _fn else ""
+                if _ts and _ts != "휴무":
+                    _tc = _TEAM_COLORS.get(_tm, "#888")
+                    _badges.append(
+                        f'<div style="background:{_tc};color:#fff;border-radius:4px;'
+                        f'font-size:10px;font-weight:600;padding:1px 5px;margin-top:2px;'
+                        f'display:inline-block;max-width:100%;overflow:hidden;white-space:nowrap;'
+                        f'text-overflow:ellipsis;">{_tm}&nbsp;{_ts}</div>'
+                    )
+            _badge_html = "".join(_badges)
 
-        if st.button("✅ 등록", use_container_width=True, key="att_add_lv"):
-            if _lvs2 > _lve2: st.error("시작일이 종료일보다 늦습니다.")
-            elif _gnh and not _gc: st.error("⛔ 확인 체크 필요")
-            else:
-                st.session_state["leave_list"].append({"name": _lvn, "type": _lvt,
-                    "start": _lvs2.isoformat(), "end": _lve2.isoformat(), "sub": _lvsub})
-                try:
-                    from utils.supabase_db import save_leaves; save_leaves(st.session_state["leave_list"])
-                except Exception: pass
-                st.rerun()
+        _memo_html = ""
+        if _d_str in _memo_dates:
+            for _mt in _memo_dates[_d_str][:1]:
+                _txt = str(_mt)[:7]
+                _memo_html += (
+                    f'<div style="background:#F59E0B;color:#fff;border-radius:5px;'
+                    f'font-size:10px;padding:2px 5px;margin-top:2px;'
+                    f'display:inline-block;max-width:calc(100% - 2px);overflow:hidden;'
+                    f'white-space:nowrap;text-overflow:ellipsis;">{_txt}</div>'
+                )
 
-        if st.session_state["leave_list"]:
-            st.markdown("**등록된 일정 조회**")
-            _td2 = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
-            _lyrs = sorted({datetime.date.fromisoformat(lv["start"]).year for lv in st.session_state["leave_list"]}, reverse=True)
-            _lf1, _lf2 = st.columns(2)
-            with _lf1: _fyr = st.selectbox("연도", _lyrs, index=0 if _td2.year not in _lyrs else _lyrs.index(_td2.year), key="att_lf_yr")
-            with _lf2: _fmo = st.selectbox("월", list(range(1, 13)), index=_td2.month - 1, key="att_lf_mo", format_func=lambda m: f"{m}월")
-            _fss = datetime.date(_fyr, _fmo, 1)
-            _fnm = (_fmo % 12) + 1; _fny = _fyr + (1 if _fmo == 12 else 0)
-            _fse = datetime.date(_fny, _fnm, 1) - datetime.timedelta(days=1)
-            _shwn = [(i, lv) for i, lv in enumerate(st.session_state["leave_list"])
-                     if datetime.date.fromisoformat(lv["end"]) >= _fss and datetime.date.fromisoformat(lv["start"]) <= _fse]
-            if not _shwn: st.caption(f"{_fyr}년 {_fmo}월 등록 일정 없음")
-            else:
-                st.caption(f"{_fyr}년 {_fmo}월 — {len(_shwn)}건")
-                for _ii2, _lv5 in _shwn:
-                    _ct2, _cd4 = st.columns([4, 1])
-                    with _ct2:
-                        _stxt = f" | 대근: {_lv5.get('sub','')}" if _lv5.get('sub') else ""
-                        st.write(f"{_lv5['name']} | {_lv5['type']} | {_lv5['start']} ~ {_lv5['end']}{_stxt}")
-                    with _cd4:
-                        if st.button("삭제", key=f"att_del_{_ii2}"):
-                            _deld = st.session_state["leave_list"].pop(_ii2)
-                            try:
-                                from utils.supabase_db import save_leaves, delete_daily_details_for_leave
-                                save_leaves(st.session_state["leave_list"])
-                                _rc2 = delete_daily_details_for_leave(_deld)
-                                if _rc2 > 0: st.toast(f"휴가 삭제 — 관련 저장 일지 {_rc2}일 초기화", icon="♻️")
-                            except Exception: pass
-                            st.rerun()
+        _hol_html = ""
+        if hol:
+            _hol_html = (
+                f'<div style="font-size:10px;color:#E53935;margin-top:2px;line-height:1.2;'
+                f'overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">{hol[:6]}</div>'
+            )
+
+        _cell_bg = "background:#E8F0FE;" if is_today else ""
+        html_cal += (
+            f'<td style="{_TD}{_cell_bg}">'
+            f'<div style="text-align:center;margin-bottom:2px;">{_day_num_html}</div>'
+            f'{_badge_html}{_hol_html}{_memo_html}'
+            f'</td>'
+        )
+        cell_idx += 1
+        if cell_idx % 7 == 0 and dn < days_in_month:
+            html_cal += '</tr><tr>'
+
+    _rem = (7 - cell_idx % 7) % 7
+    for _ni in range(1, _rem + 1):
+        html_cal += f'<td style="{_TD_DIM}"><div style="text-align:center;font-size:28px;font-weight:700;color:#DCDCDC;">{_ni}</div></td>'
+
+    html_cal += '</tr></tbody></table></div>'
+    st.markdown(html_cal, unsafe_allow_html=True)
+
 
 
 # ──────────────────────────────────────
