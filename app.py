@@ -4047,7 +4047,9 @@ def page_inventory():
 
         # 등록시간 파싱 및 기간 필터
         if sort_mode == "등록시간순":
-            df_filtered["_reg_dt"] = _pd.to_datetime(df_filtered["registered"], errors="coerce")
+            # timezone 정보 제거 후 파싱 (Supabase가 ISO tz-aware 형식 반환 시 대응)
+            _reg_str = df_filtered["registered"].astype(str).str[:19].str.replace("T", " ", regex=False)
+            df_filtered["_reg_dt"] = _pd.to_datetime(_reg_str, errors="coerce")
             if _inv_dt_from and _inv_dt_to:
                 _from_ts = _pd.Timestamp(_inv_dt_from)
                 _to_ts = _pd.Timestamp(_inv_dt_to)
@@ -4530,7 +4532,8 @@ def page_inventory_return():
 
     # 등록시간 파싱 및 기간 필터
     if sort_mode == "등록시간순":
-        df_filtered["_reg_dt"] = _pd.to_datetime(df_filtered["registered"], errors="coerce")
+        _reg_str2 = df_filtered["registered"].astype(str).str[:19].str.replace("T", " ", regex=False)
+        df_filtered["_reg_dt"] = _pd.to_datetime(_reg_str2, errors="coerce")
         if _ret_dt_from and _ret_dt_to:
             _from_ts = _pd.Timestamp(_ret_dt_from)
             _to_ts = _pd.Timestamp(_ret_dt_to)
