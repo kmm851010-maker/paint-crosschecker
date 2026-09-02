@@ -1497,6 +1497,11 @@ def page_work_log():
         unsafe_allow_html=True,
     )
 
+    # 연산식 평가 후 data_editor 리셋 플래그 처리 (렌더 전에 pop 해야 반영됨)
+    _de_refresh_key = f'wl_de_refresh_{selected_date}'
+    if st.session_state.pop(_de_refresh_key, False):
+        st.session_state.pop(f'de_{_grid_key}', None)
+
     if _grid_key in st.session_state:
         _df_grid = st.session_state[_grid_key]
     else:
@@ -1568,8 +1573,8 @@ def page_work_log():
         _edited_df.at[_i, '월합계'] = str(monthly_totals.get(_nm, 0) + _ds)
     st.session_state[_grid_key] = _edited_df
     if _expr_evaluated:
-        # data_editor 캐시 초기화 → 평가된 값으로 즉시 화면 갱신
-        st.session_state.pop(f'de_{_grid_key}', None)
+        # 다음 rerun 시작 전(data_editor 렌더 전)에 캐시 초기화하도록 플래그 설정
+        st.session_state[_de_refresh_key] = True
         st.rerun()
 
     work_items_data = []
