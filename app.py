@@ -237,9 +237,9 @@ _team = st.secrets.get("company", {}).get("team", "")
 st.sidebar.caption(f"{_dept}\n{_team} 업무도우미" if _dept else "KG스틸 업무도우미")
 st.sidebar.markdown("---")
 
-_VALID_PAGES = {"근무표", "근무 통계", "일일 작업 일지", "재고 현황", "입고 관리", "반품 관리"}
+_VALID_PAGES = {"근태관리", "일일 작업 일지", "재고 현황", "입고 관리", "반품 관리"}
 if st.session_state.get("page") not in _VALID_PAGES:
-    st.session_state["page"] = "근무표"
+    st.session_state["page"] = "근태관리"
 
 def _nav(label, key):
     is_active = st.session_state["page"] == key
@@ -249,8 +249,7 @@ def _nav(label, key):
         st.rerun()
 
 st.sidebar.markdown("**KG 근태관리**")
-_nav("근무표", "근무표")
-_nav("근무 통계", "근무 통계")
+_nav("근태관리", "근태관리")
 _nav("일일 작업 일지", "일일 작업 일지")
 st.sidebar.markdown("**KG 재고관리**")
 _nav("재고 현황", "재고 현황")
@@ -3240,6 +3239,568 @@ div[data-testid="column"]:has(.ctoday) button {
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+# ══════════════════════════════════════
+# 근태관리 (근무표 + 근무통계 통합)
+# ══════════════════════════════════════
+def page_attendance():
+    import calendar as _cal
+
+    MEMBERS = dict(st.secrets.get("members", {'A': '직원A', 'B': '직원B', 'C': '직원C', 'D': '직원D'}))
+    ALL_MEMBERS = list(MEMBERS.values())
+    today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
+
+    # ── 전체화면 달력 모드 ──
+    if st.session_state.get("att_fullscreen"):
+        _bc, _ = st.columns([1, 4])
+        with _bc:
+            if st.button("← 돌아가기", key="att_back", use_container_width=True):
+                st.session_state["att_fullscreen"] = False
+                st.rerun()
+        page_my_schedule()
+        return
+
+    st.markdown("## 근태관리")
+
+    # ── 공통 컨트롤 ──
+    _ac1, _ac2, _ac3, _ac4 = st.columns([2, 2, 1, 1])
+    with _ac1:
+        shift_type = st.selectbox("근무 형태", ["4조3교대", "3조3교대", "2조2교대", "4조2교대"], key="att_shift_type")
+    _SHIFT_TEAMS = {"4조3교대": ALL_MEMBERS, "3조3교대": ["A조", "B조", "C조"], "2조2교대": ["A조", "B조"], "4조2교대": ["A조", "B조", "C조", "D조"]}
+    _team_label = "이름" if shift_type == "4조3교대" else "조"
+    with _ac2:
+        selected_name = st.selectbox(_team_label, _SHIFT_TEAMS[shift_type], key="att_name")
+    with _ac3:
+        selected_year = st.selectbox("년도", list(range(2020, today.year + 6)),
+                                     index=list(range(2020, today.year + 6)).index(today.year), key="att_yr")
+    with _ac4:
+        selected_month = st.selectbox("월", list(range(1, 13)), index=today.month - 1, key="att_mo")
+
+    # 휴가 목록
+    leave_list = []
+    if shift_type == "4조3교대":
+        try:
+            from utils.sheets import load_leaves as _ll
+            leave_list = _ll()
+        except Exception:
+            pass
+
+    days_in_month = _cal.monthrange(selected_year, selected_month)[1]
+
+    # ── 2컬럼 레이아웃 ──
+    col_stats, col_cal = st.columns([3, 2])
+
+    # ─────────── 오른쪽: 미니 달력 + 오늘 요약 ───────────
+    with col_cal:
+        if st.button("🔍 달력 전체화면", key="att_fs_btn", use_container_width=True):
+            st.session_state["att_fullscreen"] = True
+            st.rerun()
+
+        # ── 미니 HTML 달력 ──
+        first_wd = (datetime.date(selected_year, selected_month, 1).weekday() + 1) % 7
+        MCLS = {"1근": "#1D4ED8", "2근": "#15803D", "3근": "#B91C1C", "휴무": "#9CA3AF",
+                "주간": "#B45309", "야간": "#374151", "휴가": "#D97706", "대근": "#7C3AED"}
+
+        def _mini_shift(d):
+            if shift_type == "3조3교대":
+                s = _shift_for_date_3s3(d, selected_name[0]); return s, MCLS.get(s, "#ccc")
+            if shift_type == "2조2교대":
+                s = _shift_for_date_2s2(d, selected_name[0]); return s, MCLS.get(s, "#ccc")
+            if shift_type == "4조2교대":
+                s = _shift_for_date_4s2(d, selected_name[0]); return s, MCLS.get(s, "#ccc")
+            shift_d = _shift_for_date(d, MEMBERS)
+            if shift_d["1근_근무자"] == selected_name: base = "1근"
+            elif shift_d["2근_근무자"] == selected_name: base = "2근"
+            elif shift_d["3근_근무자"] == selected_name: base = "3근"
+            else: base = "휴무"
+            for lv in leave_list:
+                try:
+                    if lv["name"] == selected_name and datetime.date.fromisoformat(lv["start"]) <= d <= datetime.date.fromisoformat(lv["end"]):
+                        return "휴가", MCLS["휴가"]
+                except Exception: pass
+            if base != "휴무":
+                for lv in leave_list:
+                    try:
+                        if lv["name"] != selected_name and datetime.date.fromisoformat(lv["start"]) <= d <= datetime.date.fromisoformat(lv["end"]):
+                            return "대근", MCLS["대근"]
+                    except Exception: pass
+            return base, MCLS.get(base, "#ccc")
+
+        WD_LABELS = ["일", "월", "화", "수", "목", "금", "토"]
+        WD_CLR = ["#EF4444", "#555", "#555", "#555", "#555", "#555", "#3B82F6"]
+        _th_s = "font-size:10px;font-weight:700;text-align:center;padding:3px 0;border:1px solid #e5e7eb;background:#f3f4f6;"
+        _td_s = "font-size:9px;text-align:center;padding:2px 1px;border:1px solid #e5e7eb;vertical-align:top;height:30px;"
+
+        html_cal = '<div style="margin-top:4px;"><table style="width:100%;border-collapse:collapse;">'
+        html_cal += f'<thead><tr><th colspan="7" style="background:#4B2D8E;color:#fff;text-align:center;padding:5px;font-size:12px;font-weight:700;">{selected_year}년 {selected_month}월</th></tr><tr>'
+        for wd, clr in zip(WD_LABELS, WD_CLR):
+            html_cal += f'<th style="{_th_s}color:{clr};">{wd}</th>'
+        html_cal += '</tr></thead><tbody><tr>'
+
+        cell_idx = 0
+        for _ in range(first_wd):
+            html_cal += f'<td style="{_td_s}background:#f9fafb;"></td>'; cell_idx += 1
+
+        for dn in range(1, days_in_month + 1):
+            d = datetime.date(selected_year, selected_month, dn)
+            wi = (d.weekday() + 1) % 7
+            is_today = (d == today)
+            hol = _get_holiday_name(d)
+            shift_lbl, shift_clr = _mini_shift(d)
+            day_clr = "#EF4444" if (wi == 0 or hol) else ("#3B82F6" if wi == 6 else "#374151")
+            num_html = (f'<span style="display:inline-block;background:#3B82F6;color:#fff;border-radius:50%;width:15px;height:15px;line-height:15px;font-size:9px;font-weight:800;">{dn}</span>'
+                        if is_today else f'<span style="color:{day_clr};font-size:9px;font-weight:700;">{dn}</span>')
+            if shift_lbl == "휴무":
+                badge = '<div style="font-size:8px;color:#9CA3AF;">휴</div>'
+            else:
+                txt_clr = "#fff" if shift_lbl in ("3근", "야간", "대근") else ("#fff" if shift_lbl == "1근" else "#fff")
+                badge = f'<div style="background:{shift_clr};color:#fff;border-radius:2px;font-size:8px;padding:0 1px;margin-top:1px;font-weight:700;">{shift_lbl[:2]}</div>'
+            bg = "background:#EFF6FF;" if is_today else ""
+            html_cal += f'<td style="{_td_s}{bg}">{num_html}{badge}</td>'
+            cell_idx += 1
+            if cell_idx % 7 == 0 and dn < days_in_month:
+                html_cal += '</tr><tr>'
+
+        rem = (7 - cell_idx % 7) % 7
+        for _ in range(rem):
+            html_cal += f'<td style="{_td_s}background:#f9fafb;"></td>'
+        html_cal += '</tr></tbody></table></div>'
+        st.markdown(html_cal, unsafe_allow_html=True)
+
+        # ── 오늘 근무배치 (compact) ──
+        st.markdown("---")
+        st.caption(f"📅 {today.strftime('%m/%d')} 오늘 근무배치")
+        if shift_type == "4조3교대":
+            _ts = _shift_for_date(today, MEMBERS)
+            _tv = [lv for lv in leave_list if
+                   datetime.date.fromisoformat(lv["start"]) <= today <= datetime.date.fromisoformat(lv["end"])]
+            if _tv:
+                _abs = {lv["name"] for lv in _tv}
+                _abs_shifts = set()
+                for _sk, _lb in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                    if _ts[_sk] in _abs: _abs_shifts.add(_lb)
+                for _sk, _tk, _lb in [("1근_근무자","1근_조","1근"),("2근_근무자","2근_조","2근"),("3근_근무자","3근_조","3근")]:
+                    if _ts[_sk] not in _abs:
+                        _role = ("주간" if _lb=="1근" else "야간") if "3근" in _abs_shifts else ("야간" if _lb=="3근" else "주간")
+                        _rc = {"주간":"#1D6FA4","야간":"#6D28D9"}[_role]
+                        st.markdown(f'<span style="background:{_rc};color:#fff;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">{_role}</span> **{_ts[_sk]}**', unsafe_allow_html=True)
+                for lv in _tv:
+                    st.markdown(f'🌴 ~~{lv["name"]}~~ ({lv["type"]})', unsafe_allow_html=True)
+            else:
+                for _sk, _lb, _tc in [("1근_근무자","1근","#1D4ED8"),("2근_근무자","2근","#15803D"),("3근_근무자","3근","#B91C1C")]:
+                    st.markdown(f'<span style="background:{_tc};color:#fff;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;">{_lb}</span> **{_ts[_sk]}**', unsafe_allow_html=True)
+            st.markdown(f'<span style="background:#6B7280;color:#fff;border-radius:4px;padding:1px 7px;font-size:11px;">휴무</span> {_ts["휴무_근무자"]}', unsafe_allow_html=True)
+
+        # ── 특이사항 메모 (오늘, 4조3교대) ──
+        if shift_type == "4조3교대":
+            st.markdown("---")
+            from utils.sheets import save_schedule_note as _sn, load_schedule_note as _ln
+            _nk = f"att_note_{selected_name}_{today}"
+            if _nk not in st.session_state:
+                try: st.session_state[_nk] = _ln(selected_name, today)
+                except Exception: st.session_state[_nk] = ""
+            def _on_att_note():
+                v = st.session_state.get(f"att_ni_{selected_name}_{today}", "")
+                try: _sn(selected_name, today, v); st.session_state[_nk] = v
+                except Exception as _e: st.error(f"저장 실패: {_e}")
+            st.caption("📝 특이사항 메모 (오늘)")
+            st.text_input("메모", value=st.session_state[_nk],
+                          key=f"att_ni_{selected_name}_{today}",
+                          placeholder="메모 입력 후 엔터...",
+                          on_change=_on_att_note, label_visibility="collapsed")
+            if st.session_state[_nk]:
+                st.caption(f"✅ {st.session_state[_nk]}")
+
+    # ─────────── 왼쪽: 통계 ───────────
+    with col_stats:
+        st.markdown(f"### {selected_year}년 {selected_month}월 근무 통계")
+
+        if shift_type != "4조3교대":
+            st.info("상세 통계는 4조3교대 근무 형태에서만 지원됩니다.")
+        else:
+            NIGHT_HOURS = {"1근": 0, "2근": 0.5, "3근": 7.5, "주간": 0, "야간": 7.5}
+
+            try:
+                from utils.sheets import _get_or_create_sheet
+                import json
+                _ws_s = _get_or_create_sheet("일지상세")
+                all_data = _ws_s.get_all_values()
+                _mpfx = datetime.date(selected_year, selected_month, 1).strftime("%Y-%m-")
+                daily_details = {}
+                for _row in all_data[1:]:
+                    if _row and _row[0].startswith(_mpfx) and len(_row) > 1:
+                        try: daily_details[_row[0]] = json.loads(_row[1])
+                        except Exception: pass
+            except Exception:
+                daily_details = {}; all_data = []
+
+            try:
+                from utils.sheets import load_leaves
+                base_leaves = load_leaves()
+            except Exception:
+                base_leaves = []
+
+            def _sff(val):
+                try: return float(val)
+                except Exception:
+                    import re; nums = re.findall(r'[\d.]+', str(val)); return float(nums[0]) if nums else 0
+
+            stats = {nm: {"근무일수": 0, "연장근로_대근": 0, "연장근로_주간": 0, "연장근로_야간": 0,
+                          "야간근로": 0, "휴가일수": 0, "대근횟수": 0, "휴가내역": [], "대근내역": []}
+                     for nm in ALL_MEMBERS}
+
+            for _day in range(1, days_in_month + 1):
+                _date = datetime.date(selected_year, selected_month, _day)
+                _dstr = _date.strftime("%Y-%m-%d")
+                if _dstr in daily_details:
+                    _sh = daily_details[_dstr].get("shift", {})
+                    if _sh.get("is_2person"):
+                        _dw = _sh.get("1근_근무자",""); _nw = _sh.get("2근_근무자","")
+                        _lw = _sh.get("3근_근무자",""); _lt = _sh.get("3근_비고","")
+                        if _dw in stats:
+                            _dt = _sff(_sh.get("1근_연장", 4))
+                            stats[_dw]["근무일수"] += 1; stats[_dw]["연장근로_대근"] += 4
+                            stats[_dw]["연장근로_주간"] += max(0, _sff(_sh.get("1근_주간연장", 4)) - 4)
+                            stats[_dw]["연장근로_야간"] += _sff(_sh.get("1근_야간연장", 0))
+                            stats[_dw]["대근횟수"] += 1
+                            stats[_dw]["대근내역"].append({"날짜": _dstr, "휴가자": _lw, "휴가구분": _lt, "시간": _dt, "구분": "주간"})
+                        if _nw in stats:
+                            _nt = _sff(_sh.get("2근_연장", 4))
+                            stats[_nw]["근무일수"] += 1; stats[_nw]["연장근로_대근"] += 4
+                            stats[_nw]["연장근로_주간"] += _sff(_sh.get("2근_주간연장", 0))
+                            stats[_nw]["연장근로_야간"] += max(0, _sff(_sh.get("2근_야간연장", 4)) - 4)
+                            stats[_nw]["야간근로"] += 8; stats[_nw]["대근횟수"] += 1
+                            stats[_nw]["대근내역"].append({"날짜": _dstr, "휴가자": _lw, "휴가구분": _lt, "시간": _nt, "구분": "야간"})
+                        if _lw in stats and _lt:
+                            stats[_lw]["휴가일수"] += 1; stats[_lw]["휴가내역"].append(f"{_dstr}: {_lt}")
+                    else:
+                        for _sk, _nk2 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                            _wk = _sh.get(_sk,""); _ot = _sff(_sh.get(f"{_nk2}_연장", 0))
+                            if _wk in stats:
+                                stats[_wk]["근무일수"] += 1
+                                _ed = _sh.get(f"{_nk2}_주간연장"); _en = _sh.get(f"{_nk2}_야간연장")
+                                if _ed is not None or _en is not None:
+                                    _dot, _not = _sff(_ed or 0), _sff(_en or 0)
+                                elif _sh.get(f"{_nk2}_연장유형") == "야간연장":
+                                    _dot, _not = 0, _ot
+                                else:
+                                    _dot, _not = _ot, 0
+                                stats[_wk]["연장근로_주간"] += _dot; stats[_wk]["연장근로_야간"] += _not
+                                stats[_wk]["야간근로"] += NIGHT_HOURS.get(_nk2, 0) + _not
+                    _ow = _sh.get("휴무_근무자",""); _ot2 = _sh.get("휴무_구분","")
+                    if _ow in stats and _ot2 not in ("교대휴무","주휴휴무",""):
+                        stats[_ow]["휴가일수"] += 1; stats[_ow]["휴가내역"].append(f"{_dstr}: {_ot2}")
+                else:
+                    _ss = _shift_for_date(_date, MEMBERS)
+                    _ss = _apply_leaves_stat(_ss, _date, base_leaves)
+                    if _ss.get("is_2person"):
+                        _dw2 = _ss.get("주간_근무자",""); _nw2 = _ss.get("야간_근무자","")
+                        _lw2 = _ss.get("leave_person",""); _lt2 = _ss.get("leave_type","")
+                        if _dw2 in stats:
+                            stats[_dw2]["근무일수"] += 1; stats[_dw2]["연장근로_대근"] += 4
+                            stats[_dw2]["대근횟수"] += 1
+                            stats[_dw2]["대근내역"].append({"날짜": _dstr, "휴가자": _lw2, "휴가구분": _lt2, "시간": 4, "구분": "주간"})
+                        if _nw2 in stats:
+                            stats[_nw2]["근무일수"] += 1; stats[_nw2]["연장근로_대근"] += 4
+                            stats[_nw2]["야간근로"] += 8; stats[_nw2]["대근횟수"] += 1
+                            stats[_nw2]["대근내역"].append({"날짜": _dstr, "휴가자": _lw2, "휴가구분": _lt2, "시간": 4, "구분": "야간"})
+                        if _lw2 in stats and _lt2:
+                            stats[_lw2]["휴가일수"] += 1; stats[_lw2]["휴가내역"].append(f"{_dstr}: {_lt2} (예정)")
+                    else:
+                        for _wk2, _sk2 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                            _w = _ss.get(_wk2,"")
+                            if _w in stats:
+                                stats[_w]["근무일수"] += 1; stats[_w]["야간근로"] += _NIGHT_HOURS_BASE.get(_sk2, 0)
+                        _ow2 = _ss.get("휴무_근무자",""); _ot3 = _ss.get("휴무_구분","")
+                        if _ow2 in stats and _ot3 not in ("교대휴무","주휴휴무",""):
+                            stats[_ow2]["휴가일수"] += 1; stats[_ow2]["휴가내역"].append(f"{_dstr}: {_ot3} (예정)")
+
+            # 올해 전체 휴가
+            year_leaves = {nm: [] for nm in ALL_MEMBERS}
+            saved_yr = set()
+            try:
+                _ypfx = f"{selected_year}-"
+                for _row in all_data[1:]:
+                    if _row and _row[0].startswith(_ypfx) and len(_row) > 1:
+                        saved_yr.add(_row[0])
+                        try:
+                            import json as _jj
+                            _det = _jj.loads(_row[1]); _shy = _det.get("shift", {})
+                            if _shy.get("is_2person"):
+                                _lwy = _shy.get("3근_근무자",""); _lty = _shy.get("3근_비고","")
+                                if _lwy in year_leaves and _lty: year_leaves[_lwy].append({"날짜": _row[0], "구분": _lty})
+                            _owy = _shy.get("휴무_근무자",""); _oty = _shy.get("휴무_구분","")
+                            if _owy in year_leaves and _oty not in ("교대휴무","주휴휴무",""):
+                                year_leaves[_owy].append({"날짜": _row[0], "구분": _oty})
+                        except Exception: pass
+            except Exception: pass
+
+            _today_kst = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
+            for _lv in base_leaves:
+                try: _lvs = datetime.date.fromisoformat(_lv["start"]); _lve = datetime.date.fromisoformat(_lv["end"])
+                except Exception: continue
+                _cur2 = _lvs
+                while _cur2 <= _lve and _cur2 <= _today_kst:
+                    if _cur2.year == selected_year:
+                        _ds2 = _cur2.strftime("%Y-%m-%d")
+                        if _ds2 not in saved_yr and _lv["name"] in year_leaves:
+                            year_leaves[_lv["name"]].append({"날짜": _ds2, "구분": _lv["type"]})
+                    _cur2 += datetime.timedelta(days=1)
+
+            def _fhh(v):
+                try: v = float(v); return int(v) if v == int(v) else v
+                except Exception: return v
+
+            _SCOLS = ["정상근로","유휴근로","휴일근로","연장근로","휴일연장","야간근로","휴일비근로","휴가비근로","스틸아카데미","항군교육","사내교육(1)","사내교육(1.5)","사외교육(1)","사외교육(1.5)","공가"]
+
+            def _sal_tbl(rows):
+                tots = {c: sum(r[c] for r in rows) for c in _SCOLS}
+                tots["일별합계"] = sum(r["일별합계"] for r in rows)
+                def _f(v): return f"{v:.2f}" if v else ""
+                _hs = "".join(f'<th style="background:#4472C4;color:#fff;text-align:center;padding:5px 3px;border:1px solid #2F5496;font-size:10px;white-space:nowrap;">{c}</th>' for c in _SCOLS)
+                h = f'<div style="overflow-x:auto;margin-top:8px;"><table style="border-collapse:collapse;font-size:11px;width:100%;min-width:900px;"><thead><tr><th rowspan="2" style="background:#4472C4;color:#fff;text-align:center;padding:6px 4px;border:1px solid #2F5496;white-space:nowrap;">날짜</th><th colspan="{len(_SCOLS)}" style="background:#4472C4;color:#fff;text-align:center;padding:6px 4px;border:1px solid #2F5496;">일일 급여시간</th><th rowspan="2" style="background:#2F5496;color:#fff;text-align:center;padding:6px 4px;border:1px solid #2F5496;white-space:nowrap;">일별합계</th></tr><tr>{_hs}</tr></thead><tbody>'
+                for i, r in enumerate(rows):
+                    bg = "#f0f4fb" if i % 2 == 0 else "#ffffff"
+                    cs = "".join(f'<td style="text-align:right;padding:3px 5px;border:1px solid #D0D7E4;background:{bg};">{_f(r[c])}</td>' for c in _SCOLS)
+                    h += f'<tr><td style="text-align:center;padding:3px 5px;border:1px solid #D0D7E4;background:#EEF2FA;font-weight:600;">{r["날짜"]}</td>{cs}<td style="text-align:right;padding:3px 5px;border:1px solid #2F5496;background:#D9E1F2;font-weight:700;color:#1F3864;">{_f(r["일별합계"])}</td></tr>'
+                tc = "".join(f'<td style="text-align:right;padding:4px 5px;border:1px solid #9DC3E6;background:#BDD7EE;font-weight:700;color:#1F3864;">{_f(tots[c])}</td>' for c in _SCOLS)
+                h += f'<tr><td style="text-align:center;padding:4px 5px;border:1px solid #9DC3E6;background:#9DC3E6;font-weight:700;color:#1F3864;">근로별 월합계</td>{tc}<td style="text-align:right;padding:4px 5px;border:1px solid #9DC3E6;background:#9DC3E6;font-weight:700;color:#1F3864;">{_f(tots["일별합계"])}</td></tr></tbody></table></div>'
+                return h
+
+            try:
+                import holidays as _hh2
+                _kr2 = _hh2.SouthKorea(years=[selected_year, selected_year - 1, selected_year + 1])
+            except Exception:
+                _kr2 = set()
+
+            for _nm in ALL_MEMBERS:
+                _s = stats[_nm]
+                _yr_lv = year_leaves.get(_nm, [])
+                _tdh = sum(d["시간"] for d in _s["대근내역"])
+                with st.container(border=True):
+                    st.markdown(f"#### {_nm}")
+
+                    # 대근 내역
+                    if _s["대근내역"]:
+                        with st.expander(f"🔄 대근 내역 ({_s['대근횟수']}회 · 계 {_fhh(_tdh)}H)"):
+                            for _dd in _s["대근내역"]:
+                                st.write(f"{_dd['날짜']} | {_dd['구분']} | {_dd['휴가자']} {_dd['휴가구분']}으로 대근 | {_fhh(_dd['시간'])}H")
+                    else:
+                        st.caption("대근 없음")
+
+                    # 이번달 휴가
+                    if _s["휴가내역"]:
+                        with st.expander(f"🏖 {selected_month}월 휴가 내역 ({_s['휴가일수']}일)"):
+                            for _hh3 in _s["휴가내역"]: st.write(_hh3)
+                    else:
+                        st.caption("이번달 휴가 없음")
+
+                    # 올해 전체 휴가
+                    if _yr_lv:
+                        with st.expander(f"📋 {selected_year}년 전체 휴가 ({len(_yr_lv)}일)"):
+                            _tc2 = {}
+                            for _lv2 in _yr_lv: _tc2[_lv2["구분"]] = _tc2.get(_lv2["구분"], 0) + 1
+                            st.info(" | ".join(f"{k}: {v}일" for k, v in _tc2.items()))
+                            for _lv2 in _yr_lv: st.write(f"{_lv2['날짜']} — {_lv2['구분']}")
+
+                    # 급여시간표
+                    with st.expander(f"💰 {selected_month}월 급여시간표"):
+                        _srows = []
+                        for _fd in range(1, days_in_month + 1):
+                            _fd_date = datetime.date(selected_year, selected_month, _fd)
+                            _fds = _fd_date.strftime("%Y-%m-%d")
+                            _fhol = _fd_date in _kr2
+                            _frow = {c: 0.0 for c in _SCOLS}; _frow["날짜"] = f"{selected_month:02d}/{_fd:02d}"
+                            if _fds in daily_details:
+                                _sh2 = daily_details[_fds].get("shift", {})
+                                if _sh2.get("is_2person"):
+                                    _lp = _sh2.get("leave_person","") or _sh2.get("3근_근무자","")
+                                    _dw3 = _sh2.get("주간_근무자","") or _sh2.get("1근_근무자","")
+                                    _nw3 = _sh2.get("야간_근무자","") or _sh2.get("2근_근무자","")
+                                    _lv3 = _sh2.get("leave_type","") or _sh2.get("3근_비고","")
+                                    _nb = NIGHT_HOURS.get("야간", 7.5)
+                                    _dot2 = float(_sh2.get("1근_연장", 4) or 4); _not2 = float(_sh2.get("2근_연장", 4) or 4)
+                                    if _nm == _lp:
+                                        if _lv3 == "공가": _frow["공가"] = 8.0
+                                        elif _lv3 != "공휴": _frow["휴가비근로"] = 8.0
+                                    elif _nm == _dw3:
+                                        if _fhol or _lv3 == "공휴": _frow["유휴근로"] = 8.0; _frow["휴일연장"] = _dot2; _frow["휴일비근로"] = 8.0
+                                        else: _frow["정상근로"] = 8.0; _frow["연장근로"] = _dot2
+                                    elif _nm == _nw3:
+                                        if _fhol or _lv3 == "공휴": _frow["유휴근로"] = 8.0; _frow["야간근로"] = _nb; _frow["휴일연장"] = _not2; _frow["휴일비근로"] = 8.0
+                                        else: _frow["정상근로"] = 8.0; _frow["야간근로"] = _nb; _frow["연장근로"] = _not2
+                                else:
+                                    for _sk3, _근3 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                                        if _sh2.get(_sk3) == _nm:
+                                            _nb3 = NIGHT_HOURS.get(_근3, 0); _ot3b = float(_sh2.get(f"{_근3}_연장", 0) or 0)
+                                            _dy3 = float(_sh2.get(f"{_근3}_주간연장") or _ot3b); _ny3 = float(_sh2.get(f"{_근3}_야간연장") or 0)
+                                            if _fhol: _frow["유휴근로"] = 8.0; _frow["휴일비근로"] = 8.0; _frow["휴일연장"] = _dy3 + _ny3; _frow["야간근로"] = _nb3 if _nb3 > 0 else 0
+                                            else: _frow["정상근로"] = 8.0; _frow["연장근로"] = _dy3; _frow["야간근로"] = (_nb3 + _ny3) if _nb3 > 0 else 0
+                                            break
+                            else:
+                                _fs = _shift_for_date(_fd_date, MEMBERS); _fs = _apply_leaves_stat(_fs, _fd_date, base_leaves)
+                                if _fs.get("is_2person"):
+                                    _nb4 = NIGHT_HOURS.get("야간", 7.5); _lp4 = _fs.get("leave_person",""); _dw4 = _fs.get("주간_근무자",""); _nw4 = _fs.get("야간_근무자",""); _lv4 = _fs.get("leave_type","")
+                                    if _nm == _lp4:
+                                        if _lv4 == "공가": _frow["공가"] = 8.0
+                                        elif _lv4 != "공휴": _frow["휴가비근로"] = 8.0
+                                    elif _nm == _dw4:
+                                        if _fhol or _lv4 == "공휴": _frow["유휴근로"] = 8.0; _frow["휴일연장"] = 4.0; _frow["휴일비근로"] = 8.0
+                                        else: _frow["정상근로"] = 8.0; _frow["연장근로"] = 4.0
+                                    elif _nm == _nw4:
+                                        if _fhol or _lv4 == "공휴": _frow["유휴근로"] = 8.0; _frow["야간근로"] = _nb4; _frow["휴일연장"] = 4.0; _frow["휴일비근로"] = 8.0
+                                        else: _frow["정상근로"] = 8.0; _frow["야간근로"] = _nb4; _frow["연장근로"] = 4.0
+                                else:
+                                    for _sk4, _근4 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                                        if _fs.get(_sk4) == _nm:
+                                            _nb4b = NIGHT_HOURS.get(_근4, 0)
+                                            if _fhol: _frow["유휴근로"] = 8.0; _frow["휴일비근로"] = 8.0; _frow["야간근로"] = _nb4b if _nb4b > 0 else 0
+                                            else: _frow["정상근로"] = 8.0; _frow["야간근로"] = _nb4b if _nb4b > 0 else 0
+                                            break
+                            _ft = sum(_frow[c] for c in _SCOLS); _frow["일별합계"] = _ft
+                            if _ft > 0: _srows.append(_frow)
+                        if _srows:
+                            if not daily_details: st.caption("※ 저장된 일지 없음 — 교대 스케줄 기준 기본값")
+                            st.markdown(_sal_tbl(_srows), unsafe_allow_html=True)
+                        else:
+                            st.info("저장된 근무 데이터가 없습니다.")
+
+                    # 교대주기별 연장
+                    with st.expander("📊 교대주기별 연장 시간", expanded=False):
+                        st.caption("교대 주기(연속 근무 5일)별 연장 현황. 주기당 최대 12H — 초과 시 빨간색 경고.")
+                        _OT = 12
+                        _tk = next((k for k, v in MEMBERS.items() if v == _nm), None)
+                        if _tk is None:
+                            st.info("조 코드 미매핑")
+                        else:
+                            _ms = datetime.date(selected_year, selected_month, 1)
+                            _me = (datetime.date(selected_year, selected_month + 1, 1) if selected_month < 12 else datetime.date(selected_year + 1, 1, 1)) - datetime.timedelta(days=1)
+                            _ss2 = _ms - datetime.timedelta(days=6); _se2 = _me + datetime.timedelta(days=6)
+                            _obd = {}
+                            for _dk2 in _s.get("대근내역", []): _obd[_dk2["날짜"]] = _obd.get(_dk2["날짜"], 0) + _dk2["시간"]
+                            for _ds3, _dd3 in daily_details.items():
+                                if _ds3 in _obd: continue
+                                _sh3 = _dd3.get("shift", {})
+                                if not _sh3.get("is_2person"):
+                                    for _sk5, _ok5 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                                        if _sh3.get(_sk5) == _nm:
+                                            _ot5 = _sff(_sh3.get(f"{_ok5}_연장", 0))
+                                            if _ot5 > 0: _obd[_ds3] = _ot5
+                                            break
+                            _wseq = []
+                            _dd4 = _ss2
+                            while _dd4 <= _se2:
+                                _idx2 = (_dd4 - _BASE_DATE).days % 20
+                                _c1, _c2, _c3, _ = _CYCLE_20[_idx2]
+                                if _tk in (_c1, _c2, _c3):
+                                    _wseq.append((_dd4, _obd.get(_dd4.strftime("%Y-%m-%d"), 0)))
+                                _dd4 += datetime.timedelta(days=1)
+                            _blks = []
+                            if _wseq:
+                                _cb = [_wseq[0]]
+                                for _ii in range(1, len(_wseq)):
+                                    if (_wseq[_ii][0] - _wseq[_ii - 1][0]).days == 1: _cb.append(_wseq[_ii])
+                                    else: _blks.append(_cb); _cb = [_wseq[_ii]]
+                                _blks.append(_cb)
+                            _mblks = [b for b in _blks if b[-1][0] >= _ms and b[0][0] <= _me]
+                            if not _mblks:
+                                st.info("해당 월 교대 주기 없음")
+                            else:
+                                _n2 = len(_mblks)
+                                _TH2 = "background:#374151;color:#D1D5DB;padding:5px 4px;border:1px solid #4B5563;text-align:center;font-size:12px;"
+                                _TDB = "padding:6px 4px;border:1px solid #4B5563;text-align:center;font-size:13px;"
+                                _TDG = _TDB + "background:#1F2937;color:#9CA3AF;"
+                                _TDO = _TDB + "background:#1F2937;color:#E5E7EB;font-weight:600;"
+                                _TDR = _TDB + "background:#DC2626;color:#fff;font-weight:700;"
+                                _TDW = _TDB + "background:#78350F;color:#FDE68A;font-weight:600;"
+                                _dh = "".join(f'<th colspan="3" style="{_TH2}">{b[0][0].strftime("%m/%d")}~{b[-1][0].strftime("%m/%d")}</th>' for b in _mblks)
+                                _cs2 = ('<th style="' + _TH2 + '">연장(발생)</th><th style="' + _TH2 + '">연장(잔여)</th><th style="' + _TH2 + '">탄력근로 사용</th>') * _n2
+                                _dc = ""; _aw = False
+                                for _b2 in _mblks:
+                                    _bot = int(sum(_x[1] for _x in _b2)); _rem = max(0, _OT - _bot)
+                                    _io = _bot >= _OT; _in2 = not _io and _bot >= _OT - 2; _aw = _aw or _io
+                                    _cst = _TDR if _io else (_TDW if _in2 else _TDO)
+                                    _dc += f'<td style="{_cst}">{_bot}</td><td style="{_TDG}">{_rem}</td><td style="{_TDG}">0</td>'
+                                _hot = f'<div style="overflow-x:auto;margin-top:8px;"><table style="border-collapse:collapse;font-size:12px;min-width:100%;"><thead><tr><th style="{_TH2}min-width:90px;">구분</th>{_dh}</tr><tr><th style="{_TH2}"></th>{_cs2}</tr></thead><tbody><tr><td style="{_TH2}text-align:left;white-space:nowrap;">연장/잔여(H)</td>{_dc}</tr></tbody></table></div>'
+                                st.markdown(_hot, unsafe_allow_html=True)
+                                if _aw:
+                                    _wl = [f'{b[0][0].strftime("%m/%d")}~{b[-1][0].strftime("%m/%d")} ({int(sum(_x[1] for _x in b))}H)' for b in _mblks if int(sum(_x[1] for _x in b)) >= _OT]
+                                    st.error("⚠️ 주 52시간 위배 주기: " + ", ".join(_wl))
+
+    # ── 휴가신청서 ──
+    st.markdown("---")
+    if "leave_list" not in st.session_state:
+        try:
+            from utils.sheets import load_leaves as _ll2
+            st.session_state["leave_list"] = _ll2()
+        except Exception:
+            st.session_state["leave_list"] = []
+
+    with st.expander("📝 휴가신청서 작성", expanded=False):
+        _r1, _r2, _r3, _r4, _r5 = st.columns(5)
+        with _r1: _lvn = st.selectbox("대상자", ALL_MEMBERS, key="att_lv_name")
+        with _r2: _lvt = st.selectbox("구분", ["정기휴가","연차","특별휴가","명휴","생일휴가","공가","공상휴업","산재","휴직","대휴","교육","결근","조퇴","외출","청원휴가","공휴"], key="att_lv_type")
+        with _r3: _lvs2 = st.date_input("시작일", datetime.date.today(), key="att_lv_start")
+        with _r4: _lve2 = st.date_input("종료일", datetime.date.today(), key="att_lv_end")
+        with _r5: _lvsub = st.selectbox("대근자", [""] + ALL_MEMBERS, key="att_lv_sub")
+
+        _gnh = []
+        if _lvt == "공휴":
+            try:
+                import holidays as _hh4; _cd3 = _lvs2; _wd3 = ["월","화","수","목","금","토","일"]
+                while _cd3 <= _lve2:
+                    _krr = _hh4.SouthKorea(years=_cd3.year)
+                    if _cd3 not in _krr: _gnh.append(f"{_cd3.strftime('%m/%d')}({_wd3[_cd3.weekday()]})")
+                    _cd3 += datetime.timedelta(days=1)
+            except Exception: pass
+        if _gnh:
+            st.warning(f"⚠️ 비공휴일 포함: **{', '.join(_gnh)}**")
+            _gc = st.checkbox("⚠️ 확인 후 등록", key="att_gc")
+        else:
+            _gc = True
+
+        if st.button("✅ 등록", use_container_width=True, key="att_add_lv"):
+            if _lvs2 > _lve2: st.error("시작일이 종료일보다 늦습니다.")
+            elif _gnh and not _gc: st.error("⛔ 확인 체크 필요")
+            else:
+                st.session_state["leave_list"].append({"name": _lvn, "type": _lvt,
+                    "start": _lvs2.isoformat(), "end": _lve2.isoformat(), "sub": _lvsub})
+                try:
+                    from utils.sheets import save_leaves; save_leaves(st.session_state["leave_list"])
+                except Exception: pass
+                st.rerun()
+
+        if st.session_state["leave_list"]:
+            st.markdown("**등록된 일정 조회**")
+            _td2 = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
+            _lyrs = sorted({datetime.date.fromisoformat(lv["start"]).year for lv in st.session_state["leave_list"]}, reverse=True)
+            _lf1, _lf2 = st.columns(2)
+            with _lf1: _fyr = st.selectbox("연도", _lyrs, index=0 if _td2.year not in _lyrs else _lyrs.index(_td2.year), key="att_lf_yr")
+            with _lf2: _fmo = st.selectbox("월", list(range(1, 13)), index=_td2.month - 1, key="att_lf_mo", format_func=lambda m: f"{m}월")
+            _fss = datetime.date(_fyr, _fmo, 1)
+            _fnm = (_fmo % 12) + 1; _fny = _fyr + (1 if _fmo == 12 else 0)
+            _fse = datetime.date(_fny, _fnm, 1) - datetime.timedelta(days=1)
+            _shwn = [(i, lv) for i, lv in enumerate(st.session_state["leave_list"])
+                     if datetime.date.fromisoformat(lv["end"]) >= _fss and datetime.date.fromisoformat(lv["start"]) <= _fse]
+            if not _shwn: st.caption(f"{_fyr}년 {_fmo}월 등록 일정 없음")
+            else:
+                st.caption(f"{_fyr}년 {_fmo}월 — {len(_shwn)}건")
+                for _ii2, _lv5 in _shwn:
+                    _ct2, _cd4 = st.columns([4, 1])
+                    with _ct2:
+                        _stxt = f" | 대근: {_lv5.get('sub','')}" if _lv5.get('sub') else ""
+                        st.write(f"{_lv5['name']} | {_lv5['type']} | {_lv5['start']} ~ {_lv5['end']}{_stxt}")
+                    with _cd4:
+                        if st.button("삭제", key=f"att_del_{_ii2}"):
+                            _deld = st.session_state["leave_list"].pop(_ii2)
+                            try:
+                                from utils.sheets import save_leaves, delete_daily_details_for_leave
+                                save_leaves(st.session_state["leave_list"])
+                                _rc2 = delete_daily_details_for_leave(_deld)
+                                if _rc2 > 0: st.toast(f"휴가 삭제 — 관련 저장 일지 {_rc2}일 초기화", icon="♻️")
+                            except Exception: pass
+                            st.rerun()
+
+
 # ──────────────────────────────────────
 # 재고 엑셀 생성 헬퍼
 # ──────────────────────────────────────
@@ -4120,10 +4681,8 @@ def page_inventory_return():
 # ──────────────────────────────────────
 # 메뉴 라우팅
 # ──────────────────────────────────────
-if page == "근무표":
-    page_my_schedule()
-elif page == "근무 통계":
-    page_statistics()
+if page == "근태관리":
+    page_attendance()
 elif page == "일일 작업 일지":
     page_work_log()
 elif page == "재고 현황":
