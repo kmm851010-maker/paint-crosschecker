@@ -4011,10 +4011,13 @@ def page_inventory():
         return_filter = ""
 
         try:
-            from utils.supabase_db import get_sector_inventory as _get_inv
-            sectors_raw = _get_inv()
+            _inv_r = _req.get(f"{BACKEND}/api/inventory/sectors", timeout=15)
+            if not _inv_r.ok:
+                st.error(f"조회 실패: {_inv_r.status_code}")
+                return
+            sectors_raw = _inv_r.json().get("sectors", {})
         except Exception as e:
-            st.error(f"조회 실패: {e}")
+            st.error(f"연결 오류: {e}")
             return
 
         # 전체 드럼 목록 (sector 컬럼 추가)
@@ -4355,10 +4358,13 @@ def page_inventory_return():
         _ret_dt_to = datetime.datetime.combine(_ret_d_to, datetime.time(int(_ret_h_to[:2]), int(_ret_h_to[3:])))
 
     try:
-        from utils.supabase_db import get_sector_inventory as _get_inv2
-        sectors_raw = _get_inv2()
+        _inv_r2 = _req.get(f"{BACKEND}/api/inventory/sectors", timeout=15)
+        if not _inv_r2.ok:
+            st.error(f"조회 실패: {_inv_r2.status_code}")
+            return
+        sectors_raw = _inv_r2.json().get("sectors", {})
     except Exception as e:
-        st.error(f"조회 실패: {e}")
+        st.error(f"연결 오류: {e}")
         return
 
     all_drums = []
