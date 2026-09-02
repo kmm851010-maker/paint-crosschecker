@@ -1533,6 +1533,7 @@ def page_work_log():
         hide_index=True,
         use_container_width=True,
         num_rows='fixed',
+        height=495,
     )
 
     for _i, _nm in enumerate(item_names):
