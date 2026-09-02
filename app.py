@@ -3037,7 +3037,7 @@ div[data-testid="column"]:has(.ctoday) button {
                         _ashort = _atxt[:8] + ("…" if len(_atxt) > 8 else "")
                         att_memo_html = (
                             f'<div style="background:#FDE68A;color:#92400E;border-radius:3px;'
-                            f'font-size:10px;padding:1px 3px;margin-top:1px;overflow:hidden;'
+                            f'font-size:12px;padding:1px 3px;margin-top:1px;overflow:hidden;'
                             f'white-space:nowrap;text-overflow:ellipsis;font-weight:600;" title="{_atxt}">'
                             f'{_ashort}</div>'
                         )
