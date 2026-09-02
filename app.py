@@ -3370,7 +3370,9 @@ def page_attendance():
             bg = "background:#EFF6FF;" if is_today else ""
             _memo_dot = ""
             if d in _memo_dates:
-                _memo_dot = '<div style="width:4px;height:4px;background:#F59E0B;border-radius:50%;margin:1px auto 0;"></div>'
+                _memo_txt = " / ".join(_memo_dates[d])
+                _memo_short = _memo_txt[:6] + ("…" if len(_memo_txt) > 6 else "")
+                _memo_dot = f'<div style="background:#FDE68A;color:#92400E;border-radius:2px;font-size:7px;padding:0 1px;margin-top:1px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:100%;text-align:center;font-weight:600;">{_memo_short}</div>'
             html_cal += f'<td style="{_td_s}{bg}">{num_html}{badge}{_memo_dot}</td>'
             cell_idx += 1
             if cell_idx % 7 == 0 and dn < days_in_month:
