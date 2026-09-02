@@ -2920,6 +2920,29 @@ div[data-testid="column"]:has(.ctoday) button {
                 pass  # 실패 시 캐시하지 않음 (다음 렌더에서 재시도)
         _month_notes = st.session_state.get(_mn_key, {})
 
+    # ── 근태관리 특이사항 메모 연동 (전체 달력) ──
+    import json as _json_fs
+    _att_memo_key = f"att_cal_memos_{selected_year}_{selected_month}"
+    if _att_memo_key not in st.session_state:
+        try:
+            from utils.supabase_db import load_schedule_note as _att_ln
+            _raw = _att_ln("전체", datetime.date(selected_year, selected_month, 1))
+            st.session_state[_att_memo_key] = _json_fs.loads(_raw) if _raw else []
+        except Exception:
+            st.session_state[_att_memo_key] = []
+    _cal_memo_dates_fs = {}
+    for _m in st.session_state[_att_memo_key]:
+        try:
+            _ms = datetime.date.fromisoformat(_m.get("start", ""))
+            _me = datetime.date.fromisoformat(_m.get("end", _m.get("start", "")))
+            _md = _ms
+            while _md <= _me:
+                if _md.year == selected_year and _md.month == selected_month:
+                    _cal_memo_dates_fs.setdefault(_md, []).append(_m["text"])
+                _md += datetime.timedelta(days=1)
+        except Exception:
+            pass
+
     # ── 요일 헤더 ──
     WD_LABELS = ["일", "월", "화", "수", "목", "금", "토"]
     WD_COLORS = ["#EF4444", "#374151", "#374151", "#374151", "#374151", "#374151", "#3B82F6"]
@@ -3006,6 +3029,18 @@ div[data-testid="column"]:has(.ctoday) button {
                             f'📝{_cell_note}</div>'
                         )
 
+                    # 특이사항 메모 (근태관리 전체 달력 연동)
+                    att_memo_html = ""
+                    if d in _cal_memo_dates_fs:
+                        _atxt = " / ".join(_cal_memo_dates_fs[d])
+                        _ashort = _atxt[:8] + ("…" if len(_atxt) > 8 else "")
+                        att_memo_html = (
+                            f'<div style="background:#FDE68A;color:#92400E;border-radius:3px;'
+                            f'font-size:10px;padding:1px 3px;margin-top:1px;overflow:hidden;'
+                            f'white-space:nowrap;text-overflow:ellipsis;font-weight:600;" title="{_atxt}">'
+                            f'{_ashort}</div>'
+                        )
+
                     # 대근 상세 표시 (날짜 아래 소형 텍스트)
                     sub_html = ""
                     if info["sub_for"]:
@@ -3017,11 +3052,12 @@ div[data-testid="column"]:has(.ctoday) button {
                         )
 
                     ring = "2px solid #3B82F6" if (is_sel or is_today) else "1.5px solid #E5E7EB"
-                    _cell_mh = "58px" if (_cell_note or info["sub_for"]) else "44px"
+                    _has_extra = _cell_note or info["sub_for"] or (d in _cal_memo_dates_fs)
+                    _cell_mh = "58px" if _has_extra else "44px"
                     st.markdown(
                         f'<div class="{marker_cls}" style="background:#ffffff;border:{ring};'
                         f'border-bottom:none;border-radius:10px 10px 0 0;padding:4px 5px 2px;min-height:{_cell_mh};">'
-                        f'{num_html}{hol_html}{sub_html}{note_html}</div>',
+                        f'{num_html}{hol_html}{sub_html}{note_html}{att_memo_html}</div>',
                         unsafe_allow_html=True
                     )
 
