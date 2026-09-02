@@ -3409,8 +3409,7 @@ def page_attendance():
             bg = "background:#EFF6FF;" if is_today else ""
             _memo_overlay = ""
             if _has_memo:
-                _memo_short = " / ".join(_memo_dates[_d_str])[:5]
-                _memo_overlay = f'<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(253,230,138,0.95);color:#92400E;font-size:6px;font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.5;padding:0 1px;">{_memo_short}</div>'
+                _memo_overlay = '<div style="position:absolute;top:1px;right:1px;width:5px;height:5px;background:#F59E0B;border-radius:50%;"></div>'
             html_cal += f'<td style="{_td_s}{bg}">{num_html}{badge}{_memo_overlay}</td>'
             cell_idx += 1
             if cell_idx % 7 == 0 and dn < days_in_month:
