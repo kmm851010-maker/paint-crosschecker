@@ -522,13 +522,9 @@ def page_cross_check():
                     st.session_state["cc_open_incoming"] = True
                     st.rerun()
 
-        st.caption(f"변환 결과 ({len(_rows_raw)}행 × {len(_exp_h)}열) — 모든 셀 직접 수정 가능")
+        st.caption(f"변환 결과 ({len(_rows_raw)}행 × {len(_exp_h)}열)")
         _tbl_key = f"dlg_tbl_{_pln_name}_{len(_rows_raw)}"
-        _tbl_h   = len(_rows_raw) * 35 + 42
-        # 열 너비 동적 계산: 다이얼로그 너비(약 1300px) ÷ 열 수, 최소 45px
-        _n_cols = len(_exp_h)
-        _col_w  = max(45, 1300 // max(1, _n_cols))
-        _col_cfg = {_h: st.column_config.TextColumn(_h, width=_col_w) for _h in _exp_h}
+        _tbl_h   = len(_rows_raw) * 35 + 42  # 전체 행 높이 = 내부 수직 스크롤 없음
         _is_img  = _pln_name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
         if _is_img and _pln_bytes:
             _ci, _ct = st.columns(2)
@@ -537,10 +533,10 @@ def page_cross_check():
                 st.image(_pln_bytes, use_container_width=True)
             with _ct:
                 _full_df = st.data_editor(_full_df, use_container_width=True, hide_index=True,
-                    num_rows="fixed", key=_tbl_key, height=_tbl_h, column_config=_col_cfg)
+                    num_rows="fixed", key=_tbl_key, height=_tbl_h)
         else:
             _full_df = st.data_editor(_full_df, use_container_width=True, hide_index=True,
-                num_rows="fixed", key=_tbl_key, height=_tbl_h, column_config=_col_cfg)
+                num_rows="fixed", key=_tbl_key, height=_tbl_h)
 
     # 입고예정리스트 팝업: 변환결과 팝업 내 버튼 → rerun → 여기서 단독 트리거
     if st.session_state.get("cc_open_incoming"):
@@ -720,126 +716,124 @@ def page_cross_check():
             st.session_state["cc_result_df"] = result_df
             st.rerun()
 
-        # ── 검증 결과 표시 ──
-        if "cc_result_df" in st.session_state:
-            erp_df = st.session_state["cc_erp_df"]
-            result_df = st.session_state["cc_result_df"]
-            plan_bytes = st.session_state["cc_plan_bytes"]
-            plan_name = st.session_state["cc_plan_name"]
+    # ── 교차검증 결과 (①② 컬럼 아래 전체 너비) ──
+    if "cc_result_df" in st.session_state:
+        erp_df    = st.session_state["cc_erp_df"]
+        result_df = st.session_state["cc_result_df"]
+        plan_bytes = st.session_state["cc_plan_bytes"]
+        plan_name  = st.session_state["cc_plan_name"]
 
-            if "cc_result_df" in st.session_state and not result_df.empty:
-                summary = format_summary(result_df)
+        if not result_df.empty:
+            summary = format_summary(result_df)
 
-            if not result_df.empty:
-                # ── ERP 입고 반영 결과 ──
-                if "cc_filled_df" in st.session_state:
-                    st.markdown("---")
+        if not result_df.empty:
+            # ── ERP 입고 반영 결과 ──
+            if "cc_filled_df" in st.session_state:
+                _filled = st.session_state["cc_filled_df"]
+                st.markdown("---")
+                _res_hdr, _dl_col = st.columns([5, 1])
+                with _res_hdr:
                     st.subheader("ERP 입고 반영 결과")
                     st.caption("신규 옆 입고 칸에 ERP 실입고 수량이 자동 기입된 양식입니다. 🟥 미입고 · 🟩 일치 · 🟡 초과 · 🟠 일부입고")
-                    _filled = st.session_state["cc_filled_df"]
-
-                    def _style_filled(df):
-                        styles = pd.DataFrame("", index=df.index, columns=df.columns)
-                        _cols = list(df.columns)
-                        for _i, _h in enumerate(_cols):
-                            if "신규" in str(_h) and _i + 1 < len(_cols) and "입고" in str(_cols[_i + 1]):
-                                _inc = _cols[_i + 1]
-                                for _idx in df.index:
-                                    try:
-                                        _new_n = int(str(df.at[_idx, _h]).strip()) if str(df.at[_idx, _h]).strip() else 0
-                                    except (ValueError, TypeError):
-                                        _new_n = 0
-                                    try:
-                                        _inc_n = int(str(df.at[_idx, _inc]).strip()) if str(df.at[_idx, _inc]).strip() else 0
-                                    except (ValueError, TypeError):
-                                        _inc_n = 0
-                                    if _new_n > 0:
-                                        if _inc_n == 0:
-                                            styles.at[_idx, _inc] = "background-color: #FF9999"
-                                        elif _inc_n == _new_n:
-                                            styles.at[_idx, _inc] = "background-color: #C6EFCE"
-                                        elif _inc_n > _new_n:
-                                            styles.at[_idx, _inc] = "background-color: #FFEB9C"
-                                        else:
-                                            styles.at[_idx, _inc] = "background-color: #FFDAB9"
-                                    elif _new_n == 0 and _inc_n > 0:
-                                        styles.at[_idx, _inc] = "background-color: #FFEB9C"
-                        return styles
-
-                    st.dataframe(_filled.style.apply(_style_filled, axis=None), use_container_width=True, hide_index=True)
+                with _dl_col:
                     from modules.excel_converter import convert_erp_filled_to_excel
                     _erp_excel = convert_erp_filled_to_excel(_filled)
+                    st.write("")
+                    st.write("")
                     st.download_button(
-                        label="📥 ERP 입고 반영 엑셀 다운로드",
+                        label="ERP 입고반영 엑셀",
                         data=_erp_excel,
                         file_name="plan_erp_result.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary",
                         use_container_width=True,
                     )
 
-                # ── 확인필요 목록 ──
-                if summary['reverse_count'] > 0:
-                    st.markdown("---")
-                    st.warning(
-                        f"⚠️ **확인필요 {summary['reverse_count']}건**: "
-                        "생산계획서에 없지만 ERP에 입고 기록이 있는 품목입니다."
-                    )
-                    _rev_df = result_df[result_df["상태"].str.contains("확인필요", na=False)][["색상코드", "입고수량", "상태"]].copy()
-                    _rev_df.insert(0, "선택", False)
-                    _rev_key = f"cc_reverse_{st.session_state.get('cc_reverse_ver', 0)}"
-                    _edited_rev = st.data_editor(
-                        _rev_df,
-                        column_config={
-                            "선택":     st.column_config.CheckboxColumn("선택", help="확인 완료 후 체크"),
-                            "색상코드": st.column_config.TextColumn(disabled=True),
-                            "입고수량": st.column_config.NumberColumn(disabled=True),
-                            "상태":     st.column_config.TextColumn(disabled=True),
-                        },
-                        use_container_width=True,
-                        hide_index=True,
-                        num_rows="fixed",
-                        key=_rev_key,
-                    )
-                    if st.button("🗑 선택 항목 목록에서 제거", use_container_width=True, key="cc_reverse_del"):
-                        _to_del = _edited_rev[_edited_rev["선택"] == True]["색상코드"].tolist()
-                        if _to_del:
-                            st.session_state["cc_result_df"] = result_df[~result_df["색상코드"].isin(_to_del)].reset_index(drop=True)
-                            st.session_state["cc_reverse_ver"] = st.session_state.get("cc_reverse_ver", 0) + 1
-                            st.rerun()
-                        else:
-                            st.info("제거할 항목을 선택하세요.")
+                def _style_filled(df):
+                    styles = pd.DataFrame("", index=df.index, columns=df.columns)
+                    _cols = list(df.columns)
+                    for _i, _h in enumerate(_cols):
+                        if "신규" in str(_h) and _i + 1 < len(_cols) and "입고" in str(_cols[_i + 1]):
+                            _inc = _cols[_i + 1]
+                            for _idx in df.index:
+                                try:
+                                    _new_n = int(str(df.at[_idx, _h]).strip()) if str(df.at[_idx, _h]).strip() else 0
+                                except (ValueError, TypeError):
+                                    _new_n = 0
+                                try:
+                                    _inc_n = int(str(df.at[_idx, _inc]).strip()) if str(df.at[_idx, _inc]).strip() else 0
+                                except (ValueError, TypeError):
+                                    _inc_n = 0
+                                if _new_n > 0:
+                                    if _inc_n == 0:
+                                        styles.at[_idx, _inc] = "background-color: #FF9999"
+                                    elif _inc_n == _new_n:
+                                        styles.at[_idx, _inc] = "background-color: #C6EFCE"
+                                    elif _inc_n > _new_n:
+                                        styles.at[_idx, _inc] = "background-color: #FFEB9C"
+                                    else:
+                                        styles.at[_idx, _inc] = "background-color: #FFDAB9"
+                                elif _new_n == 0 and _inc_n > 0:
+                                    styles.at[_idx, _inc] = "background-color: #FFEB9C"
+                    return styles
 
-                st.markdown("---")
-                is_plan_image = plan_name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
-                if is_plan_image:
-                    if st.button("📊 검증 결과 엑셀 생성 (원본 이미지 기반)", use_container_width=True):
-                        with st.spinner("원본 이미지를 엑셀로 변환 + 검증 결과 표시 중..."):
-                            try:
-                                from modules.image_annotator import generate_verified_excel
-                                verified_excel = generate_verified_excel(plan_bytes, plan_name, result_df, api_key)
-                                st.session_state["cc_verified_excel"] = verified_excel
-                            except Exception as e:
-                                st.error(f"검증 엑셀 생성 실패: {e}")
-                    if st.session_state.get("cc_verified_excel"):
-                        st.download_button(
-                            label="📥 검증 결과 엑셀 다운로드 (입고/미입고 색상 표시)",
-                            data=st.session_state["cc_verified_excel"],
-                            file_name="verified_result.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True,
-                        )
+                # 내부 스크롤 없음: height 미지정 → 페이지 스크롤로 처리
+                st.dataframe(_filled.style.apply(_style_filled, axis=None), use_container_width=True, hide_index=True)
 
+            # ── 확인필요 목록 ──
+            if summary['reverse_count'] > 0:
                 st.markdown("---")
-                excel_bytes = generate_report(result_df)
-                st.download_button(
-                    label="📥 교차검증 결과 엑셀 다운로드",
-                    data=excel_bytes,
-                    file_name="paint_verification_report.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
+                st.markdown(
+                    f"<div style='text-align:center'>⚠️ <b>확인필요 {summary['reverse_count']}건</b>: "
+                    "생산계획서에 없지만 ERP에 입고 기록이 있는 품목입니다.</div>",
+                    unsafe_allow_html=True,
                 )
-            else:
-                st.info("신규 요청 수량이 있는 항목이 없습니다.")
+                _rev_df = result_df[result_df["상태"].str.contains("확인필요", na=False)][["색상코드", "입고수량", "상태"]].copy()
+                _rev_df.insert(0, "선택", False)
+                _rev_key = f"cc_reverse_{st.session_state.get('cc_reverse_ver', 0)}"
+                _edited_rev = st.data_editor(
+                    _rev_df,
+                    column_config={
+                        "선택":     st.column_config.CheckboxColumn("선택", help="확인 완료 후 체크"),
+                        "색상코드": st.column_config.TextColumn(disabled=True),
+                        "입고수량": st.column_config.NumberColumn(disabled=True),
+                        "상태":     st.column_config.TextColumn(disabled=True),
+                    },
+                    use_container_width=True,
+                    hide_index=True,
+                    num_rows="fixed",
+                    key=_rev_key,
+                )
+                if st.button("선택 항목 목록에서 제거", use_container_width=False, key="cc_reverse_del"):
+                    _to_del = _edited_rev[_edited_rev["선택"] == True]["색상코드"].tolist()
+                    if _to_del:
+                        st.session_state["cc_result_df"] = result_df[~result_df["색상코드"].isin(_to_del)].reset_index(drop=True)
+                        st.session_state["cc_reverse_ver"] = st.session_state.get("cc_reverse_ver", 0) + 1
+                        st.rerun()
+                    else:
+                        st.info("제거할 항목을 선택하세요.")
+
+            is_plan_image = plan_name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
+            if is_plan_image:
+                st.markdown("---")
+                if st.button("검증 결과 엑셀 생성 (원본 이미지 기반)", use_container_width=True):
+                    with st.spinner("원본 이미지를 엑셀로 변환 + 검증 결과 표시 중..."):
+                        try:
+                            from modules.image_annotator import generate_verified_excel
+                            verified_excel = generate_verified_excel(plan_bytes, plan_name, result_df, api_key)
+                            st.session_state["cc_verified_excel"] = verified_excel
+                        except Exception as e:
+                            st.error(f"검증 엑셀 생성 실패: {e}")
+                if st.session_state.get("cc_verified_excel"):
+                    st.download_button(
+                        label="검증 결과 엑셀 다운로드 (입고/미입고 색상 표시)",
+                        data=st.session_state["cc_verified_excel"],
+                        file_name="verified_result.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                    )
+        else:
+            st.info("신규 요청 수량이 있는 항목이 없습니다.")
 
 
 # ══════════════════════════════════════
