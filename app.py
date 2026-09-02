@@ -1124,7 +1124,7 @@ def page_work_log():
         Returns: (bytes, int) - Excel 바이트, 포함된 날짜 수
         """
         import calendar as _cal
-        from utils.sheets import load_monthly_data
+        from utils.supabase_db import load_monthly_data
         year, month = up_to_date.year, up_to_date.month
         work_by_date, detail_by_date = load_monthly_data(year, month)
 
@@ -1160,7 +1160,7 @@ def page_work_log():
     # 휴가 목록 (sheets 연동 — 근무표 메뉴에서 등록)
     if "leave_list" not in st.session_state:
         try:
-            from utils.sheets import load_leaves as _ll
+            from utils.supabase_db import load_leaves as _ll
             st.session_state["leave_list"] = _ll()
         except Exception:
             st.session_state["leave_list"] = []
@@ -1408,7 +1408,7 @@ def page_work_log():
     if "leave_loaded" not in st.session_state:
         st.session_state["leave_loaded"] = True
         try:
-            from utils.sheets import load_leaves
+            from utils.supabase_db import load_leaves
             saved_leaves = load_leaves()
             if saved_leaves:
                 st.session_state["leave_list"] = saved_leaves
@@ -1444,7 +1444,7 @@ def page_work_log():
             # 이 날짜 첫 방문 — Sheets에서 로드
             st.session_state[load_key] = True
             try:
-                from utils.sheets import load_all
+                from utils.supabase_db import load_all
                 all_data = load_all(selected_date)
                 work_items = all_data.get("work_items") or {}
                 st.session_state[f"wl_loaded_{selected_date}"] = work_items
@@ -1497,7 +1497,7 @@ def page_work_log():
     _mt_key = f"wl_monthly_totals_{selected_date}"
     if _mt_key not in st.session_state:
         try:
-            from utils.sheets import get_monthly_totals
+            from utils.supabase_db import get_monthly_totals
             st.session_state[_mt_key] = get_monthly_totals(selected_date)
         except Exception:
             st.session_state[_mt_key] = {}
@@ -1667,7 +1667,7 @@ def page_work_log():
     if st.button("💾 전체 저장 (Google Sheets)", use_container_width=True, type="primary", disabled=not _can_save):
         try:
             with st.spinner("저장 중... Google Sheets에 업로드하고 있습니다."):
-                from utils.sheets import save_all
+                from utils.supabase_db import save_all
                 save_all(
                     selected_date, work_items_data, shift_data_final,
                     safety_items_data, note_text, st.session_state.get("leave_list", [])
@@ -1750,7 +1750,7 @@ def page_work_log():
                                     from email.header import Header
                                     import google.oauth2.credentials as _goauth
                                     import googleapiclient.discovery as _gdisco
-                                    from utils.sheets import _get_or_create_sheet as _gos
+                                    from utils.supabase_db import _get_or_create_sheet as _gos
 
                                     _recipients = [r.strip() for r in _to.split(",") if r.strip()]
 
@@ -1820,25 +1820,14 @@ def page_statistics():
 
     # Google Sheets에서 해당 월 데이터 로드
     try:
-        from utils.sheets import _get_or_create_sheet
-        ws = _get_or_create_sheet("일지상세")
-        all_data = ws.get_all_values()
-
-        import json
-        month_prefix = target_month.strftime("%Y-%m-")
-        daily_details = {}
-        for row in all_data[1:]:
-            if row and row[0].startswith(month_prefix) and len(row) > 1:
-                try:
-                    daily_details[row[0]] = json.loads(row[1])
-                except Exception:
-                    pass
+        from utils.supabase_db import load_daily_detail_month
+        daily_details = load_daily_detail_month(target_month.year, target_month.month)
     except Exception:
         daily_details = {}
 
     # 휴가 등록 데이터 로드 (교대 스케줄 기반 계산용)
     try:
-        from utils.sheets import load_leaves
+        from utils.supabase_db import load_leaves
         base_leaves = load_leaves()
     except Exception:
         base_leaves = []
@@ -2551,7 +2540,7 @@ def page_my_schedule():
     # ── 휴가신청서 작성 ──
     if "leave_list" not in st.session_state:
         try:
-            from utils.sheets import load_leaves as _ll
+            from utils.supabase_db import load_leaves as _ll
             st.session_state["leave_list"] = _ll()
         except Exception:
             st.session_state["leave_list"] = []
@@ -2605,7 +2594,7 @@ def page_my_schedule():
                     "sub": _lv_sub,
                 })
                 try:
-                    from utils.sheets import save_leaves
+                    from utils.supabase_db import save_leaves
                     save_leaves(st.session_state["leave_list"])
                 except Exception:
                     pass
@@ -2645,7 +2634,7 @@ def page_my_schedule():
                         if st.button("삭제", key=f"del_leave_{_i}"):
                             _deleted = st.session_state["leave_list"].pop(_i)
                             try:
-                                from utils.sheets import save_leaves, delete_daily_details_for_leave
+                                from utils.supabase_db import save_leaves, delete_daily_details_for_leave
                                 save_leaves(st.session_state["leave_list"])
                                 _rcnt = delete_daily_details_for_leave(_deleted)
                                 if _rcnt > 0:
@@ -2724,7 +2713,7 @@ div[data-testid="stSelectbox"] div[data-baseweb="select"] span {
     my_team = name_to_team.get(selected_name, "")
 
     # 휴가 목록 로드 (4조3교대 전용)
-    from utils.sheets import load_leaves as _load_leaves
+    from utils.supabase_db import load_leaves as _load_leaves
     leave_list = []
     if shift_type == "4조3교대":
         try:
@@ -2925,10 +2914,8 @@ div[data-testid="column"]:has(.ctoday) button {
         _mn_key = f"sched_month_notes_{selected_name}_{selected_year}_{selected_month}"
         if _mn_key not in st.session_state:
             try:
-                import importlib, utils.sheets as _sh
-                if not hasattr(_sh, "load_schedule_notes_month"):
-                    importlib.reload(_sh)
-                st.session_state[_mn_key] = _sh.load_schedule_notes_month(selected_name, selected_year, selected_month)
+                from utils.supabase_db import load_schedule_notes_month as _lsnm
+                st.session_state[_mn_key] = _lsnm(selected_name, selected_year, selected_month)
             except Exception:
                 pass  # 실패 시 캐시하지 않음 (다음 렌더에서 재시도)
         _month_notes = st.session_state.get(_mn_key, {})
@@ -3205,7 +3192,7 @@ div[data-testid="column"]:has(.ctoday) button {
     # ── 특이사항 입력 (4조3교대 전용) ──
     if shift_type != "4조3교대":
         return
-    from utils.sheets import save_schedule_note as _save_note, load_schedule_note as _load_note
+    from utils.supabase_db import save_schedule_note as _save_note, load_schedule_note as _load_note
     _note_key = f"sched_note_{selected_name}_{sel_date}"
     if _note_key not in st.session_state:
         try:
@@ -3279,7 +3266,7 @@ def page_attendance():
     leave_list = []
     if shift_type == "4조3교대":
         try:
-            from utils.sheets import load_leaves as _ll
+            from utils.supabase_db import load_leaves as _ll
             leave_list = _ll()
         except Exception:
             pass
@@ -3288,7 +3275,7 @@ def page_attendance():
 
     # ── 달력 메모 로드 (연월 기준) ──
     import json as _json
-    from utils.sheets import save_schedule_note as _cal_sn, load_schedule_note as _cal_ln
+    from utils.supabase_db import save_schedule_note as _cal_sn, load_schedule_note as _cal_ln
     _cal_memo_date = datetime.date(selected_year, selected_month, 1)
     _cal_memo_key = f"att_cal_memos_{selected_year}_{selected_month}"
     if _cal_memo_key not in st.session_state:
@@ -3478,21 +3465,13 @@ def page_attendance():
             NIGHT_HOURS = {"1근": 0, "2근": 0.5, "3근": 7.5, "주간": 0, "야간": 7.5}
 
             try:
-                from utils.sheets import _get_or_create_sheet
-                import json
-                _ws_s = _get_or_create_sheet("일지상세")
-                all_data = _ws_s.get_all_values()
-                _mpfx = datetime.date(selected_year, selected_month, 1).strftime("%Y-%m-")
-                daily_details = {}
-                for _row in all_data[1:]:
-                    if _row and _row[0].startswith(_mpfx) and len(_row) > 1:
-                        try: daily_details[_row[0]] = json.loads(_row[1])
-                        except Exception: pass
+                from utils.supabase_db import load_daily_detail_month
+                daily_details = load_daily_detail_month(selected_year, selected_month)
             except Exception:
                 daily_details = {}; all_data = []
 
             try:
-                from utils.sheets import load_leaves
+                from utils.supabase_db import load_leaves
                 base_leaves = load_leaves()
             except Exception:
                 base_leaves = []
@@ -3788,7 +3767,7 @@ def page_attendance():
     st.markdown("---")
     if "leave_list" not in st.session_state:
         try:
-            from utils.sheets import load_leaves as _ll2
+            from utils.supabase_db import load_leaves as _ll2
             st.session_state["leave_list"] = _ll2()
         except Exception:
             st.session_state["leave_list"] = []
@@ -3823,7 +3802,7 @@ def page_attendance():
                 st.session_state["leave_list"].append({"name": _lvn, "type": _lvt,
                     "start": _lvs2.isoformat(), "end": _lve2.isoformat(), "sub": _lvsub})
                 try:
-                    from utils.sheets import save_leaves; save_leaves(st.session_state["leave_list"])
+                    from utils.supabase_db import save_leaves; save_leaves(st.session_state["leave_list"])
                 except Exception: pass
                 st.rerun()
 
@@ -3851,7 +3830,7 @@ def page_attendance():
                         if st.button("삭제", key=f"att_del_{_ii2}"):
                             _deld = st.session_state["leave_list"].pop(_ii2)
                             try:
-                                from utils.sheets import save_leaves, delete_daily_details_for_leave
+                                from utils.supabase_db import save_leaves, delete_daily_details_for_leave
                                 save_leaves(st.session_state["leave_list"])
                                 _rc2 = delete_daily_details_for_leave(_deld)
                                 if _rc2 > 0: st.toast(f"휴가 삭제 — 관련 저장 일지 {_rc2}일 초기화", icon="♻️")
@@ -4081,7 +4060,7 @@ def page_inventory():
         return_filter = ""
 
         try:
-            from utils.inv_update import get_sector_inventory as _get_inv
+            from utils.supabase_db import get_sector_inventory as _get_inv
             sectors_raw = _get_inv()
         except Exception as e:
             st.error(f"조회 실패: {e}")
@@ -4276,7 +4255,7 @@ def page_inventory():
                     _sy, _sn = st.columns(2)
                     if _sy.button("💾 저장", type="primary", key="inv_edit_save"):
                         try:
-                            from utils.inv_update import update_drum_fields as _udf
+                            from utils.supabase_db import update_drum_fields as _udf
                             _udf(_edit_lot, _new_lot.strip(), _new_product.strip(), _new_maker.strip(), _new_sector)
                             st.success("수정 완료!")
                             st.session_state.pop("inv_confirm", None)
@@ -4300,7 +4279,7 @@ def page_inventory():
                     st.rerun()
                 if bb.button(f"🔓 반품 해제 ({len(selected_lots)})", key="btn_return_cancel"):
                     try:
-                        from utils.inv_update import set_return_status as _srs
+                        from utils.supabase_db import set_return_status as _srs
                         _srs(selected_drums_list, "")
                         st.success(f"{len(selected_drums_list)}드럼 반품 해제!")
                         st.rerun()
@@ -4350,7 +4329,7 @@ def page_inventory():
                     st.rerun()
                 if cb.button(f"🔴 불량반품 ({len(selected_lots)})", key="btn_return_bad"):
                     try:
-                        from utils.inv_update import set_return_status as _srs
+                        from utils.supabase_db import set_return_status as _srs
                         _srs(selected_drums_list, "불량")
                         st.success(f"{len(selected_drums_list)}드럼 불량반품 등록!")
                         st.rerun()
@@ -4358,7 +4337,7 @@ def page_inventory():
                         st.error(f"오류: {e}")
                 if cc.button(f"🟡 기술반품 ({len(selected_lots)})", key="btn_return_tech"):
                     try:
-                        from utils.inv_update import set_return_status as _srs
+                        from utils.supabase_db import set_return_status as _srs
                         _srs(selected_drums_list, "기술")
                         st.success(f"{len(selected_drums_list)}드럼 기술반품 등록!")
                         st.rerun()
@@ -4366,7 +4345,7 @@ def page_inventory():
                         st.error(f"오류: {e}")
                 if cd.button(f"🔵 무상반품 ({len(selected_lots)})", key="btn_return_free"):
                     try:
-                        from utils.inv_update import set_return_status as _srs
+                        from utils.supabase_db import set_return_status as _srs
                         _srs(selected_drums_list, "무상")
                         st.success(f"{len(selected_drums_list)}드럼 무상반품 등록!")
                         st.rerun()
@@ -4423,7 +4402,7 @@ def page_inventory_return():
         _ret_dt_to = datetime.datetime.combine(_ret_d_to, datetime.time(int(_ret_h_to[:2]), int(_ret_h_to[3:])))
 
     try:
-        from utils.inv_update import get_sector_inventory as _get_inv2
+        from utils.supabase_db import get_sector_inventory as _get_inv2
         sectors_raw = _get_inv2()
     except Exception as e:
         st.error(f"조회 실패: {e}")
@@ -4543,7 +4522,7 @@ def page_inventory_return():
                                 rt = d.get("new_return_type", "무상")
                                 groups.setdefault(rt, []).append(d)
                             ok_count, errs = 0, []
-                            from utils.inv_update import set_return_status as _srs
+                            from utils.supabase_db import set_return_status as _srs
                             for status, grp in groups.items():
                                 if not grp:
                                     continue
@@ -4725,7 +4704,7 @@ def page_inventory_return():
                 st.rerun()
             if bb.button(f"🔓 반품 해제 ({len(selected_lots)})", key="ret_cancel"):
                 try:
-                    from utils.inv_update import set_return_status as _srs
+                    from utils.supabase_db import set_return_status as _srs
                     _srs(selected_drums_list, "")
                     st.success(f"{len(selected_drums_list)}드럼 반품 해제!")
                     st.rerun()
