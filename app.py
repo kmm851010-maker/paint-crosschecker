@@ -3378,8 +3378,7 @@ def page_attendance():
         WD_LABELS = ["일", "월", "화", "수", "목", "금", "토"]
         WD_CLR = ["#EF4444", "#555", "#555", "#555", "#555", "#555", "#3B82F6"]
         _th_s = "font-size:10px;font-weight:700;text-align:center;padding:3px 0;border:1px solid #e5e7eb;background:#f3f4f6;"
-        _td_s = "font-size:9px;text-align:center;padding:0;border:1px solid #e5e7eb;vertical-align:top;"
-        _cell_inner = "height:42px;overflow:hidden;padding:2px 1px;box-sizing:border-box;"
+        _td_s = "font-size:9px;text-align:center;padding:2px 1px;border:1px solid #e5e7eb;vertical-align:top;height:30px;position:relative;overflow:hidden;"
 
         html_cal = '<div style="margin-top:4px;"><table style="width:100%;border-collapse:collapse;">'
         html_cal += f'<thead><tr><th colspan="7" style="background:#4B2D8E;color:#fff;text-align:center;padding:5px;font-size:12px;font-weight:700;">{selected_year}년 {selected_month}월</th></tr><tr>'
@@ -3389,7 +3388,7 @@ def page_attendance():
 
         cell_idx = 0
         for _ in range(first_wd):
-            html_cal += f'<td style="{_td_s}background:#f9fafb;"><div style="{_cell_inner}"></div></td>'; cell_idx += 1
+            html_cal += f'<td style="{_td_s}background:#f9fafb;"></td>'; cell_idx += 1
 
         for dn in range(1, days_in_month + 1):
             d = datetime.date(selected_year, selected_month, dn)
@@ -3405,21 +3404,21 @@ def page_attendance():
             else:
                 txt_clr = "#fff" if shift_lbl in ("3근", "야간", "대근") else ("#fff" if shift_lbl == "1근" else "#fff")
                 badge = f'<div style="background:{shift_clr};color:#fff;border-radius:2px;font-size:8px;padding:0 1px;margin-top:1px;font-weight:700;">{shift_lbl[:2]}</div>'
-            bg = "background:#EFF6FF;" if is_today else ""
-            _memo_dot = ""
             _d_str = d.strftime("%Y-%m-%d")
-            if _d_str in _memo_dates:
-                _memo_txt = " / ".join(_memo_dates[_d_str])
-                _memo_short = _memo_txt[:6] + ("…" if len(_memo_txt) > 6 else "")
-                _memo_dot = f'<div style="background:#FDE68A;color:#92400E;border-radius:2px;font-size:7px;padding:0 1px;margin-top:1px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:100%;text-align:center;font-weight:600;">{_memo_short}</div>'
-            html_cal += f'<td style="{_td_s}{bg}"><div style="{_cell_inner}">{num_html}{badge}{_memo_dot}</div></td>'
+            _has_memo = _d_str in _memo_dates
+            bg = "background:#EFF6FF;" if is_today else ""
+            _memo_overlay = ""
+            if _has_memo:
+                _memo_short = " / ".join(_memo_dates[_d_str])[:5]
+                _memo_overlay = f'<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(253,230,138,0.95);color:#92400E;font-size:6px;font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.5;padding:0 1px;">{_memo_short}</div>'
+            html_cal += f'<td style="{_td_s}{bg}">{num_html}{badge}{_memo_overlay}</td>'
             cell_idx += 1
             if cell_idx % 7 == 0 and dn < days_in_month:
                 html_cal += '</tr><tr>'
 
         rem = (7 - cell_idx % 7) % 7
         for _ in range(rem):
-            html_cal += f'<td style="{_td_s}background:#f9fafb;"><div style="{_cell_inner}"></div></td>'
+            html_cal += f'<td style="{_td_s}background:#f9fafb;"></td>'
         html_cal += '</tr></tbody></table></div>'
         st.markdown(html_cal, unsafe_allow_html=True)
 
