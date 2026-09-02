@@ -3902,13 +3902,7 @@ def page_inventory():
                 _hist_data = []
 
         # 검색
-        _hs_col1, _hs_col2 = st.columns([4, 1])
-        _hist_search = _hs_col1.text_input("이력 검색", placeholder="LOT 또는 품명 입력...", key="hist_search", label_visibility="collapsed")
-        if _hs_col2.button("전체선택 초기화", key="hist_chk_clear", use_container_width=True):
-            for _k in list(st.session_state.keys()):
-                if _k.startswith("hchk_"):
-                    st.session_state.pop(_k, None)
-            st.rerun()
+        _hist_search = st.text_input("이력 검색", placeholder="LOT 또는 품명 입력...", key="hist_search", label_visibility="collapsed")
 
         def _hist_filter(items):
             if not _hist_search.strip():
@@ -4112,8 +4106,9 @@ def page_inventory():
                 st.session_state[f"chk_{_l}"] = True
             st.rerun()
         if _btn_c2.button("선택 해제", key="inv_desel", use_container_width=True):
-            for _l in df_all["lot"].tolist():
-                st.session_state[f"chk_{_l}"] = False
+            for _k in list(st.session_state.keys()):
+                if _k.startswith("chk_"):
+                    st.session_state[_k] = False
             st.rerun()
 
         # 드럼별 체크박스 선택
