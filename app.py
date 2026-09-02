@@ -3901,9 +3901,18 @@ def page_inventory():
                 st.error(f"연결 오류: {_he}")
                 _hist_data = []
 
-        _act_new  = [h for h in _hist_data if h["action"] == "신규등록"]
-        _act_line = [h for h in _hist_data if h["action"] == "라인입고"]
-        _act_ret  = [h for h in _hist_data if h["action"] == "반품완료"]
+        # 검색
+        _hist_search = st.text_input("이력 검색", placeholder="LOT 또는 품명 입력...", key="hist_search", label_visibility="collapsed")
+
+        def _hist_filter(items):
+            if not _hist_search.strip():
+                return items
+            _s = _hist_search.strip().upper()
+            return [h for h in items if _s in h.get("lot","").upper() or _s in h.get("product","").upper()]
+
+        _act_new  = _hist_filter([h for h in _hist_data if h["action"] == "신규등록"])
+        _act_line = _hist_filter([h for h in _hist_data if h["action"] == "라인입고"])
+        _act_ret  = _hist_filter([h for h in _hist_data if h["action"] == "반품완료"])
 
         _hc1, _hc2, _hc3 = st.tabs([
             f"신규등록 ({len(_act_new)})",
@@ -3911,23 +3920,28 @@ def page_inventory():
             f"반품완료 ({len(_act_ret)})",
         ])
 
-        def _render_hist_table(items, show_from=False, show_to=False):
+        def _render_hist_table(items, tab_key, show_from=False, show_to=False):
             if not items:
                 st.info("해당 항목 없음")
-                return
-            _hh1, _hh2, _hh3, _hh4, _hh5 = st.columns([2.8, 2, 1.5, 2, 1.5])
-            _hh1.markdown("**일시**"); _hh2.markdown("**LOT**")
+                return []
+            _hh0, _hh1, _hh2, _hh3, _hh4, _hh5 = st.columns([0.5, 2.5, 2, 1.5, 2, 1.5])
+            _hh0.markdown("**✓**"); _hh1.markdown("**일시**"); _hh2.markdown("**LOT**")
             _hh3.markdown("**품명**"); _hh4.markdown("**제조사**")
             if show_from: _hh5.markdown("**이전섹터**")
             elif show_to: _hh5.markdown("**섹터**")
-            for _hi in items:
-                _r1, _r2, _r3, _r4, _r5 = st.columns([2.8, 2, 1.5, 2, 1.5])
+            selected = []
+            for _idx, _hi in enumerate(items):
+                _r0, _r1, _r2, _r3, _r4, _r5 = st.columns([0.5, 2.5, 2, 1.5, 2, 1.5])
+                _chk = _r0.checkbox("선택", key=f"hchk_{tab_key}_{_idx}", label_visibility="collapsed")
                 _r1.text(_hi["timestamp"][:16] if len(_hi["timestamp"]) >= 16 else _hi["timestamp"])
                 _r2.text(_hi["lot"])
                 _r3.text(_hi["product"])
                 _r4.text(_hi["maker"])
                 if show_from: _r5.text(_hi["from_sector"])
                 elif show_to: _r5.text(_hi["to_sector"])
+                if _chk:
+                    selected.append(_hi)
+            return selected
 
         def _hist_to_excel(items, sector_key):
             import io, openpyxl
@@ -3966,21 +3980,27 @@ def page_inventory():
         _fd = str(_hd_from_date)
         _td = str(_hd_to_date)
         with _hc1:
-            _render_hist_table(_act_new, show_to=True)
+            _sel_new = _render_hist_table(_act_new, "new", show_to=True)
             if _act_new:
-                st.download_button("📥 엑셀 다운로드", data=_hist_to_excel(_act_new, "to_sector"),
+                _dl_new = _sel_new if _sel_new else _act_new
+                _lbl_new = f"📥 선택 {len(_sel_new)}건 다운로드" if _sel_new else "📥 엑셀 다운로드 (전체)"
+                st.download_button(_lbl_new, data=_hist_to_excel(_dl_new, "to_sector"),
                     file_name=f"신규등록_{_fd}_{_td}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
         with _hc2:
-            _render_hist_table(_act_line, show_from=True)
+            _sel_line = _render_hist_table(_act_line, "line", show_from=True)
             if _act_line:
-                st.download_button("📥 엑셀 다운로드", data=_hist_to_excel(_act_line, "from_sector"),
+                _dl_line = _sel_line if _sel_line else _act_line
+                _lbl_line = f"📥 선택 {len(_sel_line)}건 다운로드" if _sel_line else "📥 엑셀 다운로드 (전체)"
+                st.download_button(_lbl_line, data=_hist_to_excel(_dl_line, "from_sector"),
                     file_name=f"라인입고_{_fd}_{_td}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
         with _hc3:
-            _render_hist_table(_act_ret, show_from=True)
+            _sel_ret = _render_hist_table(_act_ret, "ret", show_from=True)
             if _act_ret:
-                st.download_button("📥 엑셀 다운로드", data=_hist_to_excel(_act_ret, "from_sector"),
+                _dl_ret = _sel_ret if _sel_ret else _act_ret
+                _lbl_ret = f"📥 선택 {len(_sel_ret)}건 다운로드" if _sel_ret else "📥 엑셀 다운로드 (전체)"
+                st.download_button(_lbl_ret, data=_hist_to_excel(_dl_ret, "from_sector"),
                     file_name=f"반품완료_{_fd}_{_td}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
@@ -4050,9 +4070,9 @@ def page_inventory():
 
         # 등록시간 파싱 및 기간 필터
         if sort_mode == "등록시간순":
-            # timezone 정보 제거 후 파싱 (Supabase가 ISO tz-aware 형식 반환 시 대응)
+            # tz·초 유무 혼합 형식 대응 (구 Google Sheets: 'YYYY-MM-DD HH:MM', Supabase: 'YYYY-MM-DD HH:MM:SS')
             _reg_str = df_filtered["registered"].astype(str).str[:19].str.replace("T", " ", regex=False)
-            df_filtered["_reg_dt"] = _pd.to_datetime(_reg_str, errors="coerce")
+            df_filtered["_reg_dt"] = _pd.to_datetime(_reg_str, errors="coerce", format="mixed")
             if _inv_dt_from and _inv_dt_to:
                 _from_ts = _pd.Timestamp(_inv_dt_from)
                 _to_ts = _pd.Timestamp(_inv_dt_to)
@@ -4086,8 +4106,9 @@ def page_inventory():
                 st.session_state[f"chk_{_l}"] = True
             st.rerun()
         if _btn_c2.button("선택 해제", key="inv_desel", use_container_width=True):
-            for _l in df_all["lot"].tolist():
-                st.session_state[f"chk_{_l}"] = False
+            for _k in list(st.session_state.keys()):
+                if _k.startswith("chk_"):
+                    st.session_state[_k] = False
             st.rerun()
 
         # 드럼별 체크박스 선택
@@ -4539,7 +4560,7 @@ def page_inventory_return():
     # 등록시간 파싱 및 기간 필터
     if sort_mode == "등록시간순":
         _reg_str2 = df_filtered["registered"].astype(str).str[:19].str.replace("T", " ", regex=False)
-        df_filtered["_reg_dt"] = _pd.to_datetime(_reg_str2, errors="coerce")
+        df_filtered["_reg_dt"] = _pd.to_datetime(_reg_str2, errors="coerce", format="mixed")
         if _ret_dt_from and _ret_dt_to:
             _from_ts = _pd.Timestamp(_ret_dt_from)
             _to_ts = _pd.Timestamp(_ret_dt_to)
