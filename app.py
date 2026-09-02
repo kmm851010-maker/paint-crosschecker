@@ -3378,7 +3378,7 @@ def page_attendance():
         WD_LABELS = ["일", "월", "화", "수", "목", "금", "토"]
         WD_CLR = ["#EF4444", "#555", "#555", "#555", "#555", "#555", "#3B82F6"]
         _th_s = "font-size:10px;font-weight:700;text-align:center;padding:3px 0;border:1px solid #e5e7eb;background:#f3f4f6;"
-        _td_s = "font-size:9px;text-align:center;padding:2px 1px;border:1px solid #e5e7eb;vertical-align:top;height:30px;"
+        _td_s = "font-size:9px;text-align:center;padding:2px 1px;border:1px solid #e5e7eb;vertical-align:top;height:44px;"
 
         html_cal = '<div style="margin-top:4px;"><table style="width:100%;border-collapse:collapse;">'
         html_cal += f'<thead><tr><th colspan="7" style="background:#4B2D8E;color:#fff;text-align:center;padding:5px;font-size:12px;font-weight:700;">{selected_year}년 {selected_month}월</th></tr><tr>'
