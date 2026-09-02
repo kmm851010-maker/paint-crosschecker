@@ -1441,283 +1441,314 @@ def page_work_log():
 
     # 새로 작성 버튼
     if _grid_key in st.session_state:
-        if st.button("🆕 새로 작성 (저장 데이터 무시)", key="new_write"):
+        if st.button('새로 작성 (저장 데이터 무시)', key='new_write'):
             st.session_state.pop(_grid_key, None)
+            st.session_state.pop(f'wl_safety_{selected_date}', None)
+            st.session_state.pop(f'wl_note_{selected_date}', None)
             st.rerun()
 
-    # ─── 2. 업무현황(좌) + 안전관리/특이사항(우) 2열 레이아웃 ───────────
     import pandas as _pd
-    _wl_left, _wl_right = st.columns([3, 1.5])
 
-    with _wl_left:
-        item_names = [
-            "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
-            "신나 하차 수량", "신나 공급 수량", "크롬 공급 수량",
-            "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
-            "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수",
-            "AGV 입/출고 작업 수량",
-        ]
-        if is_2person:
-            shift_labels = ["주간", "야간"]
-            load_keys = ["day", "night"]
-        else:
-            shift_labels = ["1근", "2근", "3근"]
-            load_keys = ["s1", "s2", "s3"]
+    item_names = [
+        '페인트 하차 수량', '페인트 공급 수량', '재고 페인트 창고 입고',
+        '신나 하차 수량', '신나 공급 수량', '크롬 공급 수량',
+        '공드럼 운반 수량', '페보루 운반 수량', '페신너 운반 및 상차',
+        '반품 , 불량 페인트 수량', '코터롤 운반 횟수', '필름 하차, 장소 이동 횟수',
+        'AGV 입/출고 작업 수량',
+    ]
+    _all_shifts = ['1근', '2근', '3근', '주간', '야간']
+    _shift_keys = ['s1', 's2', 's3', 'day', 'night']
+    _dis_2p  = {'1근', '2근', '3근'}
+    _dis_3sh = {'주간', '야간'}
 
-        _mt_key = f"wl_monthly_totals_{selected_date}"
-        if _mt_key not in st.session_state:
-            try:
-                from utils.supabase_db import get_monthly_totals
-                st.session_state[_mt_key] = get_monthly_totals(selected_date)
-            except Exception:
-                st.session_state[_mt_key] = {}
-        monthly_totals = st.session_state[_mt_key]
+    _mt_key = f'wl_monthly_totals_{selected_date}'
+    if _mt_key not in st.session_state:
+        try:
+            from utils.supabase_db import get_monthly_totals
+            st.session_state[_mt_key] = get_monthly_totals(selected_date)
+        except Exception:
+            st.session_state[_mt_key] = {}
+    monthly_totals = st.session_state[_mt_key]
 
-        if _grid_key in st.session_state:
-            _df_grid = st.session_state[_grid_key]
-        else:
-            _rows = []
-            for _nm in item_names:
-                _itm = _loaded_wi.get(_nm, {})
-                _row = {"작업항목": _nm}
-                _sv = []
-                for _lk, _sl in zip(load_keys, shift_labels):
-                    _v = int(_itm.get(_lk, 0) or 0)
-                    _row[_sl] = _v
-                    _sv.append(_v)
-                _ds = sum(_sv)
-                _row["일합계"] = _ds
-                _row["월누계"] = monthly_totals.get(_nm, 0) + _ds
-                _rows.append(_row)
-            _df_grid = _pd.DataFrame(_rows)
+    # data_editor 공통 테두리 CSS
+    _DE_CSS = (
+        '<style>'
+        'div[data-testid="stDataEditor"] > div:first-child {'
+        '  border:2px solid #595959 !important;'
+        '  border-top:none !important;'
+        '  border-radius:0 0 4px 4px !important;'
+        '}'
+        '</style>'
+    )
+    st.markdown(_DE_CSS, unsafe_allow_html=True)
 
-        # ── Excel 양식 스타일 헤더 ──
-        _n_sh = len(shift_labels)
-        _w_it = 43
-        _w_sh = round((100 - _w_it - 18) / _n_sh)
-        _w_sm = 9
-        _w_mn = 100 - _w_it - _w_sh * _n_sh - _w_sm
-        _th_s = "padding:4px 5px;text-align:center;border-right:1px solid #6B4DBF;font-size:11px;font-weight:bold;"
-        _s_ths = "".join(f'<th style="{_th_s}width:{_w_sh}%;">{sl}</th>' for sl in shift_labels)
-        st.markdown(f"""<style>
-div[data-testid="stDataEditor"]>div:first-child{{border:2px solid #4B2D8E !important;border-top:none !important;border-radius:0 0 4px 4px !important;}}
-</style>
-<div style="background:#4B2D8E;color:white;padding:5px 10px;border-radius:4px 4px 0 0;font-size:12px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
-  <span>2. 업무 현황</span>
-  <span style="font-size:9px;font-weight:normal;opacity:0.85;">클릭 입력 · Tab/Enter 이동</span>
-</div>
-<table style="width:100%;border-collapse:collapse;background:#D4C9E8;border-left:2px solid #4B2D8E;border-right:2px solid #4B2D8E;margin:0;">
-  <tr>
-    <th style="padding:4px 6px;text-align:left;border-right:1px solid #6B4DBF;font-size:11px;font-weight:bold;width:{_w_it}%;">작업 내용</th>
-    {_s_ths}
-    <th style="{_th_s}width:{_w_sm}%;">일합계</th>
-    <th style="padding:4px 5px;text-align:center;font-size:11px;font-weight:bold;width:{_w_mn}%;">월누계</th>
-  </tr>
-</table>""", unsafe_allow_html=True)
+    # 2. 업무 현황
+    st.markdown(
+        '<div style="background:#4B2D8E;color:white;padding:6px 14px;'
+        'font-size:13px;font-weight:bold;margin-top:8px;'
+        'border-radius:4px 4px 0 0;border:2px solid #4B2D8E;">'
+        '2. 업무 현황</div>',
+        unsafe_allow_html=True,
+    )
 
-        _col_cfg = {
-            "작업항목": st.column_config.TextColumn(" ", width="large", disabled=True),
-            "일합계":  st.column_config.NumberColumn(" ", disabled=True, width="small", format="%d"),
-            "월누계":  st.column_config.NumberColumn(" ", disabled=True, width="small", format="%d"),
-        }
-        for _sl in shift_labels:
-            _col_cfg[_sl] = st.column_config.NumberColumn(" ", min_value=0, step=1, width="small", format="%d")
+    if _grid_key in st.session_state:
+        _df_grid = st.session_state[_grid_key]
+    else:
+        _rows = []
+        for _nm in item_names:
+            _itm = _loaded_wi.get(_nm, {})
+            _row = {'작업 내용': _nm}
+            for _sl, _lk in zip(_all_shifts, _shift_keys):
+                _row[_sl] = int(_itm.get(_lk, 0) or 0)
+            _ds = sum(_row[_sl] for _sl in _all_shifts)
+            _row['합계']   = _ds
+            _row['월합계'] = monthly_totals.get(_nm, 0) + _ds
+            _rows.append(_row)
+        _df_grid = _pd.DataFrame(_rows)
 
-        _edited_df = st.data_editor(
-            _df_grid,
-            key=f"de_{_grid_key}",
-            column_config=_col_cfg,
-            column_order=["작업항목"] + shift_labels + ["일합계", "월누계"],
-            hide_index=True,
-            use_container_width=True,
-            num_rows="fixed",
+    # Excel 양식 비율: 작업내용 185px, 근무열 66px, 합계 63px, 월합계 70px
+    _W = {'item': 185, 'shift': 66, 'sum': 63, 'mon': 70}
+    _col_cfg_w = {
+        '작업 내용': st.column_config.TextColumn('작업 내용', width=_W['item'], disabled=True),
+        '합계':   st.column_config.NumberColumn('합계',   width=_W['sum'], disabled=True, format='%d'),
+        '월합계': st.column_config.NumberColumn('월합계', width=_W['mon'], disabled=True, format='%d'),
+    }
+    for _sl in _all_shifts:
+        _col_cfg_w[_sl] = st.column_config.NumberColumn(
+            _sl, width=_W['shift'], min_value=0, step=1, format='%d',
+            disabled=(is_2person and _sl in _dis_2p) or (not is_2person and _sl in _dis_3sh),
         )
 
-        for _i, _nm in enumerate(item_names):
+    _edited_df = st.data_editor(
+        _df_grid,
+        key=f'de_{_grid_key}',
+        column_config=_col_cfg_w,
+        column_order=['작업 내용'] + _all_shifts + ['합계', '월합계'],
+        hide_index=True,
+        use_container_width=True,
+        num_rows='fixed',
+    )
+
+    for _i, _nm in enumerate(item_names):
+        try:
+            _ds = sum(int(_edited_df.at[_i, _sl] or 0) for _sl in _all_shifts)
+        except (TypeError, ValueError):
+            _ds = 0
+        _edited_df.at[_i, '합계']   = _ds
+        _edited_df.at[_i, '월합계'] = monthly_totals.get(_nm, 0) + _ds
+    st.session_state[_grid_key] = _edited_df
+
+    work_items_data = []
+    for _i, _nm in enumerate(item_names):
+        _wd = {'name': _nm, 'month_total': int(_edited_df.at[_i, '월합계'] or 0)}
+        for _sl, _lk in zip(_all_shifts, _shift_keys):
             try:
-                _sv = [int(_edited_df.at[_i, _sl] or 0) for _sl in shift_labels]
+                _v = int(_edited_df.at[_i, _sl] or 0)
             except (TypeError, ValueError):
-                _sv = [0] * len(shift_labels)
-            _ds = sum(_sv)
-            _edited_df.at[_i, "일합계"] = _ds
-            _edited_df.at[_i, "월누계"] = monthly_totals.get(_nm, 0) + _ds
-        st.session_state[_grid_key] = _edited_df
+                _v = 0
+            _wd[_lk] = _v if _v > 0 else None
+        work_items_data.append(_wd)
 
-        work_items_data = []
-        for _i, _nm in enumerate(item_names):
-            _wd = {"name": _nm, "s1": None, "s2": None, "s3": None, "day": None, "night": None}
-            for _sl, _lk in zip(shift_labels, load_keys):
-                try:
-                    _v = int(_edited_df.at[_i, _sl] or 0)
-                except (TypeError, ValueError):
-                    _v = 0
-                _wd[_lk] = _v if _v > 0 else None
-            _wd["month_total"] = int(_edited_df.at[_i, "월누계"] or 0)
-            work_items_data.append(_wd)
+    # 3. 안전 관리 사항
+    st.markdown(
+        '<div style="background:#4B2D8E;color:white;padding:6px 14px;'
+        'font-size:13px;font-weight:bold;margin-top:18px;'
+        'border-radius:4px 4px 0 0;border:2px solid #4B2D8E;">'
+        '3. 안전 관리 사항</div>',
+        unsafe_allow_html=True,
+    )
 
-    # ── 오른쪽: 안전관리 + 특이사항 + 저장 ──
-    with _wl_right:
-        st.markdown("""<style>
-        .safety-section p,.safety-section span,.safety-section label{font-size:10px !important;line-height:1.1 !important;}
-        .safety-section .stCheckbox{margin:0 !important;padding:0 !important;}
-        .safety-section [data-testid="stVerticalBlock"]>div{gap:0.05rem !important;}
-        </style>""", unsafe_allow_html=True)
-        st.markdown('<div style="background:#4B2D8E;color:white;padding:5px 10px;border-radius:4px;font-size:12px;font-weight:bold;margin-bottom:4px;">3. 안전 관리 사항</div>', unsafe_allow_html=True)
-        st.markdown('<div class="safety-section">', unsafe_allow_html=True)
-        safety_questions = [
-            "작업 계획에 따라 작업 절차를 준수 하였는가?",
-            "안전장치(후방 경보장치 , 안전밸트 등) 기능의 이상 유무를 점검 하였는가?",
-            "주행시 급출발 , 급정거 , 급선회를 하지 않았는가?",
-            "화물 적재시 허용 하중을 초과하지 않았는가?",
-            "작업장소에 적합한 제한 속도를 준수 하였는가?",
-            "지게차 작업 안전 수칙에 위배 되는 작업을 하지 않았는가?"
-        ]
-        safety_items_data = []
-        for i, q in enumerate(safety_questions):
-            st.caption(f"{i+1}. {q}")
-            if is_2person:
-                sc1, sc2 = st.columns(2)
-                chk_day   = sc1.checkbox("주간", value=True, key=f"safe_day_{i}")
-                chk_night = sc2.checkbox("야간", value=True, key=f"safe_night_{i}")
-                safety_items_data.append({"text": q, "s1": False, "s2": False, "s3": False, "day": chk_day, "night": chk_night})
+    safety_questions = [
+        '작업 계획에 따라 작업 절차를 준수 하였는가?',
+        '안전장치(후방 경보장치 , 안전밸트 등) 기능의 이상 유무를 점검 하였는가?',
+        '주행시 급출발 , 급정거 , 급선회를 하지 않았는가?',
+        '화물 적재시 허용 하중을 초과하지 않았는가?',
+        '작업장소에 적합한 제한 속도를 준수 하였는가?',
+        '지게차 작업 안전 수칙에 위배 되는 작업을 하지 않았는가?',
+    ]
+
+    _safety_key = f'wl_safety_{selected_date}'
+    if _safety_key not in st.session_state:
+        _loaded_safety = (loaded_detail.get('safety') or []) if loaded_detail else []
+        _srows = []
+        for _qi, _q in enumerate(safety_questions):
+            if _qi < len(_loaded_safety):
+                _si = _loaded_safety[_qi]
+                _srows.append({
+                    '안전 관리 사항': _q,
+                    '1근':  bool(_si.get('s1',    False)),
+                    '2근':  bool(_si.get('s2',    False)),
+                    '3근':  bool(_si.get('s3',    False)),
+                    '주간': bool(_si.get('day',   False)),
+                    '야간': bool(_si.get('night', False)),
+                })
             else:
-                sc1, sc2, sc3 = st.columns(3)
-                chk_s1 = sc1.checkbox("1근", value=True, key=f"safe_s1_{i}")
-                chk_s2 = sc2.checkbox("2근", value=True, key=f"safe_s2_{i}")
-                chk_s3 = sc3.checkbox("3근", value=True, key=f"safe_s3_{i}")
-                safety_items_data.append({"text": q, "s1": chk_s1, "s2": chk_s2, "s3": chk_s3, "day": False, "night": False})
-        st.markdown('</div>', unsafe_allow_html=True)
+                _srows.append({
+                    '안전 관리 사항': _q,
+                    '1근': not is_2person, '2근': not is_2person, '3근': not is_2person,
+                    '주간': is_2person,    '야간': is_2person,
+                })
+        st.session_state[_safety_key] = _pd.DataFrame(_srows)
 
-        st.markdown('<div style="background:#4B2D8E;color:white;padding:5px 10px;border-radius:4px;font-size:12px;font-weight:bold;margin:6px 0 4px;">4. 특이 사항</div>', unsafe_allow_html=True)
-        note_text = st.text_area("특이사항", "", height=80, label_visibility="collapsed")
+    _safety_col_cfg = {
+        '안전 관리 사항': st.column_config.TextColumn('안전 관리 사항', width=450, disabled=True),
+        '1근':  st.column_config.CheckboxColumn('1근',  width=66),
+        '2근':  st.column_config.CheckboxColumn('2근',  width=66),
+        '3근':  st.column_config.CheckboxColumn('3근',  width=66),
+        '주간': st.column_config.CheckboxColumn('주간', width=66),
+        '야간': st.column_config.CheckboxColumn('야간', width=66),
+    }
 
-        st.markdown("---")
-        import time as _time
-        _fn_team = st.secrets.get("company", {}).get("team", "일일업무")
-        _last_save = st.session_state.get("_last_save_ts", 0)
-        _cooldown = 20
-        _elapsed = _time.time() - _last_save
-        _can_save = _elapsed >= _cooldown
-        if st.button("💾 전체 저장", use_container_width=True, type="primary", disabled=not _can_save):
-            try:
-                with st.spinner("저장 중..."):
-                    from utils.supabase_db import save_all
-                    save_all(
-                        selected_date, work_items_data, shift_data_final,
-                        safety_items_data, note_text, st.session_state.get("leave_list", [])
-                    )
-                st.session_state["_last_save_ts"] = _time.time()
-                st.session_state.pop(f"wl_monthly_totals_{selected_date}", None)
-                with st.spinner(f"{selected_date.month}월 통합 Excel 생성 중..."):
-                    _mbytes, _mcount = generate_monthly_work_log_excel(selected_date)
-                st.session_state["_monthly_bytes"] = _mbytes
-                st.session_state["_monthly_count"] = _mcount
-                st.session_state["_monthly_ym"] = (selected_date.year, selected_date.month)
-                st.success(f"✅ 저장 완료! {selected_date.month}월 Excel 준비됨 ({_mcount}일)")
-            except Exception as e:
-                st.error(f"저장 실패: {type(e).__name__}: {e}")
-        if not _can_save:
-            st.caption(f"⏳ {int(_cooldown - _elapsed)}초 후 재저장 가능")
+    _safety_edit = st.data_editor(
+        st.session_state[_safety_key],
+        key=f'de_safety_{_grid_key}',
+        column_config=_safety_col_cfg,
+        column_order=['안전 관리 사항', '1근', '2근', '3근', '주간', '야간'],
+        hide_index=True,
+        use_container_width=True,
+        num_rows='fixed',
+    )
+    st.session_state[_safety_key] = _safety_edit
 
-        if st.session_state.get("_monthly_bytes"):
-            _my, _mm = st.session_state["_monthly_ym"]
-            _monthly_fname = f"{_fn_team}_{_my}년{_mm}월_작업일지.xlsx"
-            st.download_button(
-                f"📥 {_my}년 {_mm}월 통합 다운로드 ({st.session_state['_monthly_count']}일)",
-                data=st.session_state["_monthly_bytes"],
-                file_name=_monthly_fname,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
+    safety_items_data = []
+    for _qi in range(len(safety_questions)):
+        safety_items_data.append({
+            'text':  safety_questions[_qi],
+            's1':    bool(_safety_edit.at[_qi, '1근']),
+            's2':    bool(_safety_edit.at[_qi, '2근']),
+            's3':    bool(_safety_edit.at[_qi, '3근']),
+            'day':   bool(_safety_edit.at[_qi, '주간']),
+            'night': bool(_safety_edit.at[_qi, '야간']),
+        })
 
-        # ── 메일 전송 ──
-        _email_cfg = st.secrets.get("email", {})
-        if _email_cfg.get("gmail_user"):
-            st.markdown("---")
-            if st.button("✉️ 통합일지 메일 전송", use_container_width=True):
-                st.session_state["_show_mail_form"] = True
+    # 4. 특이 사항
+    st.markdown(
+        '<div style="background:#4B2D8E;color:white;padding:6px 14px;'
+        'font-size:13px;font-weight:bold;margin-top:18px;'
+        'border-radius:4px;border:2px solid #4B2D8E;margin-bottom:4px;">'
+        '4. 특이 사항</div>',
+        unsafe_allow_html=True,
+    )
+    _note_key = f'wl_note_{selected_date}'
+    if _note_key not in st.session_state:
+        st.session_state[_note_key] = loaded_detail.get('note', '') if loaded_detail else ''
+    note_text = st.text_area('특이사항', key=_note_key, height=100, label_visibility='collapsed')
 
-            if st.session_state.get("_show_mail_form"):
-                with st.expander("📨 메일 작성 및 미리보기", expanded=True):
-                    _def_to      = _email_cfg.get("to", "")
-                    _def_subject = _email_cfg.get("subject", "{year}년 {month}월 일일업무보고 통합").format(
-                        year=_my, month=_mm)
-                    _def_body    = _email_cfg.get("body", "{month}월 업무보고 통합 파일을 첨부합니다.").format(
-                        year=_my, month=_mm)
+    # 저장 / 다운로드 / 메일
+    st.markdown('---')
+    import time as _time
+    _fn_team   = st.secrets.get('company', {}).get('team', '일일업무')
+    _last_save = st.session_state.get('_last_save_ts', 0)
+    _cooldown  = 20
+    _elapsed   = _time.time() - _last_save
+    _can_save  = _elapsed >= _cooldown
 
-                    _to      = st.text_input("받는 사람", value=_def_to, help="쉼표로 여러 명 입력 가능")
-                    _subject = st.text_input("제목", value=_def_subject)
-                    _body    = st.text_area("본문", value=_def_body, height=150)
+    if st.button('저장', use_container_width=True, type='primary', disabled=not _can_save):
+        try:
+            with st.spinner('저장 중...'):
+                from utils.supabase_db import save_all
+                save_all(
+                    selected_date, work_items_data, shift_data_final,
+                    safety_items_data, note_text,
+                    st.session_state.get('leave_list', [])
+                )
+            st.session_state['_last_save_ts'] = _time.time()
+            st.session_state.pop(f'wl_monthly_totals_{selected_date}', None)
+            with st.spinner(f'{selected_date.month}월 통합 Excel 생성 중...'):
+                _mbytes, _mcount = generate_monthly_work_log_excel(selected_date)
+            st.session_state['_monthly_bytes'] = _mbytes
+            st.session_state['_monthly_count'] = _mcount
+            st.session_state['_monthly_ym']    = (selected_date.year, selected_date.month)
+            st.success(f'저장 완료! {selected_date.month}월 Excel 준비됨 ({_mcount}일)')
+        except Exception as e:
+            st.error(f'저장 실패: {type(e).__name__}: {e}')
+    if not _can_save:
+        st.caption(f'재저장까지 {int(_cooldown - _elapsed)}초 대기')
 
-                    st.markdown("**첨부파일**")
-                    _attach_default = st.checkbox(f"✅ {_monthly_fname} (통합 Excel)", value=True)
-                    _extra_files = st.file_uploader(
-                        "추가 첨부파일 (선택)", accept_multiple_files=True, key="mail_extra_attach"
-                    )
+    _my, _mm = st.session_state.get('_monthly_ym', (selected_date.year, selected_date.month))
+    _monthly_fname = f'{_fn_team}_{_my}년{_mm}월_작업일지.xlsx'
 
-                    col_send, col_cancel = st.columns(2)
-                    with col_cancel:
-                        if st.button("취소", use_container_width=True):
-                            st.session_state["_show_mail_form"] = False
-                            st.rerun()
-                    with col_send:
-                        if st.button("📤 전송", use_container_width=True, type="primary"):
-                            if not _to.strip():
-                                st.error("받는 사람 이메일을 입력하세요.")
-                            else:
-                                try:
-                                    import base64 as _b64
-                                    from email.mime.multipart import MIMEMultipart
-                                    from email.mime.text import MIMEText
-                                    from email.mime.base import MIMEBase
-                                    from email import encoders
-                                    from email.header import Header
-                                    import google.oauth2.credentials as _goauth
-                                    import googleapiclient.discovery as _gdisco
-                                    from utils.sheets import _get_or_create_sheet as _gos
+    if st.session_state.get('_monthly_bytes'):
+        _dl_label = f'{_my}년 {_mm}월 통합 다운로드 ({st.session_state["_monthly_count"]}일)'
+        st.download_button(
+            _dl_label,
+            data=st.session_state['_monthly_bytes'],
+            file_name=_monthly_fname,
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            use_container_width=True,
+        )
 
-                                    _recipients = [r.strip() for r in _to.split(",") if r.strip()]
+    _email_cfg = st.secrets.get('email', {})
+    if _email_cfg.get('gmail_user'):
+        st.markdown('---')
+        if st.button('통합일지 메일 전송', use_container_width=True):
+            st.session_state['_show_mail_form'] = True
+        if st.session_state.get('_show_mail_form'):
+            with st.expander('메일 작성 및 미리보기', expanded=True):
+                _def_to      = _email_cfg.get('to', '')
+                _def_subject = _email_cfg.get('subject', '{year}년 {month}월 일일업무보고 통합').format(year=_my, month=_mm)
+                _def_body    = _email_cfg.get('body', '{month}월 업무보고 통합 파일을 첨부합니다.').format(year=_my, month=_mm)
+                _to      = st.text_input('받는 사람', value=_def_to, help='쉼표로 여러 명 입력 가능')
+                _subject = st.text_input('제목', value=_def_subject)
+                _body    = st.text_area('본문', value=_def_body, height=150)
+                st.markdown('**첨부파일**')
+                _attach_default = st.checkbox(f'{_monthly_fname} (통합 Excel)', value=True)
+                _extra_files = st.file_uploader('추가 첨부파일 (선택)', accept_multiple_files=True, key='mail_extra_attach')
+                col_send, col_cancel = st.columns(2)
+                with col_cancel:
+                    if st.button('취소', use_container_width=True):
+                        st.session_state['_show_mail_form'] = False
+                        st.rerun()
+                with col_send:
+                    if st.button('전송', use_container_width=True, type='primary'):
+                        if not _to.strip():
+                            st.error('받는 사람 이메일을 입력하세요.')
+                        else:
+                            try:
+                                import base64 as _b64
+                                from email.mime.multipart import MIMEMultipart
+                                from email.mime.text import MIMEText
+                                from email.mime.base import MIMEBase
+                                from email import encoders
+                                from email.header import Header
+                                import google.oauth2.credentials as _goauth
+                                import googleapiclient.discovery as _gdisco
+                                from utils.sheets import _get_or_create_sheet as _gos
+                                _recipients = [r.strip() for r in _to.split(',') if r.strip()]
+                                msg = MIMEMultipart('mixed')
+                                msg['To']      = ', '.join(_recipients)
+                                msg['Subject'] = Header(_subject, 'utf-8').encode()
+                                msg.attach(MIMEText(_body, 'plain', 'utf-8'))
+                                def _attach_file(data: bytes, fname: str):
+                                    part = MIMEBase('application', 'octet-stream')
+                                    part.set_payload(data)
+                                    encoders.encode_base64(part)
+                                    part.add_header('Content-Disposition', 'attachment', filename=('utf-8', '', fname))
+                                    msg.attach(part)
+                                if _attach_default:
+                                    _attach_file(st.session_state['_monthly_bytes'], _monthly_fname)
+                                for _ef in (_extra_files or []):
+                                    _attach_file(_ef.getvalue(), _ef.name)
+                                with st.spinner('메일 전송 중...'):
+                                    _gcfg_ws = _gos('gmail_config')
+                                    _gcfg = {r[0]: r[1] for r in _gcfg_ws.get_all_values() if len(r) >= 2}
+                                    _gcreds = _goauth.Credentials(
+                                        token=None,
+                                        refresh_token=_gcfg['refresh_token'],
+                                        token_uri='https://oauth2.googleapis.com/token',
+                                        client_id=_gcfg['client_id'],
+                                        client_secret=_gcfg['client_secret'],
+                                    )
+                                    _svc = _gdisco.build('gmail', 'v1', credentials=_gcreds)
+                                    _raw = _b64.urlsafe_b64encode(msg.as_bytes()).decode()
+                                    _svc.users().messages().send(userId='me', body={'raw': _raw}).execute()
+                                st.success(f'메일 전송 완료! -> {_to}')
+                                st.session_state['_show_mail_form'] = False
+                            except Exception as _e:
+                                st.error(f'전송 실패: {_e}')
 
-                                    msg = MIMEMultipart("mixed")
-                                    msg["To"]      = ", ".join(_recipients)
-                                    msg["Subject"] = Header(_subject, "utf-8").encode()
-                                    msg.attach(MIMEText(_body, "plain", "utf-8"))
-
-                                    def _attach_file(data: bytes, fname: str):
-                                        part = MIMEBase("application", "octet-stream")
-                                        part.set_payload(data)
-                                        encoders.encode_base64(part)
-                                        part.add_header("Content-Disposition", "attachment",
-                                                        filename=("utf-8", "", fname))
-                                        msg.attach(part)
-
-                                    if _attach_default:
-                                        _attach_file(st.session_state["_monthly_bytes"], _monthly_fname)
-                                    for _ef in (_extra_files or []):
-                                        _attach_file(_ef.getvalue(), _ef.name)
-
-                                    with st.spinner("메일 전송 중..."):
-                                        _gcfg_ws = _gos("gmail_config")
-                                        _gcfg = {r[0]: r[1] for r in _gcfg_ws.get_all_values() if len(r) >= 2}
-                                        _gcreds = _goauth.Credentials(
-                                            token=None,
-                                            refresh_token=_gcfg["refresh_token"],
-                                            token_uri="https://oauth2.googleapis.com/token",
-                                            client_id=_gcfg["client_id"],
-                                            client_secret=_gcfg["client_secret"],
-                                        )
-                                        _svc = _gdisco.build("gmail", "v1", credentials=_gcreds)
-                                        _raw = _b64.urlsafe_b64encode(msg.as_bytes()).decode()
-                                        _svc.users().messages().send(userId="me", body={"raw": _raw}).execute()
-                                    st.success(f"✅ 메일 전송 완료! → {_to}")
-                                    st.session_state["_show_mail_form"] = False
-                                except Exception as _e:
-                                    st.error(f"전송 실패: {_e}")
 
 
-# ══════════════════════════════════════
-# 메뉴 4: 근무 통계
-# ══════════════════════════════════════
 def page_statistics():
     import datetime
     import calendar
