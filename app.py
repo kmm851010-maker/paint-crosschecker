@@ -3865,7 +3865,7 @@ def page_attendance():
 
     with _att_left:
         # --------- 근무 통계 타이틀 + 이름 버튼 ---------
-        st.markdown(f"### {selected_year}년 {selected_month}월 근무 통계")
+        st.markdown(f"<div style='font-size:14px;font-weight:700;white-space:nowrap;margin-bottom:8px;'>{selected_year}년 {selected_month}월 근무 통계</div>", unsafe_allow_html=True)
         if shift_type != "4조3교대":
             st.info("상세 통계는 4조3교대 근무 형태에서만 지원됩니다.")
         else:
