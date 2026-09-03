@@ -275,7 +275,7 @@ if st.sidebar.button("🚪 로그아웃", use_container_width=True):
 st.sidebar.markdown("---")
 st.sidebar.markdown("**모바일 앱**")
 st.sidebar.markdown(
-    '<a href="https://expo.dev/artifacts/eas/w8QlmkgyJDLXqP-NOM7PfMjMOX4zkG1cc4CGWvT9tJo.apk" '
+    '<a href="https://expo.dev/artifacts/eas/xYEnGgVNCg3cm5Xthv-hFqQHsqRAG0-cOcrbzAkUS68.apk" '
     'style="display:block;text-align:center;padding:10px;background:#F5A623;color:#1A1A2E;'
     'border-radius:8px;font-weight:700;text-decoration:none;">⬇️ KG OPS 설치</a>',
     unsafe_allow_html=True,
@@ -4284,7 +4284,12 @@ def page_inventory():
     import pandas as _pd
 
     BACKEND = "https://kgcounter.up.railway.app"
-    st.subheader("재고 현황")
+    _inv_hdr_c1, _inv_hdr_c2 = st.columns([10, 1])
+    with _inv_hdr_c1:
+        st.subheader("재고 현황")
+    with _inv_hdr_c2:
+        if st.button("🔄", key="inv_refresh", use_container_width=True, help="새로고침"):
+            st.rerun()
 
     _half_hours = [f"{h:02d}:{m:02d}" for h in range(24) for m in (0, 30)]
     _tab_sector, _tab_history = st.tabs(["섹터별 현황", "날짜별 이력"])
@@ -4441,12 +4446,7 @@ def page_inventory():
 
     # ── 섹터별 현황 탭 ──────────────────────────────────────────────────────
     with _tab_sector:
-        _c_inv_sort, _c_inv_ref = st.columns([5, 0.8])
-        with _c_inv_sort:
-            sort_mode = st.radio("정렬", ["섹터별", "제조사별", "품목별", "LOT순", "등록시간순"], horizontal=True, key="inv_sort", label_visibility="collapsed")
-        with _c_inv_ref:
-            if st.button("🔄", key="inv_refresh", use_container_width=True, help="새로고침"):
-                st.rerun()
+        sort_mode = st.radio("정렬", ["섹터별", "제조사별", "품목별", "LOT순", "등록시간순"], horizontal=True, key="inv_sort", label_visibility="collapsed")
 
     with _tab_sector:
             # 등록시간순 선택 시 기간 선택기 표시
@@ -4534,29 +4534,15 @@ def page_inventory():
         ]
         import datetime as _dt_mod
 
-        # 전체선택 / 선택 해제 버튼
-        _btn_c1, _btn_c2 = st.columns([1, 1])
-        if _btn_c1.button("전체선택", key="inv_selall", use_container_width=True):
-            for _l in df_filtered["lot"].tolist():
-                st.session_state[f"chk_{_l}"] = True
-            st.rerun()
-        if _btn_c2.button("선택 해제", key="inv_desel", use_container_width=True):
-            for _k in list(st.session_state.keys()):
-                if _k.startswith("chk_"):
-                    st.session_state[_k] = False
-            st.rerun()
 
         # 드럼별 체크박스 선택
         selected_lots = set()
-        _seen_groups = []
-        for group_key, group_df in df_filtered.groupby(group_col, sort=False):
-            cnt = len(group_df)
-            # 반품필터 활성 시 그룹 내 해당 반품 항목 목록
-            grp_rf_lots = group_df[group_df["returnStatus"] == return_filter]["lot"].tolist() if return_filter else []
-            grp_all_rf_selected = bool(grp_rf_lots) and all(st.session_state.get(f"chk_{_l}", False) for _l in grp_rf_lots)
 
-            with st.expander(f"**{group_key}** — {cnt}드럼", expanded=False):
-                # 그룹별 전체선택 버튼 (섹터별/제조사별/품목별)
+        def _render_group_expander(group_key, group_df, container=None):
+            cnt = len(group_df)
+            target = container if container else st
+            with target.expander(f"**{group_key}** — {cnt}드럼", expanded=False):
+                # 그룹별 전체선택 버튼
                 if sort_mode in ("섹터별", "제조사별", "품목별"):
                     _grp_lots = group_df["lot"].tolist()
                     _grp_all_sel = all(st.session_state.get(f"chk_{_l}", False) for _l in _grp_lots)
@@ -4565,14 +4551,12 @@ def page_inventory():
                         for _l in _grp_lots:
                             st.session_state[f"chk_{_l}"] = not _grp_all_sel
                         st.rerun()
-
                 # 헤더
                 h1, h2, h3, h4, h5, h6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
                 h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
                 h4.markdown("**제조사**")
                 if sort_mode not in ("섹터별",): h5.markdown("**섹터**")
                 h6.markdown("**등록시간**")
-                # 행
                 for _, row in group_df.iterrows():
                     rs = row.get("returnStatus", "")
                     sd = row.get("scanDisabled", "")
@@ -4589,6 +4573,17 @@ def page_inventory():
                     if sort_mode not in ("섹터별",):
                         c5.text(row.get("sector", ""))
                     c6.text(row.get("registered", ""))
+
+        _all_groups = list(df_filtered.groupby(group_col, sort=False))
+        if sort_mode in ("섹터별", "품목별"):
+            # 3열 그리드
+            for _gi in range(0, len(_all_groups), 3):
+                _row_cols = st.columns(3)
+                for _ci, (group_key, group_df) in enumerate(_all_groups[_gi:_gi + 3]):
+                    _render_group_expander(group_key, group_df, _row_cols[_ci])
+        else:
+            for group_key, group_df in _all_groups:
+                _render_group_expander(group_key, group_df)
 
         # 선택 항목 엑셀 다운로드
         if selected_lots:
