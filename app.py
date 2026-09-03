@@ -4044,7 +4044,7 @@ def page_attendance():
                     ("휴가", _lv4.get("leave_person", ""), "#F57F17"),
                     ("휴무", _lv4.get("휴무_근무자", ""), "#9E9E9E"),
                 ]
-            elif _d_str in daily_details:
+            elif _d_str in daily_details and daily_details[_d_str].get("shift", {}).get("1근_근무자"):
                 _sh_d = daily_details[_d_str].get("shift", {})
                 if _sh_d.get("is_2person"):
                     _slots4 = [
@@ -4060,6 +4060,7 @@ def page_attendance():
                         ("휴무", _sh_d.get("휴무_근무자", ""), "#9E9E9E"),
                     ]
             else:
+                # shift 데이터 없으면 자동계산 사용
                 _slots4 = [
                     ("1근", _base4.get("1근_근무자", ""), "#1565C0"),
                     ("2근", _base4.get("2근_근무자", ""), "#2E7D32"),
