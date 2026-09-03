@@ -4131,11 +4131,17 @@ def page_attendance():
         _note_txt = (daily_details.get(_d_str, {}).get("note") or "").strip()
         _note_prev_html = ""
         if _note_txt:
-            _np = _note_txt[:12] + ("…" if len(_note_txt) > 12 else "")
+            # 줄바꿈 유지: 각 줄 10자 이하로 잘라 <br> 연결
+            _np_lines = []
+            for _nl in _note_txt.splitlines()[:4]:
+                _nl = _nl.strip()
+                if _nl:
+                    _np_lines.append(_nl[:10] + ("…" if len(_nl) > 10 else ""))
+            _np_html = "<br>".join(_np_lines)
             _note_prev_html = (
                 f'<div style="font-size:11px;font-weight:700;color:#856404;background:#FFF9E6;'
-                f'border-radius:3px;padding:1px 4px;margin-top:2px;overflow:hidden;'
-                f'white-space:nowrap;text-overflow:ellipsis;">{_np}</div>'
+                f'border-radius:3px;padding:1px 4px;margin-top:2px;overflow:hidden;">'
+                f'{_np_html}</div>'
             )
 
         _all_cells.append({
