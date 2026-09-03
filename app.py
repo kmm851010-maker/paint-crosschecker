@@ -3942,8 +3942,20 @@ def page_attendance():
         # 달력 헤더: < year month >  오늘  날짜선택
         st.markdown(
             "<style>"
-            "[data-testid='stHorizontalBlock']:has([data-testid='att_cal_hdr']) button {"
-            "  min-height:0!important; padding:4px 10px!important; font-size:13px!important;"
+            "[data-testid='stHorizontalBlock']:has([data-testid='att_cal_hdr'])"
+            "  [data-testid='baseButton-secondary'] {"
+            "  min-height:0!important; padding:4px 8px!important; font-size:15px!important;"
+            "  font-weight:700!important; color:#222!important;"
+            "  background:transparent!important; border:none!important; box-shadow:none!important;"
+            "}"
+            "[data-testid='stHorizontalBlock']:has([data-testid='att_cal_hdr'])"
+            "  [data-testid='baseButton-secondary']:hover {"
+            "  color:#7B2FBE!important; background:#F3EAFF!important;"
+            "}"
+            "[data-testid='stHorizontalBlock']:has([data-testid='att_cal_hdr'])"
+            "  [data-testid='baseButton-primary'] {"
+            "  min-height:0!important; padding:4px 8px!important; font-size:15px!important;"
+            "  font-weight:700!important;"
             "}"
             "</style>",
             unsafe_allow_html=True,
@@ -3976,9 +3988,9 @@ def page_attendance():
                     st.session_state["att_cal_month"] += 1
                 st.rerun()
         with _gcl_sp:
-            pass
+            st.markdown("<div data-testid='att_cal_hdr' style='display:none'></div>", unsafe_allow_html=True)
         with _gcl_today:
-            if st.button("오늘", key="att_today_btn", use_container_width=True):
+            if st.button("오늘", key="att_today_btn", use_container_width=True, type="primary"):
                 st.session_state["att_cal_year"]  = today.year
                 st.session_state["att_cal_month"] = today.month
                 st.rerun()
