@@ -3468,20 +3468,20 @@ def _att_stats_dialog():
         return h
 
     if s["대근내역"]:
-        with st.expander(f"대근 내역 ({s['대근횟수']}회 · 계 {_fhh(_tdh)}H)", expanded=True):
+        with st.expander(f"대근 내역 ({s['대근횟수']}회 · 계 {_fhh(_tdh)}H)", expanded=False):
             for _dd in s["대근내역"]:
                 st.write(f"{_dd['날짜']} | {_dd['구분']} | {_dd['휴가자']} {_dd['휴가구분']}으로 대근 | {_fhh(_dd['시간'])}H")
     else:
         st.caption("대근 없음")
 
     if s["휴가내역"]:
-        with st.expander(f"{selected_month}월 휴가 내역 ({s['휴가일수']}일)", expanded=True):
+        with st.expander(f"{selected_month}월 휴가 내역 ({s['휴가일수']}일)", expanded=False):
             for _hh3 in s["휴가내역"]: st.write(_hh3)
     else:
         st.caption("이번달 휴가 없음")
 
     if yr_lv:
-        with st.expander(f"{selected_year}년 전체 휴가 ({len(yr_lv)}일)", expanded=True):
+        with st.expander(f"{selected_year}년 전체 휴가 ({len(yr_lv)}일)", expanded=False):
             _tc2 = {}
             for _lv2 in yr_lv: _tc2[_lv2["구분"]] = _tc2.get(_lv2["구분"], 0) + 1
             st.info(" | ".join(f"{k}: {v}일" for k, v in _tc2.items()))
