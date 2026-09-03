@@ -3939,28 +3939,67 @@ def page_attendance():
 
 
     with _att_right:
-        # 달력 헤더: < year month >  오늘  날짜선택
-        st.markdown(
-            "<style>"
-            "[data-testid='stHorizontalBlock']:has([data-testid='att_cal_hdr'])"
-            "  [data-testid='baseButton-secondary'] {"
-            "  min-height:0!important; padding:4px 8px!important; font-size:15px!important;"
-            "  font-weight:700!important; color:#222!important;"
-            "  background:transparent!important; border:none!important; box-shadow:none!important;"
-            "}"
-            "[data-testid='stHorizontalBlock']:has([data-testid='att_cal_hdr'])"
-            "  [data-testid='baseButton-secondary']:hover {"
-            "  color:#7B2FBE!important; background:#F3EAFF!important;"
-            "}"
-            "[data-testid='stHorizontalBlock']:has([data-testid='att_cal_hdr'])"
-            "  [data-testid='baseButton-primary'] {"
-            "  min-height:0!important; padding:4px 8px!important; font-size:15px!important;"
-            "  font-weight:700!important;"
-            "}"
-            "</style>",
-            unsafe_allow_html=True,
-        )
-        # 달력 헤더: < [년월 버튼] >  오늘
+        # 달력 헤더: < year month >  오늘
+        # CSS: #att-cal-hdr 마커를 포함한 stHorizontalBlock 의 버튼들 스타일링
+        st.markdown("""<style>
+        /* 헤더 행 전체 버튼 기본 */
+        [data-testid="stHorizontalBlock"]:has(#att-cal-hdr) button {
+            min-height: 0 !important;
+            font-weight: 800 !important;
+            color: #1A1A1A !important;
+        }
+        /* ❮ ❯ 네비 버튼 (1번, 3번 컬럼) */
+        [data-testid="stHorizontalBlock"]:has(#att-cal-hdr)
+            [data-testid="stColumn"]:nth-child(1) button,
+        [data-testid="stHorizontalBlock"]:has(#att-cal-hdr)
+            [data-testid="stColumn"]:nth-child(3) button {
+            background: #EEEEEE !important;
+            border: 1px solid #BDBDBD !important;
+            border-radius: 8px !important;
+            font-size: 16px !important;
+            padding: 4px 6px !important;
+        }
+        [data-testid="stHorizontalBlock"]:has(#att-cal-hdr)
+            [data-testid="stColumn"]:nth-child(1) button:hover,
+        [data-testid="stHorizontalBlock"]:has(#att-cal-hdr)
+            [data-testid="stColumn"]:nth-child(3) button:hover {
+            background: #DCDCDC !important;
+        }
+        /* 연월 버튼 (2번 컬럼) */
+        [data-testid="stHorizontalBlock"]:has(#att-cal-hdr)
+            [data-testid="stColumn"]:nth-child(2) button {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            font-size: 22px !important;
+            font-weight: 900 !important;
+            color: #1A1A1A !important;
+            text-decoration: underline !important;
+            text-decoration-color: #7B2FBE !important;
+            text-underline-offset: 5px !important;
+            padding: 2px 4px !important;
+        }
+        [data-testid="stHorizontalBlock"]:has(#att-cal-hdr)
+            [data-testid="stColumn"]:nth-child(2) button:hover {
+            color: #7B2FBE !important;
+        }
+        /* 오늘 버튼 (5번 컬럼, last) */
+        [data-testid="stHorizontalBlock"]:has(#att-cal-hdr)
+            [data-testid="stColumn"]:nth-child(5) button {
+            background: #4B2D8E !important;
+            border: none !important;
+            border-radius: 8px !important;
+            font-size: 15px !important;
+            font-weight: 700 !important;
+            color: #ffffff !important;
+            padding: 6px 12px !important;
+        }
+        [data-testid="stHorizontalBlock"]:has(#att-cal-hdr)
+            [data-testid="stColumn"]:nth-child(5) button:hover {
+            background: #3A2270 !important;
+        }
+        </style>""", unsafe_allow_html=True)
+
         _gcl_p, _gcl_title, _gcl_n, _gcl_sp, _gcl_today = st.columns([0.5, 4, 0.5, 0.5, 1])
         with _gcl_p:
             if st.button("❮", key="att_prev_mo", use_container_width=True):
@@ -3988,9 +4027,9 @@ def page_attendance():
                     st.session_state["att_cal_month"] += 1
                 st.rerun()
         with _gcl_sp:
-            st.markdown("<div data-testid='att_cal_hdr' style='display:none'></div>", unsafe_allow_html=True)
+            st.markdown("<span id='att-cal-hdr'></span>", unsafe_allow_html=True)
         with _gcl_today:
-            if st.button("오늘", key="att_today_btn", use_container_width=True, type="primary"):
+            if st.button("오늘", key="att_today_btn", use_container_width=True):
                 st.session_state["att_cal_year"]  = today.year
                 st.session_state["att_cal_month"] = today.month
                 st.rerun()
