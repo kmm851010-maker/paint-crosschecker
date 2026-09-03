@@ -4022,7 +4022,7 @@ def page_attendance():
             'box-shadow:0 -2px 6px rgba(0,0,0,0.06);margin:6px 0 0;overflow:hidden;">'
             + "".join(
                 f'<div style="flex:1;font-size:22px;font-weight:700;text-align:center;'
-                f'padding:10px 2px 8px;border-bottom:2px solid #EEEEEE;color:{wc};">{wd}</div>'
+                f'padding:6px 2px 5px;border-bottom:2px solid #EEEEEE;color:{wc};">{wd}</div>'
                 for wd, wc in zip(WD_LABELS, WD_CLR)
             )
             + "</div>",
@@ -4171,8 +4171,8 @@ def page_attendance():
                 with _wc2[_ci]:
                     if _cell["type"] == "dim":
                         st.markdown(
-                            f'<div class="cal-cell-dim" style="{_bdr}min-height:155px;'
-                            f'padding:8px 5px 4px;background:#FAFAFA;">'
+                            f'<div class="cal-cell-dim" style="{_bdr}min-height:100px;'
+                            f'padding:4px 3px 4px;background:#FAFAFA;">'
                             f'<div style="text-align:center;font-size:28px;font-weight:700;color:#DCDCDC;">{_cell["day"]}</div>'
                             f'</div>',
                             unsafe_allow_html=True,
@@ -4180,8 +4180,8 @@ def page_attendance():
                     else:
                         _c = _cell
                         st.markdown(
-                            f'<div class="cal-cell-curr" style="{_bdr}min-height:130px;'
-                            f'padding:8px 5px 0;background:{_c["bg"]};">'
+                            f'<div class="cal-cell-curr" style="{_bdr}min-height:100px;'
+                            f'padding:4px 3px 0;background:{_c["bg"]};">'
                             f'{_c["dnh"]}'
                             f'<div style="display:inline-flex;gap:4px;align-items:flex-start;width:100%;flex-wrap:wrap;">'
                             f'<div style="flex:0 0 auto;min-width:0;overflow:hidden;">{_c["badge"]}{_c["memo"]}</div>'
