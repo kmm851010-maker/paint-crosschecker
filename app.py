@@ -1370,12 +1370,12 @@ def page_work_log():
             st.markdown("**휴무**")
             off_name = st.text_input("휴무자", value=shift_auto["휴무_근무자"], label_visibility="collapsed")
             off_type = shift_auto["휴무_구분"]
-            st.markdown(f"<span style='color:#555;font-size:13px;'>{off_type}</span>", unsafe_allow_html=True)
+            st.markdown(f"<span style='font-size:13px;'>{off_type}</span>", unsafe_allow_html=True)
             _lp = shift_auto.get("leave_person", "")
             _lt = shift_auto.get("leave_type", "")
             if _lp:
-                st.text_input("휴가자", value=_lp, disabled=True, label_visibility="collapsed")
-                st.markdown(f"<span style='color:#C62828;font-size:13px;'>{_lt}</span>", unsafe_allow_html=True)
+                st.text_input("휴가자", value=_lp, label_visibility="collapsed")
+                st.markdown(f"<span style='font-size:13px;'>{_lt}</span>", unsafe_allow_html=True)
 
         shift_data_final = {
             "1근_조": shift_auto["주간_조"], "1근_근무자": day_name,
@@ -1409,7 +1409,7 @@ def page_work_log():
             st.markdown("**휴무**")
             off_name = st.text_input("휴무자", value=shift_auto["휴무_근무자"], label_visibility="collapsed")
             off_type = shift_auto["휴무_구분"]
-            st.markdown(f"<span style='color:#555;font-size:13px;'>{off_type}</span>", unsafe_allow_html=True)
+            st.markdown(f"<span style='font-size:13px;'>{off_type}</span>", unsafe_allow_html=True)
 
         shift_data_final = {
             "1근_조": shift_auto["1근_조"], "1근_근무자": s1_name,
