@@ -3292,8 +3292,10 @@ def _att_cal_note_dialog():
     _nb1, _nb2 = st.columns(2)
     with _nb1:
         if st.button("저장", use_container_width=True, key="att_cal_note_sv", type="primary"):
-            from utils.supabase_db import save_daily_detail as _sdd2
-            _sdd2(d, info.get("shift", {}), info.get("safety", []), _new_note)
+            from utils.supabase_db import save_daily_detail as _sdd2, load_daily_detail as _ldd2
+            _fresh = _ldd2(d) or {}
+            _sdd2(d, _fresh.get("shift", info.get("shift", {})),
+                  _fresh.get("safety", info.get("safety", [])), _new_note)
             st.rerun()
     with _nb2:
         if st.button("닫기", use_container_width=True, key="att_cal_note_cl"):
@@ -4151,7 +4153,11 @@ def page_attendance():
                     st.markdown(
                         f'<div class="cal-cell-curr" style="{_bdr}min-height:130px;'
                         f'padding:8px 5px 0;background:{_c["bg"]};">'
-                        f'{_c["dnh"]}{_c["badge"]}{_c["hol"]}{_c["memo"]}{_c["note_prev"]}'
+                        f'{_c["dnh"]}'
+                        f'<div style="display:flex;gap:3px;align-items:flex-start;">'
+                        f'<div style="flex:1;min-width:0;overflow:hidden;">{_c["badge"]}{_c["memo"]}</div>'
+                        f'<div style="flex:0 0 auto;max-width:46%;text-align:right;min-width:0;overflow:hidden;">{_c["hol"]}{_c["note_prev"]}</div>'
+                        f'</div>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
