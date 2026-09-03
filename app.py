@@ -383,8 +383,8 @@ def _apply_leaves_stat(shift, target_date, leaves):
     result = shift.copy()
     for lv in leaves:
         try:
-            start = datetime.date.fromisoformat(lv["start"])
-            end = datetime.date.fromisoformat(lv["end"])
+            start = datetime.date.fromisoformat(lv["start"][:10])
+            end = datetime.date.fromisoformat(lv["end"][:10])
         except Exception:
             continue
         if start <= target_date <= end:
@@ -406,7 +406,7 @@ def _apply_leaves_stat(shift, target_date, leaves):
 
 
 # ══════════════════════════════════════
-# 메뉴 1: 생산계획 vs 입고 교차검증
+# 메뉴 1: 입고관리
 # ══════════════════════════════════════
 def page_cross_check():
     from modules.erp_parser import process_erp_file
@@ -414,7 +414,7 @@ def page_cross_check():
     from modules.excel_generator import generate_report
     from utils.formatter import style_result_table, format_summary
 
-    st.title("생산계획 vs 입고 교차검증")
+    st.title("입고관리")
 
     # ── 2단 레이아웃 ──
     col_plan, col_erp = st.columns(2)
@@ -3274,6 +3274,51 @@ div[data-testid="column"]:has(.ctoday) button {
 # 근태관리 다이얼로그 (모듈 수준)
 # ══════════════════════════════════════
 
+@st.dialog("특이사항", width="large")
+def _att_cal_note_dialog():
+    info = st.session_state.get("_att_cal_note_info", {})
+    d    = info.get("date")
+    if not d:
+        return
+
+    # 기간 선택
+    _dc1, _dc2 = st.columns(2)
+    with _dc1:
+        _ds = st.date_input("시작일", value=d, key="att_cal_note_ds")
+    with _dc2:
+        _de = st.date_input("종료일", value=d, key="att_cal_note_de")
+
+    if _ds > _de:
+        st.warning("종료일이 시작일보다 이릅니다.")
+        _de = _ds
+
+    _days_cnt = (_de - _ds).days + 1
+    if _days_cnt > 1:
+        st.caption(f"📅 {_days_cnt}일간 동일한 특이사항이 저장됩니다.")
+
+    st.markdown("---")
+    _new_note = st.text_area(
+        "내용", value=info.get("note", ""), height=180,
+        key="att_cal_note_ta",
+        placeholder="특이사항을 입력하세요…",
+        label_visibility="collapsed",
+    )
+    _nb1, _nb2 = st.columns(2)
+    with _nb1:
+        if st.button("저장", use_container_width=True, key="att_cal_note_sv", type="primary"):
+            from utils.supabase_db import save_daily_detail as _sdd2, load_daily_detail as _ldd2
+            import datetime as _dt2
+            _cur = _ds
+            while _cur <= _de:
+                _fresh = _ldd2(_cur) or {}
+                _sdd2(_cur, _fresh.get("shift", {}), _fresh.get("safety", []), _new_note)
+                _cur += _dt2.timedelta(days=1)
+            st.rerun()
+    with _nb2:
+        if st.button("닫기", use_container_width=True, key="att_cal_note_cl"):
+            st.rerun()
+
+
 @st.dialog("년월 선택", width="small")
 def _att_date_picker_dialog():
     _init = st.session_state.get("_att_dlg_pick_init", datetime.date.today())
@@ -3613,7 +3658,7 @@ def page_attendance():
     selected_month = st.session_state["att_cal_month"]
 
     # ── 헤더 행: 제목 | 휴가/연장신청서 | 근무형태 ──
-    _h1, _h2, _h3 = st.columns([4, 1.5, 0.8])
+    _h1, _h2, _h3, _h4 = st.columns([4, 1.5, 0.8, 0.4])
     with _h1:
         st.markdown("## 근태관리")
     with _h2:
@@ -3634,6 +3679,9 @@ def page_attendance():
             help="다른근무형태 보기",
             label_visibility="collapsed",
         )
+    with _h4:
+        if st.button("🔄", key="att_refresh_btn", use_container_width=True, help="새로고침"):
+            st.rerun()
 
     _SHIFT_TEAMS = {"4조3교대": ALL_MEMBERS, "3조3교대": ["A조","B조","C조"], "2조2교대": ["A조","B조"], "4조2교대": ["A조","B조","C조","D조"]}
     selected_name = _SHIFT_TEAMS[shift_type][0]
@@ -3782,81 +3830,6 @@ def page_attendance():
     else:
         year_leaves = {nm: [] for nm in ALL_MEMBERS}
 
-    # --------- 근무 통계 타이틀 + 이름 버튼 ---------
-    st.markdown(f"### {selected_year}년 {selected_month}월 근무 통계")
-    if shift_type != "4조3교대":
-        st.info("상세 통계는 4조3교대 근무 형태에서만 지원됩니다.")
-    else:
-        _조_map = {v: k for k, v in MEMBERS.items()}
-        _btn_cols = st.columns(len(ALL_MEMBERS))
-        for _bi, _nm in enumerate(ALL_MEMBERS):
-            with _btn_cols[_bi]:
-                _조 = _조_map.get(_nm, "")
-                if st.button(
-                    f"{_nm}\n({_조}조)",
-                    key=f"att_stat_{_nm}",
-                    use_container_width=True,
-                ):
-                    _tk2 = next((k for k,v in MEMBERS.items() if v==_nm), None)
-                    _mblks2 = []
-                    _obd2 = {}
-                    if _tk2:
-                        _ms2 = datetime.date(selected_year, selected_month, 1)
-                        _next_mo = selected_month % 12 + 1
-                        _next_yr = selected_year + (1 if selected_month==12 else 0)
-                        _me2 = datetime.date(_next_yr, _next_mo, 1) - datetime.timedelta(days=1)
-                        _ss3 = _ms2 - datetime.timedelta(days=6)
-                        _se3 = _me2 + datetime.timedelta(days=6)
-                        for _dd2 in stats[_nm].get("대근내역", []):
-                            _obd2[_dd2["날짜"]] = _obd2.get(_dd2["날짜"], 0) + _dd2["시간"]
-                        for _ds5,_dd5 in daily_details.items():
-                            if _ds5 in _obd2: continue
-                            _sh5=_dd5.get("shift",{})
-                            if not _sh5.get("is_2person"):
-                                for _sk5,_ok5 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
-                                    if _sh5.get(_sk5)==_nm:
-                                        _ot5=_sff_s(_sh5.get(f"{_ok5}_연장",0))
-                                        if _ot5>0: _obd2[_ds5]=_ot5
-                                        break
-                        _wseq2 = []
-                        _dd6 = _ss3
-                        while _dd6 <= _se3:
-                            _idx3 = (_dd6-_BASE_DATE).days % 20
-                            _c1b,_c2b,_c3b,_ = _CYCLE_20[_idx3]
-                            if _tk2 in (_c1b,_c2b,_c3b):
-                                _wseq2.append((_dd6, _obd2.get(_dd6.strftime("%Y-%m-%d"),0)))
-                            _dd6 += datetime.timedelta(days=1)
-                        _blks2 = []
-                        if _wseq2:
-                            _cb2=[_wseq2[0]]
-                            for _ii3 in range(1,len(_wseq2)):
-                                if (_wseq2[_ii3][0]-_wseq2[_ii3-1][0]).days==1: _cb2.append(_wseq2[_ii3])
-                                else: _blks2.append(_cb2); _cb2=[_wseq2[_ii3]]
-                            _blks2.append(_cb2)
-                        _mblks2=[b for b in _blks2 if b[-1][0]>=_ms2 and b[0][0]<=_me2]
-
-                    try:
-                        import holidays as _hh2
-                        _kr2=_hh2.SouthKorea(years=[selected_year,selected_year-1,selected_year+1])
-                    except Exception:
-                        _kr2=set()
-
-                    _SCOLS=["정상근로","유휴근로","휴일근로","연장근로","휴일연장","야간근로","휴일비근로","휴가비근로","스틸아카데미","항군교육","사내교육(1)","사내교육(1.5)","사외교육(1)","사외교육(1.5)","공가"]
-
-                    st.session_state["_att_dlg_data"] = {
-                        "nm": _nm, "s": stats[_nm],
-                        "yr_lv": year_leaves.get(_nm, []),
-                        "year": selected_year, "month": selected_month,
-                        "days_in_month": days_in_month,
-                        "daily_details": daily_details,
-                        "NIGHT_HOURS": NIGHT_HOURS,
-                        "MEMBERS": MEMBERS, "ALL_MEMBERS": ALL_MEMBERS,
-                        "_kr2": _kr2, "_SCOLS": _SCOLS,
-                        "base_leaves": base_leaves_s,
-                        "_obd": _obd2, "_mblks": _mblks2,
-                    }
-                    _att_stats_dialog()
-
     # --------- Galaxy 달력 ---------
     MCLS = {"1근": "#1565C0", "2근": "#2E7D32", "3근": "#C62828", "휴무": "#9E9E9E",
             "주간": "#E65100", "야간": "#37474F", "휴가": "#F57F17", "대근": "#6A1B9A"}
@@ -3886,196 +3859,359 @@ def page_attendance():
                 except Exception: pass
         return base, MCLS.get(base, "#ccc")
 
-    # 달력 헤더: < year month >  오늘  날짜선택
-    st.markdown(
-        "<style>"
-        "[data-testid='stHorizontalBlock']:has([data-testid='att_cal_hdr']) button {"
-        "  min-height:0!important; padding:4px 10px!important; font-size:13px!important;"
-        "}"
-        "</style>",
-        unsafe_allow_html=True,
-    )
-    # 달력 헤더: < [년월 버튼] >  오늘
-    _gcl_p, _gcl_title, _gcl_n, _gcl_sp, _gcl_today = st.columns([0.5, 4, 0.5, 0.5, 1])
-    with _gcl_p:
-        if st.button("❮", key="att_prev_mo", use_container_width=True):
-            if selected_month == 1:
-                st.session_state["att_cal_year"]  -= 1
-                st.session_state["att_cal_month"]  = 12
-            else:
-                st.session_state["att_cal_month"] -= 1
-            st.rerun()
-    with _gcl_title:
-        if st.button(
-            f"{selected_year}년 {selected_month}월",
-            key="att_ym_btn",
-            use_container_width=True,
-            help="클릭하면 날짜를 선택할 수 있습니다",
-        ):
-            st.session_state["_att_dlg_pick_init"] = datetime.date(selected_year, selected_month, 1)
-            _att_date_picker_dialog()
-    with _gcl_n:
-        if st.button("❯", key="att_next_mo", use_container_width=True):
-            if selected_month == 12:
-                st.session_state["att_cal_year"]  += 1
-                st.session_state["att_cal_month"]  = 1
-            else:
-                st.session_state["att_cal_month"] += 1
-            st.rerun()
-    with _gcl_sp:
-        pass
-    with _gcl_today:
-        if st.button("오늘", key="att_today_btn", use_container_width=True):
-            st.session_state["att_cal_year"]  = today.year
-            st.session_state["att_cal_month"] = today.month
-            st.rerun()
 
-    # 이전달 마지막 날짜
-    _prev_mo = selected_month - 1 if selected_month > 1 else 12
-    _prev_yr = selected_year if selected_month > 1 else selected_year - 1
-    _prev_days_in_mo = _cal.monthrange(_prev_yr, _prev_mo)[1]
+    # ── 2열 레이아웃: 좌=근무통계(4) / 우=달력(6) ──
+    _att_left, _att_right = st.columns([4, 6], gap="small")
 
-    first_wd = (datetime.date(selected_year, selected_month, 1).weekday() + 1) % 7
-    WD_LABELS = ["일", "월", "화", "수", "목", "금", "토"]
-    WD_CLR    = ["#E53935", "#424242", "#424242", "#424242", "#424242", "#424242", "#1565C0"]
-
-    _TH = ("font-size:26px;font-weight:700;text-align:center;padding:10px 2px 8px;"
-           "background:#fff;border-bottom:1px solid #EEEEEE;")
-    _TD     = ("vertical-align:top;padding:8px 5px 6px;border-top:1px solid #F0F0F0;"
-               "height:140px;width:14.28%;overflow:hidden;")
-    _TD_DIM = _TD + "background:#FAFAFA;"
-
-    html_cal  = '<div style="background:#fff;border-radius:16px;overflow:hidden;'
-    html_cal += 'box-shadow:0 2px 10px rgba(0,0,0,0.09);margin:6px 0 16px;">'
-    html_cal += '<table style="width:100%;border-collapse:collapse;table-layout:fixed;">'
-    html_cal += '<thead><tr>'
-    for _wd, _wc in zip(WD_LABELS, WD_CLR):
-        html_cal += f'<th style="{_TH}color:{_wc};">{_wd}</th>'
-    html_cal += '</tr></thead><tbody><tr>'
-
-    cell_idx = 0
-    for _pi in range(first_wd):
-        _pd = _prev_days_in_mo - first_wd + 1 + _pi
-        html_cal += f'<td style="{_TD_DIM}"><div style="text-align:center;font-size:28px;font-weight:700;color:#DCDCDC;">{_pd}</div></td>'
-        cell_idx += 1
-
-    for dn in range(1, days_in_month + 1):
-        d = datetime.date(selected_year, selected_month, dn)
-        wi = (d.weekday() + 1) % 7
-        is_today = (d == today)
-        hol = _get_holiday_name(d)
-        shift_lbl, shift_clr = _mini_shift(d)
-        _d_str = d.strftime("%Y-%m-%d")
-
-        if is_today:
-            _day_num_html = (
-                f'<span style="display:inline-flex;align-items:center;justify-content:center;'
-                f'background:#1A1A1A;color:#fff;border-radius:50%;'
-                f'width:42px;height:42px;font-size:22px;font-weight:900;line-height:42px;">{dn}</span>'
-            )
+    with _att_left:
+        # --------- 근무 통계 타이틀 + 이름 버튼 ---------
+        st.markdown(f"### {selected_year}년 {selected_month}월 근무 통계")
+        if shift_type != "4조3교대":
+            st.info("상세 통계는 4조3교대 근무 형태에서만 지원됩니다.")
         else:
-            _dc = "#E53935" if (wi == 0 or hol) else ("#1565C0" if wi == 6 else "#212121")
-            _fw = "600" if hol else "400"
-            _day_num_html = f'<span style="font-size:28px;color:{_dc};font-weight:700;">{dn}</span>'
+            _조_map = {v: k for k, v in MEMBERS.items()}
+            _btn_cols = st.columns(len(ALL_MEMBERS))
+            for _bi, _nm in enumerate(ALL_MEMBERS):
+                with _btn_cols[_bi]:
+                    _조 = _조_map.get(_nm, "")
+                    if st.button(
+                        f"{_nm}\n({_조}조)",
+                        key=f"att_stat_{_nm}",
+                        use_container_width=True,
+                    ):
+                        _tk2 = next((k for k,v in MEMBERS.items() if v==_nm), None)
+                        _mblks2 = []
+                        _obd2 = {}
+                        if _tk2:
+                            _ms2 = datetime.date(selected_year, selected_month, 1)
+                            _next_mo = selected_month % 12 + 1
+                            _next_yr = selected_year + (1 if selected_month==12 else 0)
+                            _me2 = datetime.date(_next_yr, _next_mo, 1) - datetime.timedelta(days=1)
+                            _ss3 = _ms2 - datetime.timedelta(days=6)
+                            _se3 = _me2 + datetime.timedelta(days=6)
+                            for _dd2 in stats[_nm].get("대근내역", []):
+                                _obd2[_dd2["날짜"]] = _obd2.get(_dd2["날짜"], 0) + _dd2["시간"]
+                            for _ds5,_dd5 in daily_details.items():
+                                if _ds5 in _obd2: continue
+                                _sh5=_dd5.get("shift",{})
+                                if not _sh5.get("is_2person"):
+                                    for _sk5,_ok5 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                                        if _sh5.get(_sk5)==_nm:
+                                            _ot5=_sff_s(_sh5.get(f"{_ok5}_연장",0))
+                                            if _ot5>0: _obd2[_ds5]=_ot5
+                                            break
+                            _wseq2 = []
+                            _dd6 = _ss3
+                            while _dd6 <= _se3:
+                                _idx3 = (_dd6-_BASE_DATE).days % 20
+                                _c1b,_c2b,_c3b,_ = _CYCLE_20[_idx3]
+                                if _tk2 in (_c1b,_c2b,_c3b):
+                                    _wseq2.append((_dd6, _obd2.get(_dd6.strftime("%Y-%m-%d"),0)))
+                                _dd6 += datetime.timedelta(days=1)
+                            _blks2 = []
+                            if _wseq2:
+                                _cb2=[_wseq2[0]]
+                                for _ii3 in range(1,len(_wseq2)):
+                                    if (_wseq2[_ii3][0]-_wseq2[_ii3-1][0]).days==1: _cb2.append(_wseq2[_ii3])
+                                    else: _blks2.append(_cb2); _cb2=[_wseq2[_ii3]]
+                                _blks2.append(_cb2)
+                            _mblks2=[b for b in _blks2 if b[-1][0]>=_ms2 and b[0][0]<=_me2]
 
-        _badge_html = ""
-        if shift_type == "4조3교대":
-            # 전체 4명 근무자 오버레이 (저장 데이터 우선, 없으면 자동계산)
-            _4s_COLORS = {"1근": "#1565C0", "2근": "#2E7D32", "3근": "#C62828",
-                          "주간": "#1565C0", "야간": "#C62828", "휴무": "#9E9E9E"}
-            _4s_badges = []
-            if _d_str in daily_details:
-                _sh_d = daily_details[_d_str].get("shift", {})
-                if _sh_d.get("is_2person"):
-                    _slots4 = [
-                        ("주간", _sh_d.get("1근_근무자", ""), "#1565C0"),
-                        ("야간", _sh_d.get("2근_근무자", ""), "#C62828"),
-                        ("휴무", _sh_d.get("휴무_근무자", ""), "#9E9E9E"),
-                    ]
+                        try:
+                            import holidays as _hh2
+                            _kr2=_hh2.SouthKorea(years=[selected_year,selected_year-1,selected_year+1])
+                        except Exception:
+                            _kr2=set()
+
+                        _SCOLS=["정상근로","유휴근로","휴일근로","연장근로","휴일연장","야간근로","휴일비근로","휴가비근로","스틸아카데미","항군교육","사내교육(1)","사내교육(1.5)","사외교육(1)","사외교육(1.5)","공가"]
+
+                        st.session_state["_att_dlg_data"] = {
+                            "nm": _nm, "s": stats[_nm],
+                            "yr_lv": year_leaves.get(_nm, []),
+                            "year": selected_year, "month": selected_month,
+                            "days_in_month": days_in_month,
+                            "daily_details": daily_details,
+                            "NIGHT_HOURS": NIGHT_HOURS,
+                            "MEMBERS": MEMBERS, "ALL_MEMBERS": ALL_MEMBERS,
+                            "_kr2": _kr2, "_SCOLS": _SCOLS,
+                            "base_leaves": base_leaves_s,
+                            "_obd": _obd2, "_mblks": _mblks2,
+                        }
+                        _att_stats_dialog()
+
+
+    with _att_right:
+        # 달력 헤더: < year month >  오늘  날짜선택
+        st.markdown(
+            "<style>"
+            "[data-testid='stHorizontalBlock']:has([data-testid='att_cal_hdr']) button {"
+            "  min-height:0!important; padding:4px 10px!important; font-size:13px!important;"
+            "}"
+            "</style>",
+            unsafe_allow_html=True,
+        )
+        # 달력 헤더: < [년월 버튼] >  오늘
+        _gcl_p, _gcl_title, _gcl_n, _gcl_sp, _gcl_today = st.columns([0.5, 4, 0.5, 0.5, 1])
+        with _gcl_p:
+            if st.button("❮", key="att_prev_mo", use_container_width=True):
+                if selected_month == 1:
+                    st.session_state["att_cal_year"]  -= 1
+                    st.session_state["att_cal_month"]  = 12
                 else:
-                    _slots4 = [
-                        ("1근", _sh_d.get("1근_근무자", ""), "#1565C0"),
-                        ("2근", _sh_d.get("2근_근무자", ""), "#2E7D32"),
-                        ("3근", _sh_d.get("3근_근무자", ""), "#C62828"),
-                        ("휴무", _sh_d.get("휴무_근무자", ""), "#9E9E9E"),
-                    ]
-            else:
-                _auto4 = _shift_for_date(d, MEMBERS)
-                _slots4 = [
-                    ("1근", _auto4.get("1근_근무자", ""), "#1565C0"),
-                    ("2근", _auto4.get("2근_근무자", ""), "#2E7D32"),
-                    ("3근", _auto4.get("3근_근무자", ""), "#C62828"),
-                    ("휴무", _auto4.get("휴무_근무자", ""), "#9E9E9E"),
-                ]
-            for _slbl, _snm, _sclr in _slots4:
-                if _snm:
-                    _short = _snm[:3]
-                    # 연한 배경 + 컬러 텍스트 (눈에 편한 파스텔 스타일)
-                    _light = _sclr + "18"  # hex alpha ~10%
-                    _4s_badges.append(
-                        f'<div style="color:{_sclr};border-left:3px solid {_sclr};'
-                        f'background:transparent;'
-                        f'font-size:11px;font-weight:600;padding:0 4px;margin-top:3px;'
-                        f'line-height:1.5;display:block;max-width:100%;overflow:hidden;'
-                        f'white-space:nowrap;text-overflow:ellipsis;">'
-                        f'{_slbl}&thinsp;{_short}</div>'
-                    )
-            _badge_html = "".join(_4s_badges)
-        else:
-            # 전체 조 오버레이 (비-4조3교대)
-            _ALL_TEAM_LABELS = {"3조3교대": ["A조","B조","C조"], "2조2교대": ["A조","B조"], "4조2교대": ["A조","B조","C조","D조"]}
-            _TEAM_COLORS = {"A조":"#1565C0","B조":"#2E7D32","C조":"#C62828","D조":"#6A1B9A"}
-            _SHIFT_FN = {"3조3교대": _shift_for_date_3s3, "2조2교대": _shift_for_date_2s2, "4조2교대": _shift_for_date_4s2}
-            _teams = _ALL_TEAM_LABELS.get(shift_type, [])
-            _fn = _SHIFT_FN.get(shift_type)
-            _badges = []
-            for _tm in _teams:
-                _ts = _fn(d, _tm[0]) if _fn else ""
-                if _ts and _ts != "휴무":
-                    _tc = _TEAM_COLORS.get(_tm, "#888")
-                    _badges.append(
-                        f'<div style="background:{_tc};color:#fff;border-radius:4px;'
-                        f'font-size:10px;font-weight:600;padding:1px 5px;margin-top:2px;'
-                        f'display:inline-block;max-width:100%;overflow:hidden;white-space:nowrap;'
-                        f'text-overflow:ellipsis;">{_tm}&nbsp;{_ts}</div>'
-                    )
-            _badge_html = "".join(_badges)
+                    st.session_state["att_cal_month"] -= 1
+                st.rerun()
+        with _gcl_title:
+            if st.button(
+                f"{selected_year}년 {selected_month}월",
+                key="att_ym_btn",
+                use_container_width=True,
+                help="클릭하면 날짜를 선택할 수 있습니다",
+            ):
+                st.session_state["_att_dlg_pick_init"] = datetime.date(selected_year, selected_month, 1)
+                _att_date_picker_dialog()
+        with _gcl_n:
+            if st.button("❯", key="att_next_mo", use_container_width=True):
+                if selected_month == 12:
+                    st.session_state["att_cal_year"]  += 1
+                    st.session_state["att_cal_month"]  = 1
+                else:
+                    st.session_state["att_cal_month"] += 1
+                st.rerun()
+        with _gcl_sp:
+            pass
+        with _gcl_today:
+            if st.button("오늘", key="att_today_btn", use_container_width=True):
+                st.session_state["att_cal_year"]  = today.year
+                st.session_state["att_cal_month"] = today.month
+                st.rerun()
 
-        _memo_html = ""
-        if _d_str in _memo_dates:
-            for _mt in _memo_dates[_d_str][:1]:
-                _txt = str(_mt)[:7]
-                _memo_html += (
-                    f'<div style="background:#F59E0B;color:#fff;border-radius:5px;'
-                    f'font-size:10px;padding:2px 5px;margin-top:2px;'
-                    f'display:inline-block;max-width:calc(100% - 2px);overflow:hidden;'
-                    f'white-space:nowrap;text-overflow:ellipsis;">{_txt}</div>'
+        # 이전달 마지막 날짜
+        _prev_mo = selected_month - 1 if selected_month > 1 else 12
+        _prev_yr = selected_year if selected_month > 1 else selected_year - 1
+        _prev_days_in_mo = _cal.monthrange(_prev_yr, _prev_mo)[1]
+
+        first_wd = (datetime.date(selected_year, selected_month, 1).weekday() + 1) % 7
+        WD_LABELS = ["일", "월", "화", "수", "목", "금", "토"]
+        WD_CLR    = ["#E53935", "#424242", "#424242", "#424242", "#424242", "#424242", "#1565C0"]
+
+        # ── CSS: 달력 그리드 ──
+        st.markdown("""<style>
+        div[data-testid="stHorizontalBlock"]:has(div.cal-cell-curr),
+        div[data-testid="stHorizontalBlock"]:has(div.cal-cell-dim) {
+            gap: 0 !important; background: #fff;
+        }
+        div[data-testid="stColumn"]:has(div.cal-cell-curr) button {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 1px 4px 3px !important;
+            min-height: 0 !important;
+            height: auto !important;
+            font-size: 12px !important;
+            line-height: 1 !important;
+            color: #CCCCCC !important;
+            width: 100% !important;
+            text-align: right !important;
+        }
+        div[data-testid="stColumn"]:has(div.cal-cell-curr) button:hover {
+            color: #F57F17 !important;
+        }
+        </style>""", unsafe_allow_html=True)
+
+        # ── 요일 헤더 ──
+        st.markdown(
+            '<div style="display:flex;background:#fff;border-radius:16px 16px 0 0;'
+            'box-shadow:0 -2px 6px rgba(0,0,0,0.06);margin:6px 0 0;overflow:hidden;">'
+            + "".join(
+                f'<div style="flex:1;font-size:22px;font-weight:700;text-align:center;'
+                f'padding:10px 2px 8px;border-bottom:2px solid #EEEEEE;color:{wc};">{wd}</div>'
+                for wd, wc in zip(WD_LABELS, WD_CLR)
+            )
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+
+        # ── 셀 데이터 미리 계산 ──
+        _all_cells = []
+        for _pi in range(first_wd):
+            _all_cells.append({"type": "dim", "day": _prev_days_in_mo - first_wd + 1 + _pi})
+
+        for dn in range(1, days_in_month + 1):
+            d      = datetime.date(selected_year, selected_month, dn)
+            wi     = (d.weekday() + 1) % 7
+            is_tod = (d == today)
+            hol    = _get_holiday_name(d)
+            _d_str = d.strftime("%Y-%m-%d")
+            _, _   = _mini_shift(d), None  # mini_shift 호출 유지
+
+            if is_tod:
+                _dnh = (
+                    '<div style="text-align:center;margin-bottom:2px;">'
+                    '<span style="display:inline-flex;align-items:center;justify-content:center;'
+                    'background:#1A1A1A;color:#fff;border-radius:50%;'
+                    f'width:42px;height:42px;font-size:22px;font-weight:900;line-height:42px;">{dn}</span></div>'
+                )
+            else:
+                _dc = "#E53935" if (wi == 0 or hol) else ("#1565C0" if wi == 6 else "#212121")
+                _dnh = f'<div style="text-align:center;margin-bottom:2px;"><span style="font-size:28px;color:{_dc};font-weight:700;">{dn}</span></div>'
+
+            # 배지
+            _badge_html = ""
+            if shift_type == "4조3교대":
+                _base4 = _shift_for_date(d, MEMBERS)
+                _lv4   = _apply_leaves_stat(_base4, d, leave_list)
+                _4s_badges = []
+                if _lv4.get("is_2person"):
+                    _slots4 = [
+                        ("주간", _lv4.get("주간_근무자", ""), "#1565C0"),
+                        ("야간", _lv4.get("야간_근무자", ""), "#C62828"),
+                        ("휴가", _lv4.get("leave_person", ""), "#F57F17"),
+                        ("휴무", _lv4.get("휴무_근무자", ""), "#9E9E9E"),
+                    ]
+                elif _d_str in daily_details and daily_details[_d_str].get("shift", {}).get("1근_근무자"):
+                    _sh_d = daily_details[_d_str].get("shift", {})
+                    if _sh_d.get("is_2person"):
+                        _slots4 = [
+                            ("주간", _sh_d.get("주간_근무자") or _sh_d.get("1근_근무자", ""), "#1565C0"),
+                            ("야간", _sh_d.get("야간_근무자") or _sh_d.get("2근_근무자", ""), "#C62828"),
+                            ("휴무", _sh_d.get("휴무_근무자", ""), "#9E9E9E"),
+                        ]
+                    else:
+                        _slots4 = [
+                            ("1근", _sh_d.get("1근_근무자", ""), "#1565C0"),
+                            ("2근", _sh_d.get("2근_근무자", ""), "#2E7D32"),
+                            ("3근", _sh_d.get("3근_근무자", ""), "#C62828"),
+                            ("휴무", _sh_d.get("휴무_근무자", ""), "#9E9E9E"),
+                        ]
+                else:
+                    # shift 데이터 없으면 자동계산 사용
+                    _slots4 = [
+                        ("1근", _base4.get("1근_근무자", ""), "#1565C0"),
+                        ("2근", _base4.get("2근_근무자", ""), "#2E7D32"),
+                        ("3근", _base4.get("3근_근무자", ""), "#C62828"),
+                        ("휴무", _base4.get("휴무_근무자", ""), "#9E9E9E"),
+                    ]
+                for _slbl, _snm, _sclr in _slots4:
+                    if _snm:
+                        _short = _snm[:3]
+                        _4s_badges.append(
+                            f'<div style="color:{_sclr};border-left:3px solid {_sclr};'
+                            f'background:transparent;font-size:11px;font-weight:600;padding:0 4px;margin-top:3px;'
+                            f'line-height:1.5;display:block;max-width:100%;overflow:hidden;'
+                            f'white-space:nowrap;text-overflow:ellipsis;">{_slbl}&thinsp;{_short}</div>'
+                        )
+                _badge_html = "".join(_4s_badges)
+            else:
+                _ALL_TEAM_LABELS = {"3조3교대":["A조","B조","C조"],"2조2교대":["A조","B조"],"4조2교대":["A조","B조","C조","D조"]}
+                _TEAM_COLORS = {"A조":"#1565C0","B조":"#2E7D32","C조":"#C62828","D조":"#6A1B9A"}
+                _SHIFT_FN = {"3조3교대":_shift_for_date_3s3,"2조2교대":_shift_for_date_2s2,"4조2교대":_shift_for_date_4s2}
+                for _tm in _ALL_TEAM_LABELS.get(shift_type, []):
+                    _fn2 = _SHIFT_FN.get(shift_type)
+                    _ts2 = _fn2(d, _tm[0]) if _fn2 else ""
+                    if _ts2 and _ts2 != "휴무":
+                        _tc2 = _TEAM_COLORS.get(_tm, "#888")
+                        _badge_html += (
+                            f'<div style="background:{_tc2};color:#fff;border-radius:4px;'
+                            f'font-size:10px;font-weight:600;padding:1px 5px;margin-top:2px;'
+                            f'display:inline-block;max-width:100%;overflow:hidden;white-space:nowrap;'
+                            f'text-overflow:ellipsis;">{_tm}&nbsp;{_ts2}</div>'
+                        )
+
+            _memo_html = ""
+            if _d_str in _memo_dates:
+                for _mt in _memo_dates[_d_str][:1]:
+                    _txt = str(_mt)[:7]
+                    _memo_html += (
+                        f'<div style="background:#F59E0B;color:#fff;border-radius:5px;'
+                        f'font-size:10px;padding:2px 5px;margin-top:2px;'
+                        f'display:inline-block;max-width:calc(100% - 2px);overflow:hidden;'
+                        f'white-space:nowrap;text-overflow:ellipsis;">{_txt}</div>'
+                    )
+
+            _hol_html = ""
+            if hol:
+                _hol_html = (
+                    f'<div style="font-size:12px;font-weight:700;color:#E53935;margin-top:2px;line-height:1.2;'
+                    f'overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">{hol[:6]}</div>'
                 )
 
-        _hol_html = ""
-        if hol:
-            _hol_html = (
-                f'<div style="font-size:10px;color:#E53935;margin-top:2px;line-height:1.2;'
-                f'overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">{hol[:6]}</div>'
-            )
+            _note_txt = (daily_details.get(_d_str, {}).get("note") or "").strip()
+            _note_prev_html = ""
+            if _note_txt:
+                # 줄바꿈 유지: 각 줄 10자 이하로 잘라 <br> 연결
+                _np_lines = []
+                for _nl in _note_txt.splitlines()[:4]:
+                    _nl = _nl.strip()
+                    if _nl:
+                        _np_lines.append(_nl[:10] + ("…" if len(_nl) > 10 else ""))
+                _np_html = "<br>".join(_np_lines)
+                _note_prev_html = (
+                    f'<div style="font-size:11px;font-weight:700;color:#856404;background:#FFF9E6;'
+                    f'border-radius:3px;padding:1px 4px;margin-top:2px;overflow:hidden;">'
+                    f'{_np_html}</div>'
+                )
 
-        _cell_bg = "background:#E8F0FE;" if is_today else ""
-        html_cal += (
-            f'<td style="{_TD}{_cell_bg}">'
-            f'<div style="text-align:center;margin-bottom:2px;">{_day_num_html}</div>'
-            f'{_badge_html}{_hol_html}{_memo_html}'
-            f'</td>'
-        )
-        cell_idx += 1
-        if cell_idx % 7 == 0 and dn < days_in_month:
-            html_cal += '</tr><tr>'
+            _all_cells.append({
+                "type": "curr", "day": dn, "date": d, "date_str": _d_str,
+                "dnh": _dnh, "badge": _badge_html, "hol": _hol_html,
+                "memo": _memo_html, "note_prev": _note_prev_html,
+                "note_txt": _note_txt,
+                "bg": "#E8F0FE" if is_tod else "#fff",
+            })
 
-    _rem = (7 - cell_idx % 7) % 7
-    for _ni in range(1, _rem + 1):
-        html_cal += f'<td style="{_TD_DIM}"><div style="text-align:center;font-size:28px;font-weight:700;color:#DCDCDC;">{_ni}</div></td>'
+        _rem_cells = (7 - len(_all_cells) % 7) % 7
+        for _ni in range(1, _rem_cells + 1):
+            _all_cells.append({"type": "dim", "day": _ni})
 
-    html_cal += '</tr></tbody></table></div>'
-    st.markdown(html_cal, unsafe_allow_html=True)
+        # ── 주별 렌더링 ──
+        _trigger_note = None
+        for _ws in range(0, len(_all_cells), 7):
+            _week  = _all_cells[_ws:_ws + 7]
+            _bdr   = "border-top:1px solid #F0F0F0;" if _ws > 0 else ""
+            _wc2   = st.columns(7)
+            for _ci, _cell in enumerate(_week):
+                with _wc2[_ci]:
+                    if _cell["type"] == "dim":
+                        st.markdown(
+                            f'<div class="cal-cell-dim" style="{_bdr}min-height:155px;'
+                            f'padding:8px 5px 4px;background:#FAFAFA;">'
+                            f'<div style="text-align:center;font-size:28px;font-weight:700;color:#DCDCDC;">{_cell["day"]}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        _c = _cell
+                        st.markdown(
+                            f'<div class="cal-cell-curr" style="{_bdr}min-height:130px;'
+                            f'padding:8px 5px 0;background:{_c["bg"]};">'
+                            f'{_c["dnh"]}'
+                            f'<div style="display:inline-flex;gap:4px;align-items:flex-start;width:100%;flex-wrap:wrap;">'
+                            f'<div style="flex:0 0 auto;min-width:0;overflow:hidden;">{_c["badge"]}{_c["memo"]}</div>'
+                            f'<div style="flex:0 0 auto;min-width:0;overflow:hidden;">{_c["hol"]}{_c["note_prev"]}</div>'
+                            f'</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+                        _btn_lbl = "📝" if _c["note_txt"] else "✎"
+                        if st.button(
+                            _btn_lbl,
+                            key=f'cal_note_{_c["date_str"]}',
+                            use_container_width=True,
+                            help="특이사항 입력/보기",
+                        ):
+                            _trigger_note = _c
+
+
+    if _trigger_note:
+        _det = daily_details.get(_trigger_note["date_str"], {})
+        st.session_state["_att_cal_note_info"] = {
+            "date":     _trigger_note["date"],
+            "date_str": _trigger_note["date_str"],
+            "note":     _det.get("note", ""),
+            "shift":    _det.get("shift", {}),
+            "safety":   _det.get("safety", []),
+        }
+        _att_cal_note_dialog()
 
 
 
