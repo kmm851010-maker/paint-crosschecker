@@ -74,17 +74,16 @@ def load_work_items(selected_date: datetime.date):
 
 
 def get_monthly_totals(selected_date: datetime.date) -> dict:
+    """선택 날짜 이전(같은 달) 데이터만 합산. 오늘 포함 미래 제외."""
     try:
-        month_prefix = selected_date.replace(day=1).strftime("%Y-%m-")
-        today_str = selected_date.strftime("%Y-%m-%d")
-        _y, _m = selected_date.year, selected_date.replace(day=1).month
+        _y, _m = selected_date.year, selected_date.month
         _d1 = f"{_y:04d}-{_m:02d}-01"
-        _d2 = f"{_y:04d}-{_m:02d}-{calendar.monthrange(_y, _m)[1]:02d}"
-        res = _sb().table("work_items").select("name,total,date").gte("date", _d1).lte("date", _d2).execute()
+        _d2 = (selected_date - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+        if _d2 < _d1:  # 선택 날짜가 1일인 경우 이전 데이터 없음
+            return {}
+        res = _sb().table("work_items").select("name,total").gte("date", _d1).lte("date", _d2).execute()
         monthly = {}
         for r in res.data:
-            if r["date"] == today_str:
-                continue
             monthly[r["name"]] = monthly.get(r["name"], 0) + (r["total"] or 0)
         return monthly
     except Exception:
