@@ -3280,11 +3280,25 @@ def _att_cal_note_dialog():
     d    = info.get("date")
     if not d:
         return
-    _wd_kr = ["월","화","수","목","금","토","일"][d.weekday()]
-    st.markdown(f"**{d.year}년 {d.month}월 {d.day}일 ({_wd_kr})**")
+
+    # 기간 선택
+    _dc1, _dc2 = st.columns(2)
+    with _dc1:
+        _ds = st.date_input("시작일", value=d, key="att_cal_note_ds")
+    with _dc2:
+        _de = st.date_input("종료일", value=d, key="att_cal_note_de")
+
+    if _ds > _de:
+        st.warning("종료일이 시작일보다 이릅니다.")
+        _de = _ds
+
+    _days_cnt = (_de - _ds).days + 1
+    if _days_cnt > 1:
+        st.caption(f"📅 {_days_cnt}일간 동일한 특이사항이 저장됩니다.")
+
     st.markdown("---")
     _new_note = st.text_area(
-        "내용", value=info.get("note", ""), height=200,
+        "내용", value=info.get("note", ""), height=180,
         key="att_cal_note_ta",
         placeholder="특이사항을 입력하세요…",
         label_visibility="collapsed",
@@ -3293,9 +3307,12 @@ def _att_cal_note_dialog():
     with _nb1:
         if st.button("저장", use_container_width=True, key="att_cal_note_sv", type="primary"):
             from utils.supabase_db import save_daily_detail as _sdd2, load_daily_detail as _ldd2
-            _fresh = _ldd2(d) or {}
-            _sdd2(d, _fresh.get("shift", info.get("shift", {})),
-                  _fresh.get("safety", info.get("safety", [])), _new_note)
+            import datetime as _dt2
+            _cur = _ds
+            while _cur <= _de:
+                _fresh = _ldd2(_cur) or {}
+                _sdd2(_cur, _fresh.get("shift", {}), _fresh.get("safety", []), _new_note)
+                _cur += _dt2.timedelta(days=1)
             st.rerun()
     with _nb2:
         if st.button("닫기", use_container_width=True, key="att_cal_note_cl"):
