@@ -1369,9 +1369,12 @@ def page_work_log():
         with c3:
             st.markdown("**휴무**")
             off_name = st.text_input("휴무자", value=shift_auto["휴무_근무자"])
-            _off_opts_2p = ["교대휴무","주휴휴무","정기휴가","연차","특별휴가","명휴","생일휴가","공가","공상휴업","산재","휴직","대휴","교육","결근","조퇴","외출","청원휴가","공휴"]
-            _off_idx_2p = _off_opts_2p.index(shift_auto["휴무_구분"]) if shift_auto["휴무_구분"] in _off_opts_2p else 0
-            off_type = st.selectbox("휴무 구분", _off_opts_2p, index=_off_idx_2p)
+            off_type = shift_auto["휴무_구분"]
+            st.markdown(f"<span style='color:#555;font-size:13px;'>사유: <b>{off_type}</b></span>", unsafe_allow_html=True)
+            _lp = shift_auto.get("leave_person", "")
+            _lt = shift_auto.get("leave_type", "")
+            if _lp:
+                st.markdown(f"<span style='color:#C62828;font-size:13px;'>휴가: <b>{_lp}</b> ({_lt})</span>", unsafe_allow_html=True)
 
         shift_data_final = {
             "1근_조": shift_auto["주간_조"], "1근_근무자": day_name,
@@ -1404,9 +1407,8 @@ def page_work_log():
         with c4:
             st.markdown("**휴무**")
             off_name = st.text_input("휴무자", value=shift_auto["휴무_근무자"])
-            _off_opts_3p = ["교대휴무","주휴휴무","정기휴가","연차","특별휴가","명휴","생일휴가","공가","공상휴업","산재","휴직","대휴","교육","결근","조퇴","외출","청원휴가","공휴"]
-            _off_idx_3p = _off_opts_3p.index(shift_auto["휴무_구분"]) if shift_auto["휴무_구분"] in _off_opts_3p else 0
-            off_type = st.selectbox("휴무 구분", _off_opts_3p, index=_off_idx_3p)
+            off_type = shift_auto["휴무_구분"]
+            st.markdown(f"<span style='color:#555;font-size:13px;'>사유: <b>{off_type}</b></span>", unsafe_allow_html=True)
 
         shift_data_final = {
             "1근_조": shift_auto["1근_조"], "1근_근무자": s1_name,
