@@ -383,8 +383,8 @@ def _apply_leaves_stat(shift, target_date, leaves):
     result = shift.copy()
     for lv in leaves:
         try:
-            start = datetime.date.fromisoformat(lv["start"])
-            end = datetime.date.fromisoformat(lv["end"])
+            start = datetime.date.fromisoformat(lv["start"][:10])
+            end = datetime.date.fromisoformat(lv["end"][:10])
         except Exception:
             continue
         if start <= target_date <= end:
@@ -3983,16 +3983,24 @@ def page_attendance():
 
         _badge_html = ""
         if shift_type == "4조3교대":
-            # 전체 4명 근무자 오버레이 (저장 데이터 우선, 없으면 자동계산)
-            _4s_COLORS = {"1근": "#1565C0", "2근": "#2E7D32", "3근": "#C62828",
-                          "주간": "#1565C0", "야간": "#C62828", "휴무": "#9E9E9E"}
+            # leave_list 적용해서 2인/3인 결정 (휴가 우선)
+            _base4 = _shift_for_date(d, MEMBERS)
+            _lv4   = _apply_leaves_stat(_base4, d, leave_list)
             _4s_badges = []
-            if _d_str in daily_details:
+            if _lv4.get("is_2person"):
+                # 휴가 발생 → 주간/야간 2인 체계
+                _slots4 = [
+                    ("주간", _lv4.get("주간_근무자", ""), "#1565C0"),
+                    ("야간", _lv4.get("야간_근무자", ""), "#C62828"),
+                    ("휴가", _lv4.get("leave_person", ""), "#F57F17"),
+                    ("휴무", _lv4.get("휴무_근무자", ""), "#9E9E9E"),
+                ]
+            elif _d_str in daily_details:
                 _sh_d = daily_details[_d_str].get("shift", {})
                 if _sh_d.get("is_2person"):
                     _slots4 = [
-                        ("주간", _sh_d.get("1근_근무자", ""), "#1565C0"),
-                        ("야간", _sh_d.get("2근_근무자", ""), "#C62828"),
+                        ("주간", _sh_d.get("주간_근무자") or _sh_d.get("1근_근무자", ""), "#1565C0"),
+                        ("야간", _sh_d.get("야간_근무자") or _sh_d.get("2근_근무자", ""), "#C62828"),
                         ("휴무", _sh_d.get("휴무_근무자", ""), "#9E9E9E"),
                     ]
                 else:
@@ -4003,32 +4011,22 @@ def page_attendance():
                         ("휴무", _sh_d.get("휴무_근무자", ""), "#9E9E9E"),
                     ]
             else:
-                _auto4 = _shift_for_date(d, MEMBERS)
                 _slots4 = [
-                    ("1근", _auto4.get("1근_근무자", ""), "#1565C0"),
-                    ("2근", _auto4.get("2근_근무자", ""), "#2E7D32"),
-                    ("3근", _auto4.get("3근_근무자", ""), "#C62828"),
-                    ("휴무", _auto4.get("휴무_근무자", ""), "#9E9E9E"),
+                    ("1근", _base4.get("1근_근무자", ""), "#1565C0"),
+                    ("2근", _base4.get("2근_근무자", ""), "#2E7D32"),
+                    ("3근", _base4.get("3근_근무자", ""), "#C62828"),
+                    ("휴무", _base4.get("휴무_근무자", ""), "#9E9E9E"),
                 ]
             for _slbl, _snm, _sclr in _slots4:
                 if _snm:
                     _short = _snm[:3]
-                    # 휴가 여부 확인
-                    _is_lv = any(
-                        lv.get("name") == _snm and
-                        datetime.date.fromisoformat(lv["start"][:10]) <= d <= datetime.date.fromisoformat(lv["end"][:10])
-                        for lv in leave_list
-                        if lv.get("name") and lv.get("start") and lv.get("end")
-                    )
-                    _disp_clr = "#F57F17" if _is_lv else _sclr
-                    _disp_lbl = "휴가" if _is_lv else _slbl
                     _4s_badges.append(
-                        f'<div style="color:{_disp_clr};border-left:3px solid {_disp_clr};'
+                        f'<div style="color:{_sclr};border-left:3px solid {_sclr};'
                         f'background:transparent;'
                         f'font-size:11px;font-weight:600;padding:0 4px;margin-top:3px;'
                         f'line-height:1.5;display:block;max-width:100%;overflow:hidden;'
                         f'white-space:nowrap;text-overflow:ellipsis;">'
-                        f'{_disp_lbl}&thinsp;{_short}</div>'
+                        f'{_slbl}&thinsp;{_short}</div>'
                     )
             _badge_html = "".join(_4s_badges)
         else:
