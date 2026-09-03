@@ -4014,6 +4014,16 @@ def page_attendance():
         div[data-testid="stColumn"]:has(div.cal-cell-curr) button:hover {
             color: #F57F17 !important;
         }
+        /* 셀 내부 Streamlit 여백 제거 */
+        div[data-testid="stColumn"]:has(div.cal-cell-curr) [data-testid="stVerticalBlock"],
+        div[data-testid="stColumn"]:has(div.cal-cell-dim) [data-testid="stVerticalBlock"] {
+            gap: 0 !important;
+        }
+        div[data-testid="stColumn"]:has(div.cal-cell-curr) [data-testid="element-container"],
+        div[data-testid="stColumn"]:has(div.cal-cell-dim) [data-testid="element-container"] {
+            margin-bottom: 0 !important;
+            padding-bottom: 0 !important;
+        }
         </style>""", unsafe_allow_html=True)
 
         # ── 요일 헤더 ──
@@ -4047,11 +4057,11 @@ def page_attendance():
                     '<div style="text-align:center;margin-bottom:2px;">'
                     '<span style="display:inline-flex;align-items:center;justify-content:center;'
                     'background:#1A1A1A;color:#fff;border-radius:50%;'
-                    f'width:42px;height:42px;font-size:22px;font-weight:900;line-height:42px;">{dn}</span></div>'
+                    f'width:32px;height:32px;font-size:18px;font-weight:900;line-height:32px;">{dn}</span></div>'
                 )
             else:
                 _dc = "#E53935" if (wi == 0 or hol) else ("#1565C0" if wi == 6 else "#212121")
-                _dnh = f'<div style="text-align:center;margin-bottom:2px;"><span style="font-size:28px;color:{_dc};font-weight:700;">{dn}</span></div>'
+                _dnh = f'<div style="text-align:center;margin-bottom:2px;"><span style="font-size:20px;color:{_dc};font-weight:700;">{dn}</span></div>'
 
             # 배지
             _badge_html = ""
@@ -4094,7 +4104,7 @@ def page_attendance():
                         _short = _snm[:3]
                         _4s_badges.append(
                             f'<div style="color:{_sclr};border-left:3px solid {_sclr};'
-                            f'background:transparent;font-size:11px;font-weight:600;padding:0 4px;margin-top:3px;'
+                            f'background:transparent;font-size:10px;font-weight:600;padding:0 3px;margin-top:1px;'
                             f'line-height:1.5;display:block;max-width:100%;overflow:hidden;'
                             f'white-space:nowrap;text-overflow:ellipsis;">{_slbl}&thinsp;{_short}</div>'
                         )
@@ -4171,17 +4181,17 @@ def page_attendance():
                 with _wc2[_ci]:
                     if _cell["type"] == "dim":
                         st.markdown(
-                            f'<div class="cal-cell-dim" style="{_bdr}min-height:100px;'
-                            f'padding:4px 3px 4px;background:#FAFAFA;">'
-                            f'<div style="text-align:center;font-size:28px;font-weight:700;color:#DCDCDC;">{_cell["day"]}</div>'
+                            f'<div class="cal-cell-dim" style="{_bdr}min-height:75px;'
+                            f'padding:2px 3px 2px;background:#FAFAFA;">'
+                            f'<div style="text-align:center;font-size:20px;font-weight:700;color:#DCDCDC;">{_cell["day"]}</div>'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
                     else:
                         _c = _cell
                         st.markdown(
-                            f'<div class="cal-cell-curr" style="{_bdr}min-height:100px;'
-                            f'padding:4px 3px 0;background:{_c["bg"]};">'
+                            f'<div class="cal-cell-curr" style="{_bdr}min-height:75px;'
+                            f'padding:2px 3px 0;background:{_c["bg"]};">'
                             f'{_c["dnh"]}'
                             f'<div style="display:inline-flex;gap:4px;align-items:flex-start;width:100%;flex-wrap:wrap;">'
                             f'<div style="flex:0 0 auto;min-width:0;overflow:hidden;">{_c["badge"]}{_c["memo"]}</div>'
