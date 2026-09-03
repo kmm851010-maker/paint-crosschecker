@@ -1332,7 +1332,7 @@ const styles = StyleSheet.create({
   },
   scanListNum: { width: 22, color: "#888", fontSize: 12, textAlign: "center" },
   scanListProduct: { flex: 1.2, color: "#4AFF91", fontSize: 13, fontWeight: "700" },
-  scanListProductLatest: { flex: 1, color: "#4AFF91", fontSize: 27, fontWeight: "800" },
+  scanListProductLatest: { flex: 1.5, color: "#4AFF91", fontSize: 27, fontWeight: "800" },
   scanListLot: { flex: 1.5, color: "#ccc", fontSize: 12 },
   scanListLotLatest: { flex: 1.5, color: "#fff", fontSize: 22, fontWeight: "700" },
   scanListDelete: { color: "#ff5555", fontSize: 16, paddingHorizontal: 4 },
