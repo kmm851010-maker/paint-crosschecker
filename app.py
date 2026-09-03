@@ -4538,52 +4538,113 @@ def page_inventory():
         # 드럼별 체크박스 선택
         selected_lots = set()
 
-        def _render_group_expander(group_key, group_df, container=None):
+        def _render_group_detail(group_key, group_df):
+            """전체 너비 드럼 목록 렌더링"""
             cnt = len(group_df)
-            target = container if container else st
-            with target.expander(f"**{group_key}** — {cnt}드럼", expanded=False):
-                # 그룹별 전체선택 버튼
-                if sort_mode in ("섹터별", "제조사별", "품목별"):
-                    _grp_lots = group_df["lot"].tolist()
-                    _grp_all_sel = all(st.session_state.get(f"chk_{_l}", False) for _l in _grp_lots)
-                    _grp_btn_label = f"선택해제 ({cnt})" if _grp_all_sel else f"전체선택 ({cnt})"
-                    if st.button(_grp_btn_label, key=f"grpsel_{group_key}", type="secondary"):
-                        for _l in _grp_lots:
-                            st.session_state[f"chk_{_l}"] = not _grp_all_sel
-                        st.rerun()
-                # 헤더
-                h1, h2, h3, h4, h5, h6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
-                h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
-                h4.markdown("**제조사**")
-                if sort_mode not in ("섹터별",): h5.markdown("**섹터**")
-                h6.markdown("**등록시간**")
-                for _, row in group_df.iterrows():
-                    rs = row.get("returnStatus", "")
-                    sd = row.get("scanDisabled", "")
-                    return_emoji = "🔴" if rs == "불량" else "🟡" if rs == "기술" else "🔵" if rs == "무상" else ""
-                    scan_badge = " `스캔불가`" if sd == "Y" else ""
-                    c1, c2, c3, c4, c5, c6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
-                    checked = c1.checkbox("", key=f"chk_{row['lot']}", label_visibility="collapsed")
-                    if checked:
-                        selected_lots.add(row["lot"])
-                    _pfx = f"{return_emoji} " if return_emoji else ""
-                    c2.markdown(f"{_pfx}**{row.get('product','')}**{scan_badge}")
-                    c3.text(row.get("lot", ""))
-                    c4.text(row.get("maker", ""))
-                    if sort_mode not in ("섹터별",):
-                        c5.text(row.get("sector", ""))
-                    c6.text(row.get("registered", ""))
+            _grp_lots = group_df["lot"].tolist()
+            _grp_all_sel = all(st.session_state.get(f"chk_{_l}", False) for _l in _grp_lots)
+            _grp_btn_label = f"선택해제 ({cnt})" if _grp_all_sel else f"전체선택 ({cnt})"
+            if st.button(_grp_btn_label, key=f"grpsel_{group_key}", type="secondary"):
+                for _l in _grp_lots:
+                    st.session_state[f"chk_{_l}"] = not _grp_all_sel
+                st.rerun()
+            h1, h2, h3, h4, h5, h6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+            h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
+            h4.markdown("**제조사**")
+            if sort_mode not in ("섹터별",): h5.markdown("**섹터**")
+            h6.markdown("**등록시간**")
+            for _, row in group_df.iterrows():
+                rs = row.get("returnStatus", "")
+                sd = row.get("scanDisabled", "")
+                return_emoji = "🔴" if rs == "불량" else "🟡" if rs == "기술" else "🔵" if rs == "무상" else ""
+                scan_badge = " `스캔불가`" if sd == "Y" else ""
+                c1, c2, c3, c4, c5, c6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+                checked = c1.checkbox("", key=f"chk_{row['lot']}", label_visibility="collapsed")
+                if checked:
+                    selected_lots.add(row["lot"])
+                _pfx = f"{return_emoji} " if return_emoji else ""
+                c2.markdown(f"{_pfx}**{row.get('product','')}**{scan_badge}")
+                c3.text(row.get("lot", ""))
+                c4.text(row.get("maker", ""))
+                if sort_mode not in ("섹터별",):
+                    c5.text(row.get("sector", ""))
+                c6.text(row.get("registered", ""))
 
         _all_groups = list(df_filtered.groupby(group_col, sort=False))
+
         if sort_mode in ("섹터별", "품목별"):
-            # 3열 그리드
+            # ── 카드 그리드 + 아래 전체너비 펼침 ──
+            _active_key = st.session_state.get("inv_active_group")
+            _group_keys = [gk for gk, _ in _all_groups]
+            if _active_key not in _group_keys:
+                _active_key = None
+                st.session_state.pop("inv_active_group", None)
+
             for _gi in range(0, len(_all_groups), 3):
-                _row_cols = st.columns(3)
-                for _ci, (group_key, group_df) in enumerate(_all_groups[_gi:_gi + 3]):
-                    _render_group_expander(group_key, group_df, _row_cols[_ci])
+                _row_slice = _all_groups[_gi:_gi + 3]
+                _card_cols = st.columns(3)
+                for _ci, (group_key, group_df) in enumerate(_row_slice):
+                    cnt = len(group_df)
+                    _is_active = (group_key == _active_key)
+                    _sel_cnt = sum(1 for _l in group_df["lot"].tolist() if st.session_state.get(f"chk_{_l}", False))
+                    _sel_badge = f" ✓{_sel_cnt}" if _sel_cnt else ""
+                    _card_label = f"{'▼ ' if _is_active else ''}{group_key}  {cnt}드럼{_sel_badge}"
+                    with _card_cols[_ci]:
+                        if st.button(_card_label, key=f"inv_card_{group_key}",
+                                     use_container_width=True, type="secondary"):
+                            if _is_active:
+                                st.session_state.pop("inv_active_group", None)
+                            else:
+                                st.session_state["inv_active_group"] = group_key
+                            st.rerun()
+
+                # 이 행(3개 카드)에 활성 그룹이 있으면 아래 전체너비로 펼침
+                _active_in_row = next(
+                    ((gk, gdf) for gk, gdf in _row_slice if gk == _active_key), None
+                )
+                if _active_in_row:
+                    _akey, _adf = _active_in_row
+                    st.markdown(
+                        f"<div style='background:#F0F4FF;border-left:4px solid #1565C0;"
+                        f"padding:10px 16px 4px;margin:4px 0 8px;border-radius:0 8px 8px 0;"
+                        f"font-weight:700;color:#1565C0;'>{_akey} — {len(_adf)}드럼</div>",
+                        unsafe_allow_html=True
+                    )
+                    _render_group_detail(_akey, _adf)
+                    st.markdown("---")
         else:
             for group_key, group_df in _all_groups:
-                _render_group_expander(group_key, group_df)
+                cnt = len(group_df)
+                with st.expander(f"**{group_key}** — {cnt}드럼", expanded=False):
+                    if sort_mode in ("제조사별",):
+                        _grp_lots = group_df["lot"].tolist()
+                        _grp_all_sel = all(st.session_state.get(f"chk_{_l}", False) for _l in _grp_lots)
+                        _grp_btn_label = f"선택해제 ({cnt})" if _grp_all_sel else f"전체선택 ({cnt})"
+                        if st.button(_grp_btn_label, key=f"grpsel_{group_key}", type="secondary"):
+                            for _l in _grp_lots:
+                                st.session_state[f"chk_{_l}"] = not _grp_all_sel
+                            st.rerun()
+                    h1, h2, h3, h4, h5, h6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+                    h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
+                    h4.markdown("**제조사**")
+                    if sort_mode not in ("섹터별",): h5.markdown("**섹터**")
+                    h6.markdown("**등록시간**")
+                    for _, row in group_df.iterrows():
+                        rs = row.get("returnStatus", "")
+                        sd = row.get("scanDisabled", "")
+                        return_emoji = "🔴" if rs == "불량" else "🟡" if rs == "기술" else "🔵" if rs == "무상" else ""
+                        scan_badge = " `스캔불가`" if sd == "Y" else ""
+                        c1, c2, c3, c4, c5, c6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+                        checked = c1.checkbox("", key=f"chk_{row['lot']}", label_visibility="collapsed")
+                        if checked:
+                            selected_lots.add(row["lot"])
+                        _pfx = f"{return_emoji} " if return_emoji else ""
+                        c2.markdown(f"{_pfx}**{row.get('product','')}**{scan_badge}")
+                        c3.text(row.get("lot", ""))
+                        c4.text(row.get("maker", ""))
+                        if sort_mode not in ("섹터별",):
+                            c5.text(row.get("sector", ""))
+                        c6.text(row.get("registered", ""))
 
         # 선택 항목 엑셀 다운로드
         if selected_lots:
