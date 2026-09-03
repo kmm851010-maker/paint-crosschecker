@@ -406,7 +406,7 @@ def _apply_leaves_stat(shift, target_date, leaves):
 
 
 # ══════════════════════════════════════
-# 메뉴 1: 생산계획 vs 입고 교차검증
+# 메뉴 1: 입고관리
 # ══════════════════════════════════════
 def page_cross_check():
     from modules.erp_parser import process_erp_file
@@ -414,7 +414,7 @@ def page_cross_check():
     from modules.excel_generator import generate_report
     from utils.formatter import style_result_table, format_summary
 
-    st.title("생산계획 vs 입고 교차검증")
+    st.title("입고관리")
 
     # ── 2단 레이아웃 ──
     col_plan, col_erp = st.columns(2)
@@ -3613,7 +3613,7 @@ def page_attendance():
     selected_month = st.session_state["att_cal_month"]
 
     # ── 헤더 행: 제목 | 휴가/연장신청서 | 근무형태 ──
-    _h1, _h2, _h3 = st.columns([4, 1.5, 0.8])
+    _h1, _h2, _h3, _h4 = st.columns([4, 1.5, 0.8, 0.4])
     with _h1:
         st.markdown("## 근태관리")
     with _h2:
@@ -3634,6 +3634,9 @@ def page_attendance():
             help="다른근무형태 보기",
             label_visibility="collapsed",
         )
+    with _h4:
+        if st.button("🔄", key="att_refresh_btn", use_container_width=True, help="새로고침"):
+            st.rerun()
 
     _SHIFT_TEAMS = {"4조3교대": ALL_MEMBERS, "3조3교대": ["A조","B조","C조"], "2조2교대": ["A조","B조"], "4조2교대": ["A조","B조","C조","D조"]}
     selected_name = _SHIFT_TEAMS[shift_type][0]
@@ -4010,15 +4013,22 @@ def page_attendance():
             for _slbl, _snm, _sclr in _slots4:
                 if _snm:
                     _short = _snm[:3]
-                    # 연한 배경 + 컬러 텍스트 (눈에 편한 파스텔 스타일)
-                    _light = _sclr + "18"  # hex alpha ~10%
+                    # 휴가 여부 확인
+                    _is_lv = any(
+                        lv.get("name") == _snm and
+                        datetime.date.fromisoformat(lv["start"][:10]) <= d <= datetime.date.fromisoformat(lv["end"][:10])
+                        for lv in leave_list
+                        if lv.get("name") and lv.get("start") and lv.get("end")
+                    )
+                    _disp_clr = "#F57F17" if _is_lv else _sclr
+                    _disp_lbl = "휴가" if _is_lv else _slbl
                     _4s_badges.append(
-                        f'<div style="color:{_sclr};border-left:3px solid {_sclr};'
+                        f'<div style="color:{_disp_clr};border-left:3px solid {_disp_clr};'
                         f'background:transparent;'
                         f'font-size:11px;font-weight:600;padding:0 4px;margin-top:3px;'
                         f'line-height:1.5;display:block;max-width:100%;overflow:hidden;'
                         f'white-space:nowrap;text-overflow:ellipsis;">'
-                        f'{_slbl}&thinsp;{_short}</div>'
+                        f'{_disp_lbl}&thinsp;{_short}</div>'
                     )
             _badge_html = "".join(_4s_badges)
         else:
