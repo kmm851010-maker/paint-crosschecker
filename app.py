@@ -3940,6 +3940,13 @@ def page_attendance():
 
     with _att_right:
         # 달력 헤더: < year month >  오늘
+        # 헤더 행 버튼 색상: 4번째 직계 stColumn 마커로 정확히 헤더만 타겟
+        st.markdown("""<style>
+        [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"]:nth-child(4) span#att-cal-hdr) button {
+            color: #333333 !important;
+            font-weight: 700 !important;
+        }
+        </style>""", unsafe_allow_html=True)
         _gcl_p, _gcl_title, _gcl_n, _gcl_sp, _gcl_today = st.columns([0.5, 4, 0.5, 0.5, 1])
         with _gcl_p:
             if st.button("❮", key="att_prev_mo", use_container_width=True):
@@ -3967,7 +3974,7 @@ def page_attendance():
                     st.session_state["att_cal_month"] += 1
                 st.rerun()
         with _gcl_sp:
-            pass
+            st.markdown("<span id='att-cal-hdr'></span>", unsafe_allow_html=True)
         with _gcl_today:
             if st.button("오늘", key="att_today_btn", use_container_width=True):
                 st.session_state["att_cal_year"]  = today.year
