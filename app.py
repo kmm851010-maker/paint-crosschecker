@@ -3274,13 +3274,19 @@ div[data-testid="column"]:has(.ctoday) button {
 # 근태관리 다이얼로그 (모듈 수준)
 # ══════════════════════════════════════
 
-@st.dialog("날짜 이동", width="small")
+@st.dialog("년월 선택", width="small")
 def _att_date_picker_dialog():
     _init = st.session_state.get("_att_dlg_pick_init", datetime.date.today())
-    _picked = st.date_input("이동할 날짜", value=_init, key="att_date_pick_input")
+    _cur_y = _init.year
+    _cur_m = _init.month
+    _py, _pm = st.columns(2)
+    with _py:
+        _sel_y = st.selectbox("년", list(range(_cur_y - 5, _cur_y + 6)), index=5, key="att_pick_year")
+    with _pm:
+        _sel_m = st.selectbox("월", list(range(1, 13)), index=_cur_m - 1, key="att_pick_month")
     if st.button("이동", use_container_width=True, key="att_date_pick_go"):
-        st.session_state["att_cal_year"]  = _picked.year
-        st.session_state["att_cal_month"] = _picked.month
+        st.session_state["att_cal_year"]  = _sel_y
+        st.session_state["att_cal_month"] = _sel_m
         st.rerun()
 
 
