@@ -4107,7 +4107,7 @@ def page_attendance():
         _hol_html = ""
         if hol:
             _hol_html = (
-                f'<div style="font-size:10px;color:#E53935;margin-top:2px;line-height:1.2;'
+                f'<div style="font-size:12px;font-weight:700;color:#E53935;margin-top:2px;line-height:1.2;'
                 f'overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">{hol[:6]}</div>'
             )
 
@@ -4116,7 +4116,7 @@ def page_attendance():
         if _note_txt:
             _np = _note_txt[:12] + ("…" if len(_note_txt) > 12 else "")
             _note_prev_html = (
-                f'<div style="font-size:9px;color:#856404;background:#FFF9E6;'
+                f'<div style="font-size:11px;font-weight:700;color:#856404;background:#FFF9E6;'
                 f'border-radius:3px;padding:1px 4px;margin-top:2px;overflow:hidden;'
                 f'white-space:nowrap;text-overflow:ellipsis;">{_np}</div>'
             )
@@ -4155,9 +4155,9 @@ def page_attendance():
                         f'<div class="cal-cell-curr" style="{_bdr}min-height:130px;'
                         f'padding:8px 5px 0;background:{_c["bg"]};">'
                         f'{_c["dnh"]}'
-                        f'<div style="display:flex;gap:3px;align-items:flex-start;">'
-                        f'<div style="flex:1;min-width:0;overflow:hidden;">{_c["badge"]}{_c["memo"]}</div>'
-                        f'<div style="flex:0 0 auto;max-width:46%;text-align:right;min-width:0;overflow:hidden;">{_c["hol"]}{_c["note_prev"]}</div>'
+                        f'<div style="display:inline-flex;gap:4px;align-items:flex-start;width:100%;flex-wrap:wrap;">'
+                        f'<div style="flex:0 0 auto;min-width:0;overflow:hidden;">{_c["badge"]}{_c["memo"]}</div>'
+                        f'<div style="flex:0 0 auto;min-width:0;overflow:hidden;">{_c["hol"]}{_c["note_prev"]}</div>'
                         f'</div>'
                         f'</div>',
                         unsafe_allow_html=True,
