@@ -3861,83 +3861,81 @@ def page_attendance():
 
 
     # ── 2열 레이아웃: 좌=근무통계(4) / 우=달력(6) ──
-    _att_left, _att_right = st.columns([4, 6], gap="small")
+    _att_left, _att_right = st.columns([2, 8], gap="small")
 
     with _att_left:
         # --------- 근무 통계 타이틀 + 이름 버튼 ---------
-        st.markdown(f"### {selected_year}년 {selected_month}월 근무 통계")
+        st.markdown(f"<div style='font-size:14px;font-weight:700;white-space:nowrap;margin-bottom:8px;'>{selected_year}년 {selected_month}월 근무 통계</div>", unsafe_allow_html=True)
         if shift_type != "4조3교대":
             st.info("상세 통계는 4조3교대 근무 형태에서만 지원됩니다.")
         else:
             _조_map = {v: k for k, v in MEMBERS.items()}
-            _btn_cols = st.columns(len(ALL_MEMBERS))
             for _bi, _nm in enumerate(ALL_MEMBERS):
-                with _btn_cols[_bi]:
-                    _조 = _조_map.get(_nm, "")
-                    if st.button(
-                        f"{_nm}\n({_조}조)",
-                        key=f"att_stat_{_nm}",
-                        use_container_width=True,
-                    ):
-                        _tk2 = next((k for k,v in MEMBERS.items() if v==_nm), None)
-                        _mblks2 = []
-                        _obd2 = {}
-                        if _tk2:
-                            _ms2 = datetime.date(selected_year, selected_month, 1)
-                            _next_mo = selected_month % 12 + 1
-                            _next_yr = selected_year + (1 if selected_month==12 else 0)
-                            _me2 = datetime.date(_next_yr, _next_mo, 1) - datetime.timedelta(days=1)
-                            _ss3 = _ms2 - datetime.timedelta(days=6)
-                            _se3 = _me2 + datetime.timedelta(days=6)
-                            for _dd2 in stats[_nm].get("대근내역", []):
-                                _obd2[_dd2["날짜"]] = _obd2.get(_dd2["날짜"], 0) + _dd2["시간"]
-                            for _ds5,_dd5 in daily_details.items():
-                                if _ds5 in _obd2: continue
-                                _sh5=_dd5.get("shift",{})
-                                if not _sh5.get("is_2person"):
-                                    for _sk5,_ok5 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
-                                        if _sh5.get(_sk5)==_nm:
-                                            _ot5=_sff_s(_sh5.get(f"{_ok5}_연장",0))
-                                            if _ot5>0: _obd2[_ds5]=_ot5
-                                            break
-                            _wseq2 = []
-                            _dd6 = _ss3
-                            while _dd6 <= _se3:
-                                _idx3 = (_dd6-_BASE_DATE).days % 20
-                                _c1b,_c2b,_c3b,_ = _CYCLE_20[_idx3]
-                                if _tk2 in (_c1b,_c2b,_c3b):
-                                    _wseq2.append((_dd6, _obd2.get(_dd6.strftime("%Y-%m-%d"),0)))
-                                _dd6 += datetime.timedelta(days=1)
-                            _blks2 = []
-                            if _wseq2:
-                                _cb2=[_wseq2[0]]
-                                for _ii3 in range(1,len(_wseq2)):
-                                    if (_wseq2[_ii3][0]-_wseq2[_ii3-1][0]).days==1: _cb2.append(_wseq2[_ii3])
-                                    else: _blks2.append(_cb2); _cb2=[_wseq2[_ii3]]
-                                _blks2.append(_cb2)
-                            _mblks2=[b for b in _blks2 if b[-1][0]>=_ms2 and b[0][0]<=_me2]
+                _조 = _조_map.get(_nm, "")
+                if st.button(
+                    f"{_nm}\n({_조}조)",
+                    key=f"att_stat_{_nm}",
+                    use_container_width=True,
+                ):
+                    _tk2 = next((k for k,v in MEMBERS.items() if v==_nm), None)
+                    _mblks2 = []
+                    _obd2 = {}
+                    if _tk2:
+                        _ms2 = datetime.date(selected_year, selected_month, 1)
+                        _next_mo = selected_month % 12 + 1
+                        _next_yr = selected_year + (1 if selected_month==12 else 0)
+                        _me2 = datetime.date(_next_yr, _next_mo, 1) - datetime.timedelta(days=1)
+                        _ss3 = _ms2 - datetime.timedelta(days=6)
+                        _se3 = _me2 + datetime.timedelta(days=6)
+                        for _dd2 in stats[_nm].get("대근내역", []):
+                            _obd2[_dd2["날짜"]] = _obd2.get(_dd2["날짜"], 0) + _dd2["시간"]
+                        for _ds5,_dd5 in daily_details.items():
+                            if _ds5 in _obd2: continue
+                            _sh5=_dd5.get("shift",{})
+                            if not _sh5.get("is_2person"):
+                                for _sk5,_ok5 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                                    if _sh5.get(_sk5)==_nm:
+                                        _ot5=_sff_s(_sh5.get(f"{_ok5}_연장",0))
+                                        if _ot5>0: _obd2[_ds5]=_ot5
+                                        break
+                        _wseq2 = []
+                        _dd6 = _ss3
+                        while _dd6 <= _se3:
+                            _idx3 = (_dd6-_BASE_DATE).days % 20
+                            _c1b,_c2b,_c3b,_ = _CYCLE_20[_idx3]
+                            if _tk2 in (_c1b,_c2b,_c3b):
+                                _wseq2.append((_dd6, _obd2.get(_dd6.strftime("%Y-%m-%d"),0)))
+                            _dd6 += datetime.timedelta(days=1)
+                        _blks2 = []
+                        if _wseq2:
+                            _cb2=[_wseq2[0]]
+                            for _ii3 in range(1,len(_wseq2)):
+                                if (_wseq2[_ii3][0]-_wseq2[_ii3-1][0]).days==1: _cb2.append(_wseq2[_ii3])
+                                else: _blks2.append(_cb2); _cb2=[_wseq2[_ii3]]
+                            _blks2.append(_cb2)
+                        _mblks2=[b for b in _blks2 if b[-1][0]>=_ms2 and b[0][0]<=_me2]
 
-                        try:
-                            import holidays as _hh2
-                            _kr2=_hh2.SouthKorea(years=[selected_year,selected_year-1,selected_year+1])
-                        except Exception:
-                            _kr2=set()
+                    try:
+                        import holidays as _hh2
+                        _kr2=_hh2.SouthKorea(years=[selected_year,selected_year-1,selected_year+1])
+                    except Exception:
+                        _kr2=set()
 
-                        _SCOLS=["정상근로","유휴근로","휴일근로","연장근로","휴일연장","야간근로","휴일비근로","휴가비근로","스틸아카데미","항군교육","사내교육(1)","사내교육(1.5)","사외교육(1)","사외교육(1.5)","공가"]
+                    _SCOLS=["정상근로","유휴근로","휴일근로","연장근로","휴일연장","야간근로","휴일비근로","휴가비근로","스틸아카데미","항군교육","사내교육(1)","사내교육(1.5)","사외교육(1)","사외교육(1.5)","공가"]
 
-                        st.session_state["_att_dlg_data"] = {
-                            "nm": _nm, "s": stats[_nm],
-                            "yr_lv": year_leaves.get(_nm, []),
-                            "year": selected_year, "month": selected_month,
-                            "days_in_month": days_in_month,
-                            "daily_details": daily_details,
-                            "NIGHT_HOURS": NIGHT_HOURS,
-                            "MEMBERS": MEMBERS, "ALL_MEMBERS": ALL_MEMBERS,
-                            "_kr2": _kr2, "_SCOLS": _SCOLS,
-                            "base_leaves": base_leaves_s,
-                            "_obd": _obd2, "_mblks": _mblks2,
-                        }
-                        _att_stats_dialog()
+                    st.session_state["_att_dlg_data"] = {
+                        "nm": _nm, "s": stats[_nm],
+                        "yr_lv": year_leaves.get(_nm, []),
+                        "year": selected_year, "month": selected_month,
+                        "days_in_month": days_in_month,
+                        "daily_details": daily_details,
+                        "NIGHT_HOURS": NIGHT_HOURS,
+                        "MEMBERS": MEMBERS, "ALL_MEMBERS": ALL_MEMBERS,
+                        "_kr2": _kr2, "_SCOLS": _SCOLS,
+                        "base_leaves": base_leaves_s,
+                        "_obd": _obd2, "_mblks": _mblks2,
+                    }
+                    _att_stats_dialog()
 
 
     with _att_right:
