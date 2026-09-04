@@ -425,14 +425,21 @@ export default function InventoryScreen() {
       const drumsToSend = sector === "입고존"
         ? batch.map(d => ({ ...d, scanDisabled: scanDis ?? false }))
         : batch;
-      await registerDrums(drumsToSend, sector);
+      const result = await registerDrums(drumsToSend, sector);
       const count = batch.length;
       setBatch([]);
       setIngoScanDisabled(false);
-      _alert(
-        "저장 완료",
-        sector === CHECKOUT ? `${count}드럼 라인입고 처리 완료` : `${count}드럼 → ${sector} 등록 완료\n계속 스캔할 수 있습니다.`
-      );
+      if (sector === CHECKOUT) {
+        _alert("저장 완료", `${count}드럼 라인입고 처리 완료`);
+      } else if (result.already_same.length > 0 && result.moved === 0) {
+        _alert("이미 등록된 장소", `이미 ${sector}에 등록되어 있습니다.`);
+      } else if (result.already_same.length > 0) {
+        _alert("등록 완료", `${result.moved}드럼 → ${sector} 등록 완료
+이미 ${sector}에 등록된 드럼: ${result.already_same.join(", ")}`);
+      } else {
+        _alert("저장 완료", `${result.moved}드럼 → ${sector} 등록 완료
+계속 스캔할 수 있습니다.`);
+      }
     } catch (e: any) {
       _alert("저장 실패", e.message);
     } finally {

@@ -67,6 +67,7 @@ def save_drums_to_sector(drums: list, sector: str):
     """드럼 목록을 지정 섹터에 등록/이동."""
     now = _kst_now()
     sb = _sb()
+    already_same = []  # 이미 같은 섹터에 등록된 드럼 LOT 목록
 
     for drum in drums:
         lot = drum["lot"]
@@ -77,6 +78,9 @@ def save_drums_to_sector(drums: list, sector: str):
         res = sb.table("inventory").select("lot,sector").eq("lot", lot).limit(1).execute()
         if res.data:
             prev_sector = res.data[0]["sector"]
+            if prev_sector == sector:
+                already_same.append(lot)
+                continue  # 같은 섹터 → 변경 없음
             sb.table("inventory").update({
                 "sector": sector, "registered_at": now, "updated_at": now, "scan_disabled": scan_dis,
             }).eq("lot", lot).execute()
@@ -95,7 +99,7 @@ def save_drums_to_sector(drums: list, sector: str):
                 "prev_sector": "", "new_sector": sector, "recorded_at": now,
             }).execute()
 
-    return True
+    return {"already_same": already_same, "moved": len(drums) - len(already_same)}
 
 
 def checkout_drums(drums: list):

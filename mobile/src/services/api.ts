@@ -163,7 +163,12 @@ export async function parseBarcodeText(rawText: string): Promise<DrumItem> {
   return response.json();
 }
 
-export async function registerDrums(drums: DrumItem[], sector: string): Promise<void> {
+export interface RegisterResult {
+  already_same: string[];  // 이미 같은 섹터에 등록된 LOT 목록
+  moved: number;           // 실제 이동/등록된 드럼 수
+}
+
+export async function registerDrums(drums: DrumItem[], sector: string): Promise<RegisterResult> {
   const response = await fetch(`${API_BASE_URL}/api/inventory/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -173,6 +178,8 @@ export async function registerDrums(drums: DrumItem[], sector: string): Promise<
     const error = await response.json().catch(() => ({ detail: "등록 실패" }));
     throw new Error(error.detail || `서버 오류 (${response.status})`);
   }
+  const data = await response.json();
+  return { already_same: data.already_same ?? [], moved: data.moved ?? drums.length };
 }
 
 export async function getSectorInventory(): Promise<SectorInventory> {
