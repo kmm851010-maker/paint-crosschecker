@@ -1471,10 +1471,15 @@ def page_work_log():
     _t_can_save = (_time_top.time() - _t_last_save) >= 20
     st.markdown(
         '<style>'
-        'button[data-testid="baseButton-primary"][title="저장"],'
-        'button[data-testid="stBaseButton-primary"][title="저장"]{'
-        '  padding:2px 6px !important;font-size:13px !important;'
-        '  height:1.6rem !important;min-height:unset !important;line-height:1 !important;}'
+        'button[data-testid="baseButton-secondary"][data-key="new_write"],'
+        'button[data-testid="stBaseButton-secondary"][data-key="new_write"],'
+        'button[data-testid="baseButton-primary"][data-key="top_save_btn"],'
+        'button[data-testid="stBaseButton-primary"][data-key="top_save_btn"]{'
+        '  padding:1px 8px !important;font-size:11px !important;'
+        '  height:1.4rem !important;min-height:unset !important;line-height:1 !important;}'
+        'div[data-testid="stButton"]:has(button[data-key="new_write"]),'
+        'div[data-testid="stButton"]:has(button[data-key="top_save_btn"]){'
+        '  display:flex;align-items:center;}'
         '</style>', unsafe_allow_html=True)
     if _grid_key in st.session_state:
         _nw_col, _sv_col, _ = st.columns([3, 1, 8])
