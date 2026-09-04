@@ -251,11 +251,13 @@ async def inventory_register(req: InventoryRegisterRequest):
     try:
         if req.sector in (CHECKOUT_SECTOR, RETURN_SECTOR):
             checkout_drums(drums)
+            return {"success": True, "count": len(drums), "sector": req.sector, "already_same": [], "moved": len(drums)}
         else:
-            save_drums_to_sector(drums, req.sector)
+            result = save_drums_to_sector(drums, req.sector)
+            return {"success": True, "count": len(drums), "sector": req.sector,
+                    "already_same": result["already_same"], "moved": result["moved"]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return {"success": True, "count": len(drums), "sector": req.sector}
 
 
 class ScanDisabledRequest(BaseModel):
