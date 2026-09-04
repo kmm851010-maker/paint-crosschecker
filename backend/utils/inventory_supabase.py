@@ -78,7 +78,7 @@ def save_drums_to_sector(drums: list, sector: str):
         if res.data:
             prev_sector = res.data[0]["sector"]
             sb.table("inventory").update({
-                "sector": sector, "updated_at": now, "scan_disabled": scan_dis,
+                "sector": sector, "registered_at": now, "updated_at": now, "scan_disabled": scan_dis,
             }).eq("lot", lot).execute()
             sb.table("inventory_history").insert({
                 "lot": lot, "product": product, "maker": maker,
