@@ -1470,7 +1470,7 @@ def page_work_log():
     _t_last_save = st.session_state.get('_last_save_ts', 0)
     import time as _time_top
     _t_can_save = (_time_top.time() - _t_last_save) >= 20
-    _top_cols = st.columns([5, 1])
+    _top_cols = st.columns([3, 1, 4])
     with _top_cols[0]:
         if _grid_key in st.session_state:
             if st.button('새로 작성 (저장 데이터 무시)', key='new_write'):
