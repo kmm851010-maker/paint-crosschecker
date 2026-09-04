@@ -1469,36 +1469,22 @@ def page_work_log():
     import time as _time_top
     _t_last_save = st.session_state.get('_last_save_ts', 0)
     _t_can_save = (_time_top.time() - _t_last_save) >= 20
-    st.markdown(
-        '<style>'
-        'button[data-testid="baseButton-secondary"][data-key="new_write"],'
-        'button[data-testid="stBaseButton-secondary"][data-key="new_write"],'
-        'button[data-testid="baseButton-primary"][data-key="top_save_btn"],'
-        'button[data-testid="stBaseButton-primary"][data-key="top_save_btn"]{'
-        '  padding:0px 4px !important;font-size:9px !important;'
-        '  height:0.9rem !important;min-height:unset !important;line-height:1 !important;}'
-        'div[data-testid="stButton"]:has(button[data-key="new_write"]),'
-        'div[data-testid="stButton"]:has(button[data-key="top_save_btn"]){'
-        '  display:flex;align-items:center;}'
-        '</style>', unsafe_allow_html=True)
     if _grid_key in st.session_state:
         _nw_col, _sv_col, _ = st.columns([3, 1, 8])
         with _nw_col:
-            if st.button('새로 작성 (저장 데이터 무시)', key='new_write', use_container_width=True):
+            if st.button('새로 작성 (저장 데이터 무시)', key='new_write'):
                 st.session_state.pop(_grid_key, None)
                 st.session_state.pop(f'wl_safety_{selected_date}', None)
                 st.session_state.pop(f'wl_note_{selected_date}', None)
                 st.rerun()
         with _sv_col:
             _top_save_clicked = st.button('💾', key='top_save_btn', type='primary',
-                                          disabled=not _t_can_save,
-                                          use_container_width=True, help='저장')
+                                          disabled=not _t_can_save, help='저장')
     else:
         _sv_col2, _ = st.columns([1, 11])
         with _sv_col2:
             _top_save_clicked = st.button('💾', key='top_save_btn', type='primary',
-                                          disabled=not _t_can_save,
-                                          use_container_width=True, help='저장')
+                                          disabled=not _t_can_save, help='저장')
     _top_status = st.empty()  # 저장 피드백용 플레이스홀더
 
     import pandas as _pd
