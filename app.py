@@ -245,13 +245,16 @@ st.sidebar.markdown("---")
 
 _VALID_PAGES = {"근태관리", "일일 작업 일지", "재고 현황", "입고 관리", "반품 관리"}
 if st.session_state.get("page") not in _VALID_PAGES:
-    st.session_state["page"] = "근태관리"
+    # 세션 만료·WebSocket 재연결 시 URL 파라미터에서 페이지 복원
+    _page_from_url = st.query_params.get("page", "근태관리")
+    st.session_state["page"] = _page_from_url if _page_from_url in _VALID_PAGES else "근태관리"
 
 def _nav(label, key):
     is_active = st.session_state["page"] == key
     if st.sidebar.button(label, use_container_width=True, key=f"nav_{key}",
                          type="primary" if is_active else "secondary"):
         st.session_state["page"] = key
+        st.query_params["page"] = key  # URL에 저장 → 세션 재연결 시 복원용
         st.rerun()
 
 st.sidebar.markdown("**KG 근태관리**")
