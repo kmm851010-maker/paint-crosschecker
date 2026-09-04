@@ -1744,8 +1744,8 @@ def page_work_log():
             st.session_state['_monthly_count'] = _mcount
             st.session_state['_monthly_ym']    = (selected_date.year, selected_date.month)
             if _top_save_clicked:
-                _top_status.success(f'저장 완료! {selected_date.month}월 Excel 준비됨 ({_mcount}일)')
-            st.success(f'저장 완료! {selected_date.month}월 Excel 준비됨 ({_mcount}일)')
+                _top_status.success('저장 완료!')
+            st.success('저장 완료!')
         except Exception as e:
             if _top_save_clicked:
                 _top_status.error(f'저장 실패: {type(e).__name__}: {e}')
