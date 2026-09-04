@@ -1465,26 +1465,27 @@ def page_work_log():
 
     loaded_detail = st.session_state.get(f"wl_detail_{selected_date}") or {}
 
-    # 새로 작성 / 저장 버튼
+    # 새로 작성 / 저장 버튼 (flex 가로 배치)
     import time as _time_top
     _t_last_save = st.session_state.get('_last_save_ts', 0)
     _t_can_save = (_time_top.time() - _t_last_save) >= 20
+    # flex CSS: 같은 컨테이너 내 버튼들을 가로로 붙임
+    st.markdown(
+        '<style>'
+        'div:has(>.wl-btn-flex){display:flex !important;flex-direction:row !important;'
+        'gap:4px !important;align-items:center !important;flex-wrap:wrap;}'
+        'div:has(>.wl-btn-flex)>div{flex:0 0 auto !important;width:auto !important;min-width:0 !important;}'
+        '</style>'
+        '<span class="wl-btn-flex"></span>',
+        unsafe_allow_html=True)
     if _grid_key in st.session_state:
-        _nw_col, _sv_col, _ = st.columns([3, 1, 8], gap='small')
-        with _nw_col:
-            if st.button('새로 작성 (저장 데이터 무시)', key='new_write'):
-                st.session_state.pop(_grid_key, None)
-                st.session_state.pop(f'wl_safety_{selected_date}', None)
-                st.session_state.pop(f'wl_note_{selected_date}', None)
-                st.rerun()
-        with _sv_col:
-            _top_save_clicked = st.button('💾', key='top_save_btn', type='primary',
-                                          disabled=not _t_can_save, help='저장')
-    else:
-        _sv_col2, _ = st.columns([1, 11])
-        with _sv_col2:
-            _top_save_clicked = st.button('💾', key='top_save_btn', type='primary',
-                                          disabled=not _t_can_save, help='저장')
+        if st.button('새로 작성 (저장 데이터 무시)', key='new_write'):
+            st.session_state.pop(_grid_key, None)
+            st.session_state.pop(f'wl_safety_{selected_date}', None)
+            st.session_state.pop(f'wl_note_{selected_date}', None)
+            st.rerun()
+    _top_save_clicked = st.button('💾', key='top_save_btn', type='primary',
+                                  disabled=not _t_can_save, help='저장')
     _top_status = st.empty()  # 저장 피드백용 플레이스홀더
 
     import pandas as _pd
