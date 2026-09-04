@@ -1465,30 +1465,15 @@ def page_work_log():
 
     loaded_detail = st.session_state.get(f"wl_detail_{selected_date}") or {}
 
-    # 새로 작성 / 상단 저장 버튼
+    # 새로 작성 버튼
     _top_save_clicked = False
-    _t_last_save = st.session_state.get('_last_save_ts', 0)
-    import time as _time_top
-    _t_can_save = (_time_top.time() - _t_last_save) >= 20
-    _btn_wrap, _ = st.columns([5, 7])
-    with _btn_wrap:
-        if _grid_key in st.session_state:
-            _tc1, _tc2 = st.columns([3, 1])
-            with _tc1:
-                if st.button('새로 작성 (저장 데이터 무시)', key='new_write', use_container_width=True):
-                    st.session_state.pop(_grid_key, None)
-                    st.session_state.pop(f'wl_safety_{selected_date}', None)
-                    st.session_state.pop(f'wl_note_{selected_date}', None)
-                    st.rerun()
-            with _tc2:
-                _top_save_clicked = st.button('저장', key='top_save_btn', type='primary',
-                                              disabled=not _t_can_save, use_container_width=True)
-        else:
-            _tc1, _ = st.columns([1, 3])
-            with _tc1:
-                _top_save_clicked = st.button('저장', key='top_save_btn', type='primary',
-                                              disabled=not _t_can_save, use_container_width=True)
-    _top_status = st.empty()  # 상단 저장 피드백용 플레이스홀더
+    if _grid_key in st.session_state:
+        if st.button('새로 작성 (저장 데이터 무시)', key='new_write'):
+            st.session_state.pop(_grid_key, None)
+            st.session_state.pop(f'wl_safety_{selected_date}', None)
+            st.session_state.pop(f'wl_note_{selected_date}', None)
+            st.rerun()
+    _top_status = st.empty()  # 업무현황 헤더 저장 피드백용 플레이스홀더
 
     import pandas as _pd
 
@@ -1525,14 +1510,26 @@ def page_work_log():
     )
     st.markdown(_DE_CSS, unsafe_allow_html=True)
 
-    # 2. 업무 현황
-    st.markdown(
-        '<div style="background:#4B2D8E;color:white;padding:6px 14px;'
-        'font-size:13px;font-weight:bold;margin-top:8px;'
-        'border-radius:4px 4px 0 0;border:2px solid #4B2D8E;">'
-        '2. 업무 현황</div>',
-        unsafe_allow_html=True,
-    )
+    # 2. 업무 현황 (헤더 + 저장 아이콘)
+    import time as _time_top
+    _t_last_save = st.session_state.get('_last_save_ts', 0)
+    _t_can_save = (_time_top.time() - _t_last_save) >= 20
+    _hdr_col, _save_col = st.columns([11, 1])
+    with _hdr_col:
+        st.markdown(
+            '<div style="background:#4B2D8E;color:white;padding:6px 14px;'
+            'font-size:13px;font-weight:bold;margin-top:8px;'
+            'border-radius:4px 4px 0 0;border:2px solid #4B2D8E;">'
+            '2. 업무 현황</div>',
+            unsafe_allow_html=True,
+        )
+    with _save_col:
+        st.markdown('<div style="margin-top:8px;">', unsafe_allow_html=True)
+        _top_save_clicked = st.button('💾', key='top_save_btn', type='primary',
+                                      disabled=not _t_can_save,
+                                      use_container_width=True,
+                                      help='저장')
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # 연산식 평가 시 data_editor 키 버전을 올려 강제 재초기화
     _de_ver_key = f'wl_de_ver_{selected_date}'
