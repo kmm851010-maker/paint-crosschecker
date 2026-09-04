@@ -1075,6 +1075,8 @@ def page_work_log():
         for idx, r in enumerate(rows_1, start=7):
             ws.row_dimensions[idx].height = 28
             for ci, val in zip("ABCDEF", r[:6]):
+                if ci == "F" and val == 0:
+                    val = ""
                 ws[f"{ci}{idx}"] = val
                 ws[f"{ci}{idx}"].font  = font_body
                 ws[f"{ci}{idx}"].border = thin_border
