@@ -1465,13 +1465,22 @@ def page_work_log():
 
     loaded_detail = st.session_state.get(f"wl_detail_{selected_date}") or {}
 
-    # 새로 작성 버튼
-    if _grid_key in st.session_state:
-        if st.button('새로 작성 (저장 데이터 무시)', key='new_write'):
-            st.session_state.pop(_grid_key, None)
-            st.session_state.pop(f'wl_safety_{selected_date}', None)
-            st.session_state.pop(f'wl_note_{selected_date}', None)
-            st.rerun()
+    # 새로 작성 / 상단 저장 버튼
+    _top_save_clicked = False
+    _t_last_save = st.session_state.get('_last_save_ts', 0)
+    import time as _time_top
+    _t_can_save = (_time_top.time() - _t_last_save) >= 20
+    _top_cols = st.columns([3, 1])
+    with _top_cols[0]:
+        if _grid_key in st.session_state:
+            if st.button('새로 작성 (저장 데이터 무시)', key='new_write'):
+                st.session_state.pop(_grid_key, None)
+                st.session_state.pop(f'wl_safety_{selected_date}', None)
+                st.session_state.pop(f'wl_note_{selected_date}', None)
+                st.rerun()
+    with _top_cols[1]:
+        _top_save_clicked = st.button('💾 저장', key='top_save_btn', type='primary',
+                                      disabled=not _t_can_save, use_container_width=True)
 
     import pandas as _pd
 
@@ -1702,7 +1711,7 @@ def page_work_log():
     _elapsed   = _time.time() - _last_save
     _can_save  = _elapsed >= _cooldown
 
-    if st.button('저장', use_container_width=True, type='primary', disabled=not _can_save):
+    if st.button('저장', use_container_width=True, type='primary', disabled=not _can_save) or _top_save_clicked:
         try:
             with st.spinner('저장 중...'):
                 from utils.supabase_db import save_all
