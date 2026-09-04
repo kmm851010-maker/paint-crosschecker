@@ -4232,7 +4232,7 @@ def page_attendance():
                             _btn_lbl,
                             key=f'cal_note_{_c["date_str"]}',
                             use_container_width=True,
-                            help="특이사항 입력/보기",
+                            
                         ):
                             _trigger_note = _c
 
