@@ -3697,6 +3697,8 @@ def page_attendance():
         st.session_state["att_cal_year"] = today.year
     if "att_cal_month" not in st.session_state:
         st.session_state["att_cal_month"] = today.month
+    if "att_shift_type" not in st.session_state:
+        st.session_state["att_shift_type"] = "4조3교대"
     selected_year  = st.session_state["att_cal_year"]
     selected_month = st.session_state["att_cal_month"]
 
@@ -4096,7 +4098,7 @@ def page_attendance():
             hol    = _get_holiday_name(d)
             _d_str = d.strftime("%Y-%m-%d")
 
-            # 조 슬롯 (조 이름만, 휴가 반영)
+            # 조 슬롯 (조 코드만, 휴가 반영)
             if shift_type == "4조3교대":
                 _base4 = _shift_for_date(d, MEMBERS)
                 _lv4   = _apply_leaves_stat(_base4, d, leave_list)
