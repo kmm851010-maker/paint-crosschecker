@@ -4100,8 +4100,7 @@ def page_attendance():
             # 조 슬롯 (조 코드만, 휴가 반영)
             if shift_type == "4조3교대":
                 _base4 = _shift_for_date(d, MEMBERS)
-                _lv_cal = [lv for lv in leave_list if lv.get("type") != "공휴"]
-                _lv4   = _apply_leaves_stat(_base4, d, _lv_cal)
+                _lv4   = _apply_leaves_stat(_base4, d, leave_list)
                 if _lv4.get("is_2person"):
                     _absent_조 = _base4.get("1근_조", "") if _lv4.get("leave_person") == _base4.get("1근_근무자") else \
                                  _base4.get("2근_조", "") if _lv4.get("leave_person") == _base4.get("2근_근무자") else \
