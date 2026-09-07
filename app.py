@@ -3700,6 +3700,23 @@ def page_attendance():
     selected_year  = st.session_state["att_cal_year"]
     selected_month = st.session_state["att_cal_month"]
 
+    # ── 페이지 전체 스타일 ──
+    st.markdown("""<style>
+    [data-testid="stAppViewContainer"] > .main {background:#f8fafc !important;}
+    [data-testid="block-container"] {max-width:1440px;padding-top:0.75rem;}
+    /* 좌측 통계 카드 */
+    div[data-testid="stColumn"]:has(div.att-stats-marker) > div[data-testid="stVerticalBlock"] {
+        background:#fff;border-radius:14px;border:1px solid #e5e7eb;
+        box-shadow:0 1px 4px rgba(0,0,0,0.07);padding:14px 14px 18px;
+        min-height:300px;
+    }
+    /* 우측 달력 카드 */
+    div[data-testid="stColumn"]:has(div.att-cal-marker) > div[data-testid="stVerticalBlock"] {
+        background:#fff;border-radius:14px;border:1px solid #e5e7eb;
+        box-shadow:0 1px 4px rgba(0,0,0,0.07);padding:14px 14px 18px;
+    }
+    </style>""", unsafe_allow_html=True)
+
     # ── 헤더 행: 제목 | 휴가/연장신청서 | 근무형태 ──
     _h1, _h2, _h3, _h4 = st.columns([4, 1.5, 0.8, 0.4])
     with _h1:
@@ -3904,10 +3921,11 @@ def page_attendance():
 
 
     # ── 2열 레이아웃: 좌=근무통계(4) / 우=달력(6) ──
-    _att_left, _att_right = st.columns([4, 6], gap="small")
+    _att_left, _att_right = st.columns([3, 7], gap="medium")
 
     with _att_left:
-        st.markdown(f"<span style='font-size:20px;font-weight:700;color:#7B2FBE;white-space:nowrap;'>{selected_year}년 {selected_month}월 근무 통계</span>", unsafe_allow_html=True)
+        st.markdown('<div class="att-stats-marker"></div>', unsafe_allow_html=True)
+        st.markdown(f"<span style='font-size:18px;font-weight:700;color:#7B2FBE;white-space:nowrap;'>{selected_year}년 {selected_month}월 근무 통계</span>", unsafe_allow_html=True)
         if shift_type != "4조3교대":
             st.info("상세 통계는 4조3교대 근무 형태에서만 지원됩니다.")
         else:
@@ -3978,8 +3996,8 @@ def page_attendance():
 
 
     with _att_right:
+        st.markdown('<div class="att-cal-marker"></div>', unsafe_allow_html=True)
         # 달력 헤더: < year month >  오늘
-        # 헤더 행 버튼 색상: 4번째 직계 stColumn 마커로 정확히 헤더만 타겟
         st.markdown("""<style>
         [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"]:nth-child(4) span#att-cal-hdr) button {
             color: #333333 !important;
@@ -4034,22 +4052,12 @@ def page_attendance():
         div[data-testid="stHorizontalBlock"]:has(div.cal-cell-curr),
         div[data-testid="stHorizontalBlock"]:has(div.cal-cell-dim) {
             gap: 0 !important; background: #fff;
+            border-left: 1px solid #e5e7eb;
         }
-        div[data-testid="stColumn"]:has(div.cal-cell-curr) button {
-            background: transparent !important;
-            border: none !important;
-            box-shadow: none !important;
-            padding: 1px 4px 3px !important;
-            min-height: 0 !important;
-            height: auto !important;
-            font-size: 12px !important;
-            line-height: 1 !important;
-            color: #CCCCCC !important;
-            width: 100% !important;
-            text-align: right !important;
-        }
-        div[data-testid="stColumn"]:has(div.cal-cell-curr) button:hover {
-            color: #F57F17 !important;
+        div[data-testid="stColumn"]:has(div.cal-cell-curr),
+        div[data-testid="stColumn"]:has(div.cal-cell-dim) {
+            border-right: 1px solid #e5e7eb !important;
+            padding: 0 !important;
         }
         /* 셀 내부 Streamlit 여백 제거 */
         div[data-testid="stColumn"]:has(div.cal-cell-curr) [data-testid="stVerticalBlock"],
@@ -4065,11 +4073,11 @@ def page_attendance():
 
         # ── 요일 헤더 ──
         st.markdown(
-            '<div style="display:flex;background:#fff;border-radius:16px 16px 0 0;'
-            'box-shadow:0 -2px 6px rgba(0,0,0,0.06);margin:6px 0 0;overflow:hidden;">'
+            '<div style="display:flex;background:#f9fafb;border-radius:8px 8px 0 0;'
+            'border:1px solid #e5e7eb;border-bottom:2px solid #d1d5db;margin:8px 0 0;overflow:hidden;">'
             + "".join(
-                f'<div style="flex:1;font-size:22px;font-weight:700;text-align:center;'
-                f'padding:6px 2px 5px;border-bottom:2px solid #EEEEEE;color:{wc};">{wd}</div>'
+                f'<div style="flex:1;font-size:13px;font-weight:700;text-align:center;'
+                f'padding:7px 2px 6px;color:{wc};">{wd}</div>'
                 for wd, wc in zip(WD_LABELS, WD_CLR)
             )
             + "</div>",
@@ -4145,33 +4153,35 @@ def page_attendance():
                 with _wc2[_ci]:
                     if _cell["type"] == "dim":
                         st.markdown(
-                            f'<div class="cal-cell-dim" style="{_bdr}min-height:58px;'
-                            f'padding:2px 3px;background:#FAFAFA;">'
-                            f'<div style="font-size:18px;font-weight:700;color:#DCDCDC;">{_cell["day"]}</div>'
+                            f'<div class="cal-cell-dim" style="border-bottom:1px solid #e5e7eb;min-height:70px;'
+                            f'padding:5px 6px;background:#f9fafb;">'
+                            f'<div style="font-size:16px;font-weight:600;color:#d1d5db;">{_cell["day"]}</div>'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
                     else:
                         _c = _cell
-                        _dc2 = "#E53935" if (_c["wi"] == 0 or _c["hol"]) else ("#1565C0" if _c["wi"] == 6 else "#212121")
+                        _dc2 = "#E53935" if (_c["wi"] == 0 or _c["hol"]) else ("#1565C0" if _c["wi"] == 6 else "#1f2937")
                         if _c["is_tod"]:
                             _dt_html = (
                                 '<span style="display:inline-flex;align-items:center;justify-content:center;'
-                                'background:#1A1A1A;color:#fff;border-radius:50%;'
-                                f'width:26px;height:26px;font-size:15px;font-weight:900;">{_c["day"]}</span>'
+                                'background:#1f2937;color:#fff;border-radius:50%;'
+                                f'width:28px;height:28px;font-size:15px;font-weight:900;">{_c["day"]}</span>'
                             )
                         else:
-                            _dt_html = f'<span style="font-size:22px;color:{_dc2};font-weight:900;line-height:1;">{_c["day"]}</span>'
+                            _dt_html = f'<span style="font-size:20px;color:{_dc2};font-weight:800;line-height:1;">{_c["day"]}</span>'
                         _slots_html = "".join(
-                            f'<div style="color:{clr};font-size:11px;font-weight:700;line-height:1.35;text-align:right;">{lbl}</div>'
+                            f'<div style="color:{clr};font-size:11px;font-weight:700;line-height:1.4;text-align:right;">{lbl}</div>'
                             for lbl, clr in _c.get("slots", [])
                         )
+                        _bg = "#EFF6FF" if _c["is_tod"] else "#fff"
                         st.markdown(
-                            f'<div class="cal-cell-curr" style="{_bdr}min-height:58px;padding:2px 4px 2px;background:{_c["bg"]};">'
+                            f'<div class="cal-cell-curr" style="border-bottom:1px solid #e5e7eb;min-height:70px;'
+                            f'padding:5px 6px 4px;background:{_bg};">'
                             + _c.get("hol_html", "")
-                            + f'<div style="display:flex;align-items:flex-start;gap:2px;">'
-                            + f'<div style="flex:0 0 auto;">{_dt_html}</div>'
-                            + f'<div style="flex:1;display:flex;flex-direction:column;align-items:flex-end;">{_slots_html}</div>'
+                            + f'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:2px;margin-top:2px;">'
+                            + f'<div style="flex:0 0 auto;line-height:1;">{_dt_html}</div>'
+                            + f'<div style="flex:1;display:flex;flex-direction:column;align-items:flex-end;padding-top:2px;">{_slots_html}</div>'
                             + f'</div>'
                             + _c.get("memo", "")
                             + f'</div>',
