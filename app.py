@@ -3495,11 +3495,9 @@ def _att_lv_dialog():
                         st.rerun()
 
 
-@st.dialog("근무 통계 상세", width="large")
-def _att_stats_dialog():
-    d = st.session_state.get("_att_dlg_data", {})
+def _render_att_stats(d):
     if not d:
-        st.error("데이터 없음"); return
+        return
     nm            = d["nm"]
     s             = d["s"]
     yr_lv         = d["yr_lv"]
@@ -3665,6 +3663,14 @@ def _att_stats_dialog():
             if _aw:
                 _wl=[f'{b[0][0].strftime("%m/%d")}~{b[-1][0].strftime("%m/%d")} ({int(sum(_x[1] for _x in b))}H)' for b in _mblks if int(sum(_x[1] for _x in b))>=_OT]
                 st.error("⚠️ 주 52시간 위배 주기: "+", ".join(_wl))
+
+
+@st.dialog("근무 통계 상세", width="large")
+def _att_stats_dialog():
+    d = st.session_state.get("_att_dlg_data", {})
+    if not d:
+        st.error("데이터 없음"); return
+    _render_att_stats(d)
 
 
 # 근태관리 (근무표 + 근무통계 통합)
@@ -3898,81 +3904,77 @@ def page_attendance():
 
 
     # ── 2열 레이아웃: 좌=근무통계(4) / 우=달력(6) ──
-    _att_left, _att_right = st.columns([2, 8], gap="small")
+    _att_left, _att_right = st.columns([4, 6], gap="small")
 
     with _att_left:
-        # --------- 근무 통계 타이틀 + 이름 버튼 ---------
         st.markdown(f"<span style='font-size:20px;font-weight:700;color:#7B2FBE;white-space:nowrap;'>{selected_year}년 {selected_month}월 근무 통계</span>", unsafe_allow_html=True)
         if shift_type != "4조3교대":
             st.info("상세 통계는 4조3교대 근무 형태에서만 지원됩니다.")
         else:
             _조_map = {v: k for k, v in MEMBERS.items()}
-            for _bi, _nm in enumerate(ALL_MEMBERS):
-                _조 = _조_map.get(_nm, "")
-                if st.button(
-                    f"{_nm}\n({_조}조)",
-                    key=f"att_stat_{_nm}",
-                    use_container_width=True,
-                ):
-                    _tk2 = next((k for k,v in MEMBERS.items() if v==_nm), None)
-                    _mblks2 = []
-                    _obd2 = {}
-                    if _tk2:
-                        _ms2 = datetime.date(selected_year, selected_month, 1)
-                        _next_mo = selected_month % 12 + 1
-                        _next_yr = selected_year + (1 if selected_month==12 else 0)
-                        _me2 = datetime.date(_next_yr, _next_mo, 1) - datetime.timedelta(days=1)
-                        _ss3 = _ms2 - datetime.timedelta(days=6)
-                        _se3 = _me2 + datetime.timedelta(days=6)
-                        for _dd2 in stats[_nm].get("대근내역", []):
-                            _obd2[_dd2["날짜"]] = _obd2.get(_dd2["날짜"], 0) + _dd2["시간"]
-                        for _ds5,_dd5 in daily_details.items():
-                            if _ds5 in _obd2: continue
-                            _sh5=_dd5.get("shift",{})
-                            if not _sh5.get("is_2person"):
-                                for _sk5,_ok5 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
-                                    if _sh5.get(_sk5)==_nm:
-                                        _ot5=_sff_s(_sh5.get(f"{_ok5}_연장",0))
-                                        if _ot5>0: _obd2[_ds5]=_ot5
-                                        break
-                        _wseq2 = []
-                        _dd6 = _ss3
-                        while _dd6 <= _se3:
-                            _idx3 = (_dd6-_BASE_DATE).days % 20
-                            _c1b,_c2b,_c3b,_ = _CYCLE_20[_idx3]
-                            if _tk2 in (_c1b,_c2b,_c3b):
-                                _wseq2.append((_dd6, _obd2.get(_dd6.strftime("%Y-%m-%d"),0)))
-                            _dd6 += datetime.timedelta(days=1)
-                        _blks2 = []
-                        if _wseq2:
-                            _cb2=[_wseq2[0]]
-                            for _ii3 in range(1,len(_wseq2)):
-                                if (_wseq2[_ii3][0]-_wseq2[_ii3-1][0]).days==1: _cb2.append(_wseq2[_ii3])
-                                else: _blks2.append(_cb2); _cb2=[_wseq2[_ii3]]
-                            _blks2.append(_cb2)
-                        _mblks2=[b for b in _blks2 if b[-1][0]>=_ms2 and b[0][0]<=_me2]
+            _sel_nm = st.selectbox(
+                "근무자",
+                ALL_MEMBERS,
+                format_func=lambda x: f"{x} ({_조_map.get(x,'')}조)",
+                key="att_stat_sel_member",
+                label_visibility="collapsed",
+            )
+            _tk2 = next((k for k, v in MEMBERS.items() if v == _sel_nm), None)
+            _mblks2 = []
+            _obd2 = {}
+            if _tk2:
+                _ms2 = datetime.date(selected_year, selected_month, 1)
+                _next_mo = selected_month % 12 + 1
+                _next_yr = selected_year + (1 if selected_month == 12 else 0)
+                _me2 = datetime.date(_next_yr, _next_mo, 1) - datetime.timedelta(days=1)
+                _ss3 = _ms2 - datetime.timedelta(days=6)
+                _se3 = _me2 + datetime.timedelta(days=6)
+                for _dd2 in stats[_sel_nm].get("대근내역", []):
+                    _obd2[_dd2["날짜"]] = _obd2.get(_dd2["날짜"], 0) + _dd2["시간"]
+                for _ds5, _dd5 in daily_details.items():
+                    if _ds5 in _obd2: continue
+                    _sh5 = _dd5.get("shift", {})
+                    if not _sh5.get("is_2person"):
+                        for _sk5, _ok5 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                            if _sh5.get(_sk5) == _sel_nm:
+                                _ot5 = _sff_s(_sh5.get(f"{_ok5}_연장", 0))
+                                if _ot5 > 0: _obd2[_ds5] = _ot5
+                                break
+                _wseq2 = []
+                _dd6 = _ss3
+                while _dd6 <= _se3:
+                    _idx3 = (_dd6 - _BASE_DATE).days % 20
+                    _c1b, _c2b, _c3b, _ = _CYCLE_20[_idx3]
+                    if _tk2 in (_c1b, _c2b, _c3b):
+                        _wseq2.append((_dd6, _obd2.get(_dd6.strftime("%Y-%m-%d"), 0)))
+                    _dd6 += datetime.timedelta(days=1)
+                _blks2 = []
+                if _wseq2:
+                    _cb2 = [_wseq2[0]]
+                    for _ii3 in range(1, len(_wseq2)):
+                        if (_wseq2[_ii3][0] - _wseq2[_ii3-1][0]).days == 1: _cb2.append(_wseq2[_ii3])
+                        else: _blks2.append(_cb2); _cb2 = [_wseq2[_ii3]]
+                    _blks2.append(_cb2)
+                _mblks2 = [b for b in _blks2 if b[-1][0] >= _ms2 and b[0][0] <= _me2]
 
-                    try:
-                        import holidays as _hh2
-                        _kr2=_hh2.SouthKorea(years=[selected_year,selected_year-1,selected_year+1])
-                    except Exception:
-                        _kr2=set()
-
-                    _SCOLS=["정상근로","유휴근로","휴일근로","연장근로","휴일연장","야간근로","휴일비근로","휴가비근로","스틸아카데미","항군교육","사내교육(1)","사내교육(1.5)","사외교육(1)","사외교육(1.5)","공가"]
-
-                    st.session_state["_att_dlg_data"] = {
-                        "nm": _nm, "s": stats[_nm],
-                        "yr_lv": year_leaves.get(_nm, []),
-                        "year": selected_year, "month": selected_month,
-                        "days_in_month": days_in_month,
-                        "daily_details": daily_details,
-                        "NIGHT_HOURS": NIGHT_HOURS,
-                        "MEMBERS": MEMBERS, "ALL_MEMBERS": ALL_MEMBERS,
-                        "_kr2": _kr2, "_SCOLS": _SCOLS,
-                        "base_leaves": base_leaves_s,
-                        "_obd": _obd2, "_mblks": _mblks2,
-                    }
-                    _att_stats_dialog()
+            try:
+                import holidays as _hh2
+                _kr2_s = _hh2.SouthKorea(years=[selected_year, selected_year - 1, selected_year + 1])
+            except Exception:
+                _kr2_s = set()
+            _SCOLS_S = ["정상근로","유휴근로","휴일근로","연장근로","휴일연장","야간근로","휴일비근로","휴가비근로","스틸아카데미","항군교육","사내교육(1)","사내교육(1.5)","사외교육(1)","사외교육(1.5)","공가"]
+            _render_att_stats({
+                "nm": _sel_nm, "s": stats[_sel_nm],
+                "yr_lv": year_leaves.get(_sel_nm, []),
+                "year": selected_year, "month": selected_month,
+                "days_in_month": days_in_month,
+                "daily_details": daily_details,
+                "NIGHT_HOURS": NIGHT_HOURS,
+                "MEMBERS": MEMBERS, "ALL_MEMBERS": ALL_MEMBERS,
+                "_kr2": _kr2_s, "_SCOLS": _SCOLS_S,
+                "base_leaves": base_leaves_s,
+                "_obd": _obd2, "_mblks": _mblks2,
+            })
 
 
     with _att_right:
@@ -4085,80 +4087,32 @@ def page_attendance():
             is_tod = (d == today)
             hol    = _get_holiday_name(d)
             _d_str = d.strftime("%Y-%m-%d")
-            _, _   = _mini_shift(d), None  # mini_shift 호출 유지
 
-            if is_tod:
-                _dnh = (
-                    '<div style="text-align:center;margin-bottom:2px;">'
-                    '<span style="display:inline-flex;align-items:center;justify-content:center;'
-                    'background:#1A1A1A;color:#fff;border-radius:50%;'
-                    f'width:32px;height:32px;font-size:18px;font-weight:900;line-height:32px;">{dn}</span></div>'
-                )
-            else:
-                _dc = "#E53935" if (wi == 0 or hol) else ("#1565C0" if wi == 6 else "#212121")
-                _dnh = f'<div style="text-align:center;margin-bottom:2px;"><span style="font-size:20px;color:{_dc};font-weight:700;">{dn}</span></div>'
-
-            # 배지
-            _badge_html = ""
+            # 조 슬롯 (조 이름만, 근무자명 없음)
             if shift_type == "4조3교대":
                 _base4 = _shift_for_date(d, MEMBERS)
-                _lv4   = _apply_leaves_stat(_base4, d, leave_list)
-                _4s_badges = []
-                if _lv4.get("is_2person"):
-                    _slots4 = [
-                        ("주간", _lv4.get("주간_근무자", ""), "#1565C0"),
-                        ("야간", _lv4.get("야간_근무자", ""), "#C62828"),
-                        ("휴가", _lv4.get("leave_person", ""), "#F57F17"),
-                        ("휴무", _lv4.get("휴무_근무자", ""), "#9E9E9E"),
-                    ]
-                elif _d_str in daily_details and daily_details[_d_str].get("shift", {}).get("1근_근무자"):
-                    _sh_d = daily_details[_d_str].get("shift", {})
-                    if _sh_d.get("is_2person"):
-                        _slots4 = [
-                            ("주간", _sh_d.get("주간_근무자") or _sh_d.get("1근_근무자", ""), "#1565C0"),
-                            ("야간", _sh_d.get("야간_근무자") or _sh_d.get("2근_근무자", ""), "#C62828"),
-                            ("휴무", _sh_d.get("휴무_근무자", ""), "#9E9E9E"),
-                        ]
-                    else:
-                        _slots4 = [
-                            ("1근", _sh_d.get("1근_근무자", ""), "#1565C0"),
-                            ("2근", _sh_d.get("2근_근무자", ""), "#2E7D32"),
-                            ("3근", _sh_d.get("3근_근무자", ""), "#C62828"),
-                            ("휴무", _sh_d.get("휴무_근무자", ""), "#9E9E9E"),
-                        ]
-                else:
-                    # shift 데이터 없으면 자동계산 사용
-                    _slots4 = [
-                        ("1근", _base4.get("1근_근무자", ""), "#1565C0"),
-                        ("2근", _base4.get("2근_근무자", ""), "#2E7D32"),
-                        ("3근", _base4.get("3근_근무자", ""), "#C62828"),
-                        ("휴무", _base4.get("휴무_근무자", ""), "#9E9E9E"),
-                    ]
-                for _slbl, _snm, _sclr in _slots4:
-                    if _snm:
-                        _short = _snm[:3]
-                        _4s_badges.append(
-                            f'<div style="color:{_sclr};border-left:3px solid {_sclr};'
-                            f'background:transparent;font-size:10px;font-weight:600;padding:0 3px;margin-top:1px;'
-                            f'line-height:1.5;display:block;max-width:100%;overflow:hidden;'
-                            f'white-space:nowrap;text-overflow:ellipsis;">{_slbl}&thinsp;{_short}</div>'
-                        )
-                _badge_html = "".join(_4s_badges)
+                _slots_조 = [
+                    (_base4.get("1근_조", ""), "#1565C0"),
+                    (_base4.get("2근_조", ""), "#2E7D32"),
+                    (_base4.get("3근_조", ""), "#C62828"),
+                ]
             else:
                 _ALL_TEAM_LABELS = {"3조3교대":["A조","B조","C조"],"2조2교대":["A조","B조"],"4조2교대":["A조","B조","C조","D조"]}
                 _TEAM_COLORS = {"A조":"#1565C0","B조":"#2E7D32","C조":"#C62828","D조":"#6A1B9A"}
                 _SHIFT_FN = {"3조3교대":_shift_for_date_3s3,"2조2교대":_shift_for_date_2s2,"4조2교대":_shift_for_date_4s2}
+                _slots_조 = []
                 for _tm in _ALL_TEAM_LABELS.get(shift_type, []):
                     _fn2 = _SHIFT_FN.get(shift_type)
                     _ts2 = _fn2(d, _tm[0]) if _fn2 else ""
                     if _ts2 and _ts2 != "휴무":
-                        _tc2 = _TEAM_COLORS.get(_tm, "#888")
-                        _badge_html += (
-                            f'<div style="background:{_tc2};color:#fff;border-radius:4px;'
-                            f'font-size:10px;font-weight:600;padding:1px 5px;margin-top:2px;'
-                            f'display:inline-block;max-width:100%;overflow:hidden;white-space:nowrap;'
-                            f'text-overflow:ellipsis;">{_tm}&nbsp;{_ts2}</div>'
-                        )
+                        _slots_조.append((_tm, _TEAM_COLORS.get(_tm, "#888")))
+
+            _hol_html = ""
+            if hol:
+                _hol_html = (
+                    f'<div style="font-size:10px;font-weight:700;color:#E53935;line-height:1.2;'
+                    f'overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">{hol[:6]}</div>'
+                )
 
             _memo_html = ""
             if _d_str in _memo_dates:
@@ -4166,39 +4120,15 @@ def page_attendance():
                     _txt = str(_mt)[:7]
                     _memo_html += (
                         f'<div style="background:#F59E0B;color:#fff;border-radius:5px;'
-                        f'font-size:10px;padding:2px 5px;margin-top:2px;'
-                        f'display:inline-block;max-width:calc(100% - 2px);overflow:hidden;'
+                        f'font-size:10px;padding:1px 4px;margin-top:1px;'
+                        f'display:inline-block;max-width:100%;overflow:hidden;'
                         f'white-space:nowrap;text-overflow:ellipsis;">{_txt}</div>'
                     )
 
-            _hol_html = ""
-            if hol:
-                _hol_html = (
-                    f'<div style="font-size:12px;font-weight:700;color:#E53935;margin-top:2px;line-height:1.2;'
-                    f'overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">{hol[:6]}</div>'
-                )
-
-            _note_txt = (daily_details.get(_d_str, {}).get("note") or "").strip()
-            _note_prev_html = ""
-            if _note_txt:
-                # 줄바꿈 유지: 각 줄 10자 이하로 잘라 <br> 연결
-                _np_lines = []
-                for _nl in _note_txt.splitlines()[:4]:
-                    _nl = _nl.strip()
-                    if _nl:
-                        _np_lines.append(_nl[:10] + ("…" if len(_nl) > 10 else ""))
-                _np_html = "<br>".join(_np_lines)
-                _note_prev_html = (
-                    f'<div style="font-size:11px;font-weight:700;color:#856404;background:#FFF9E6;'
-                    f'border-radius:3px;padding:1px 4px;margin-top:2px;overflow:hidden;">'
-                    f'{_np_html}</div>'
-                )
-
             _all_cells.append({
                 "type": "curr", "day": dn, "date": d, "date_str": _d_str,
-                "dnh": _dnh, "badge": _badge_html, "hol": _hol_html,
-                "memo": _memo_html, "note_prev": _note_prev_html,
-                "note_txt": _note_txt,
+                "is_tod": is_tod, "wi": wi, "hol": hol, "hol_html": _hol_html,
+                "slots": _slots_조, "memo": _memo_html,
                 "bg": "#E8F0FE" if is_tod else "#fff",
             })
 
@@ -4207,7 +4137,6 @@ def page_attendance():
             _all_cells.append({"type": "dim", "day": _ni})
 
         # ── 주별 렌더링 ──
-        _trigger_note = None
         for _ws in range(0, len(_all_cells), 7):
             _week  = _all_cells[_ws:_ws + 7]
             _bdr   = "border-top:1px solid #F0F0F0;" if _ws > 0 else ""
@@ -4216,45 +4145,38 @@ def page_attendance():
                 with _wc2[_ci]:
                     if _cell["type"] == "dim":
                         st.markdown(
-                            f'<div class="cal-cell-dim" style="{_bdr}min-height:75px;'
-                            f'padding:2px 3px 2px;background:#FAFAFA;">'
-                            f'<div style="text-align:center;font-size:20px;font-weight:700;color:#DCDCDC;">{_cell["day"]}</div>'
+                            f'<div class="cal-cell-dim" style="{_bdr}min-height:58px;'
+                            f'padding:2px 3px;background:#FAFAFA;">'
+                            f'<div style="font-size:18px;font-weight:700;color:#DCDCDC;">{_cell["day"]}</div>'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
                     else:
                         _c = _cell
+                        _dc2 = "#E53935" if (_c["wi"] == 0 or _c["hol"]) else ("#1565C0" if _c["wi"] == 6 else "#212121")
+                        if _c["is_tod"]:
+                            _dt_html = (
+                                '<span style="display:inline-flex;align-items:center;justify-content:center;'
+                                'background:#1A1A1A;color:#fff;border-radius:50%;'
+                                f'width:26px;height:26px;font-size:15px;font-weight:900;">{_c["day"]}</span>'
+                            )
+                        else:
+                            _dt_html = f'<span style="font-size:22px;color:{_dc2};font-weight:900;line-height:1;">{_c["day"]}</span>'
+                        _slots_html = "".join(
+                            f'<div style="color:{clr};font-size:11px;font-weight:700;line-height:1.35;text-align:right;">{lbl}</div>'
+                            for lbl, clr in _c.get("slots", [])
+                        )
                         st.markdown(
-                            f'<div class="cal-cell-curr" style="{_bdr}min-height:75px;'
-                            f'padding:2px 3px 0;background:{_c["bg"]};">'
-                            f'{_c["dnh"]}'
-                            f'<div style="display:inline-flex;gap:4px;align-items:flex-start;width:100%;flex-wrap:wrap;">'
-                            f'<div style="flex:0 0 auto;min-width:0;overflow:hidden;">{_c["badge"]}{_c["memo"]}</div>'
-                            f'<div style="flex:0 0 auto;min-width:0;overflow:hidden;">{_c["hol"]}{_c["note_prev"]}</div>'
-                            f'</div>'
-                            f'</div>',
+                            f'<div class="cal-cell-curr" style="{_bdr}min-height:58px;padding:2px 4px 2px;background:{_c["bg"]};">'
+                            + _c.get("hol_html", "")
+                            + f'<div style="display:flex;align-items:flex-start;gap:2px;">'
+                            + f'<div style="flex:0 0 auto;">{_dt_html}</div>'
+                            + f'<div style="flex:1;display:flex;flex-direction:column;align-items:flex-end;">{_slots_html}</div>'
+                            + f'</div>'
+                            + _c.get("memo", "")
+                            + f'</div>',
                             unsafe_allow_html=True,
                         )
-                        _btn_lbl = "📝" if _c["note_txt"] else "✎"
-                        if st.button(
-                            _btn_lbl,
-                            key=f'cal_note_{_c["date_str"]}',
-                            use_container_width=True,
-                            
-                        ):
-                            _trigger_note = _c
-
-
-    if _trigger_note:
-        _det = daily_details.get(_trigger_note["date_str"], {})
-        st.session_state["_att_cal_note_info"] = {
-            "date":     _trigger_note["date"],
-            "date_str": _trigger_note["date_str"],
-            "note":     _det.get("note", ""),
-            "shift":    _det.get("shift", {}),
-            "safety":   _det.get("safety", []),
-        }
-        _att_cal_note_dialog()
 
 
 
