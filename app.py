@@ -1175,16 +1175,15 @@ def page_work_log():
         for day in range(1, last_day + 1):
             date_obj = datetime.date(year, month, day)
             date_str = date_obj.strftime("%Y-%m-%d")
-            if date_str not in work_by_date and date_str not in detail_by_date:
-                continue
-            detail = detail_by_date.get(date_str, {})
+            detail = detail_by_date.get(date_str) or {}
+            shift = detail.get("shift") or _shift_for_date(date_obj, MEMBERS)
             ws_new = wb.create_sheet(title=f"{month}월{day}일")
             _fill_work_log_sheet(
                 ws_new, date_obj,
-                detail.get("shift", {}),
+                shift,
                 work_by_date.get(date_str, []),
-                detail.get("safety", []),
-                detail.get("note", "")
+                detail.get("safety", []) if detail else [],
+                detail.get("note", "") if detail else ""
             )
             added += 1
 
