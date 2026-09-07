@@ -1728,6 +1728,15 @@ def page_work_log():
                     safety_items_data, note_text,
                     st.session_state.get('leave_list', [])
                 )
+            if selected_date.day == 1:
+                with st.spinner(f'{selected_date.year}년 {selected_date.month}월 전체 일정 초기화 중...'):
+                    try:
+                        from utils.supabase_db import init_month_schedule as _ims
+                        _created = _ims(selected_date.year, selected_date.month, MEMBERS)
+                        if _created > 0:
+                            st.toast(f'{selected_date.month}월 {_created}일치 기본 일정 생성 완료', icon='📅')
+                    except Exception as _ie:
+                        st.warning(f'월 일정 초기화 실패: {_ie}')
             st.session_state['_last_save_ts'] = _time.time()
             st.session_state.pop(f'wl_monthly_totals_{selected_date}', None)
             with st.spinner(f'{selected_date.month}월 통합 Excel 생성 중...'):
@@ -2121,7 +2130,7 @@ def page_statistics():
             row = {c: 0.0 for c in _SALARY_COLS}
             row["날짜"] = f"{month:02d}/{day:02d}"
 
-            if date_str in daily_details:
+            if date_str in daily_details and daily_details[date_str].get("shift"):
                 # ── 저장된 일지 우선 사용 ──
                 shift = daily_details[date_str].get("shift", {})
                 is_2p = shift.get("is_2person", False)
@@ -2292,7 +2301,7 @@ def page_statistics():
                         _fhol = _fdate in _kr2
                         _frow = {c: 0.0 for c in _SALARY_COLS}
                         _frow["날짜"] = f"{month:02d}/{_fd:02d}"
-                        if _fds in daily_details:
+                        if _fds in daily_details and daily_details[_fds].get("shift"):
                             _sh = daily_details[_fds].get("shift", {})
                             if _sh.get("is_2person"):
                                 _lp = _sh.get("leave_person","") or _sh.get("3근_근무자","")
@@ -3574,7 +3583,7 @@ def _att_stats_dialog():
             _fds = _fd_date.strftime("%Y-%m-%d")
             _fhol = _fd_date in _kr2
             _frow = {c: 0.0 for c in _SCOLS}; _frow["날짜"] = f"{selected_month:02d}/{_fd:02d}"
-            if _fds in daily_details:
+            if _fds in daily_details and daily_details[_fds].get("shift"):
                 _sh2 = daily_details[_fds].get("shift", {})
                 if _sh2.get("is_2person"):
                     _lp=_sh2.get("leave_person","") or _sh2.get("3근_근무자","")

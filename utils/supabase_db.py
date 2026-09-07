@@ -162,6 +162,48 @@ def load_daily_detail_month(year: int, month: int) -> dict:
         return {}
 
 
+def init_month_schedule(year: int, month: int, members: dict) -> int:
+    """월 전체 날짜에 기본 근무 스케줄 레코드 생성 (없는 날짜만). 생성된 레코드 수 반환."""
+    import calendar as _cal
+    _CYCLE_20 = [
+        ('B','C','D','A'),('B','C','A','D'),('B','C','A','D'),
+        ('B','D','A','C'),('B','D','A','C'),('C','D','A','B'),
+        ('C','D','B','A'),('C','D','B','A'),('C','A','B','D'),
+        ('C','A','B','D'),('D','A','B','C'),('D','A','C','B'),
+        ('D','A','C','B'),('D','B','C','A'),('D','B','C','A'),
+        ('A','B','C','D'),('A','B','D','C'),('A','B','D','C'),
+        ('A','C','D','B'),('A','C','D','B'),
+    ]
+    _BASE = datetime.date(2026, 3, 1)
+    d1 = f"{year:04d}-{month:02d}-01"
+    d2 = f"{year:04d}-{month:02d}-{_cal.monthrange(year, month)[1]:02d}"
+    existing = {r["date"] for r in _sb().table("daily_detail").select("date").gte("date", d1).lte("date", d2).execute().data}
+    rows = []
+    for day in range(1, _cal.monthrange(year, month)[1] + 1):
+        d = datetime.date(year, month, day)
+        ds = d.strftime("%Y-%m-%d")
+        if ds in existing:
+            continue
+        idx = (d - _BASE).days % 20
+        prev_off = _CYCLE_20[(d - datetime.timedelta(days=1) - _BASE).days % 20][3]
+        s1, s2, s3, off = _CYCLE_20[idx]
+        off_type = "주휴휴무" if prev_off == off else "교대휴무"
+        shift = {
+            "1근_조": s1, "1근_근무자": members.get(s1, s1),
+            "1근_연장": 0.0, "1근_주간연장": 0.0, "1근_야간연장": 0.0, "1근_비고": "",
+            "2근_조": s2, "2근_근무자": members.get(s2, s2),
+            "2근_연장": 0.0, "2근_주간연장": 0.0, "2근_야간연장": 0.0, "2근_비고": "",
+            "3근_조": s3, "3근_근무자": members.get(s3, s3),
+            "3근_연장": 0.0, "3근_주간연장": 0.0, "3근_야간연장": 0.0, "3근_비고": "",
+            "휴무_조": off, "휴무_근무자": members.get(off, off),
+            "휴무_구분": off_type, "is_2person": False, "leave_person": "", "leave_type": "",
+        }
+        rows.append({"date": ds, "data": {"shift": shift, "safety": [], "note": ""}})
+    if rows:
+        _sb().table("daily_detail").insert(rows).execute()
+    return len(rows)
+
+
 def delete_daily_details_for_leave(leave: dict) -> int:
     """휴가 삭제 시 오늘 이후 날짜의 저장 일지만 초기화."""
     try:
