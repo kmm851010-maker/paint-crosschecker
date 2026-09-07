@@ -1170,7 +1170,7 @@ def page_work_log():
         wb = openpyxl.Workbook()
         wb.remove(wb.active)
 
-        last_day = min(up_to_date.day, _cal.monthrange(year, month)[1])
+        last_day = _cal.monthrange(year, month)[1]
         added = 0
         for day in range(1, last_day + 1):
             date_obj = datetime.date(year, month, day)
