@@ -4096,14 +4096,25 @@ def page_attendance():
             hol    = _get_holiday_name(d)
             _d_str = d.strftime("%Y-%m-%d")
 
-            # 조 슬롯 (조 이름만, 근무자명 없음)
+            # 조 슬롯 (조 이름만, 휴가 반영)
             if shift_type == "4조3교대":
                 _base4 = _shift_for_date(d, MEMBERS)
-                _slots_조 = [
-                    (_base4.get("1근_조", ""), "#1565C0"),
-                    (_base4.get("2근_조", ""), "#2E7D32"),
-                    (_base4.get("3근_조", ""), "#C62828"),
-                ]
+                _lv4   = _apply_leaves_stat(_base4, d, leave_list)
+                if _lv4.get("is_2person"):
+                    _absent_조 = _base4.get("1근_조", "") if _lv4.get("leave_person") == _base4.get("1근_근무자") else \
+                                 _base4.get("2근_조", "") if _lv4.get("leave_person") == _base4.get("2근_근무자") else \
+                                 _base4.get("3근_조", "")
+                    _slots_조 = [
+                        (_absent_조 + "휴", "#F57F17"),
+                        (_lv4.get("주간_조", _base4.get("2근_조", "")), "#1565C0"),
+                        (_lv4.get("야간_조", _base4.get("3근_조", "")), "#C62828"),
+                    ]
+                else:
+                    _slots_조 = [
+                        (_base4.get("1근_조", ""), "#1565C0"),
+                        (_base4.get("2근_조", ""), "#2E7D32"),
+                        (_base4.get("3근_조", ""), "#C62828"),
+                    ]
             else:
                 _ALL_TEAM_LABELS = {"3조3교대":["A조","B조","C조"],"2조2교대":["A조","B조"],"4조2교대":["A조","B조","C조","D조"]}
                 _TEAM_COLORS = {"A조":"#1565C0","B조":"#2E7D32","C조":"#C62828","D조":"#6A1B9A"}
