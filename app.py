@@ -1345,19 +1345,10 @@ def page_work_log():
     if is_2person:
         _leave_type_2p  = shift_auto.get("leave_type", "")
         _leave_person_2p = shift_auto.get("leave_person", "")
-        _is_gonghu = _leave_type_2p == "공휴"
-        if _is_gonghu:
-            _default_note = "공휴일 휴일연장대근"
-        elif _leave_person_2p and _leave_type_2p:
+        if _leave_person_2p and _leave_type_2p:
             _default_note = f"{_leave_person_2p} {_leave_type_2p}로 대근"
         else:
             _default_note = "대근"
-
-        if _is_gonghu:
-            st.info(
-                f"🗓️ **공휴일 근무 체제** — {shift_auto.get('leave_person', '')} 공휴 처리 "
-                f"→ 나머지 2인이 **휴일연장대근**으로 커버합니다."
-            )
 
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -2082,12 +2073,10 @@ def page_statistics():
             if name == leave_person:
                 if leave_type_val == "공가":
                     row["공가"] = 8.0
-                elif leave_type_val == "공휴":
-                    pass  # 공휴일 → 급여시간 없음
                 else:
                     row["휴가비근로"] = 8.0
             elif name == day_worker:
-                if is_hol or leave_type_val == "공휴":
+                if is_hol:
                     row["유휴근로"] = 8.0
                     row["휴일연장"] = day_ot
                     row["휴일비근로"] = 8.0
@@ -2095,7 +2084,7 @@ def page_statistics():
                     row["정상근로"] = 8.0
                     row["연장근로"] = day_ot
             elif name == night_worker:
-                if is_hol or leave_type_val == "공휴":
+                if is_hol:
                     row["유휴근로"] = 8.0
                     row["야간근로"] = night_base
                     row["휴일연장"] = night_ot
@@ -2312,14 +2301,14 @@ def page_statistics():
                                 _not = float(_sh.get("2근_연장", 4) or 4)
                                 if name == _lp:
                                     if _lv == "공가": _frow["공가"] = 8.0
-                                    elif _lv != "공휴": _frow["휴가비근로"] = 8.0
+                                    else: _frow["휴가비근로"] = 8.0
                                 elif name == _dw:
-                                    if _fhol or _lv == "공휴":
+                                    if _fhol:
                                         _frow["유휴근로"] = 8.0; _frow["휴일연장"] = _dot; _frow["휴일비근로"] = 8.0
                                     else:
                                         _frow["정상근로"] = 8.0; _frow["연장근로"] = _dot
                                 elif name == _nw:
-                                    if _fhol or _lv == "공휴":
+                                    if _fhol:
                                         _frow["유휴근로"] = 8.0; _frow["야간근로"] = _nb2; _frow["휴일연장"] = _not; _frow["휴일비근로"] = 8.0
                                     else:
                                         _frow["정상근로"] = 8.0; _frow["야간근로"] = _nb2; _frow["연장근로"] = _not
@@ -2349,14 +2338,14 @@ def page_statistics():
                                 _lv2 = _fsched.get("leave_type","")
                                 if name == _lp2:
                                     if _lv2 == "공가": _frow["공가"] = 8.0
-                                    elif _lv2 != "공휴": _frow["휴가비근로"] = 8.0
+                                    else: _frow["휴가비근로"] = 8.0
                                 elif name == _dw2:
-                                    if _fhol or _lv2 == "공휴":
+                                    if _fhol:
                                         _frow["유휴근로"] = 8.0; _frow["휴일연장"] = 4.0; _frow["휴일비근로"] = 8.0
                                     else:
                                         _frow["정상근로"] = 8.0; _frow["연장근로"] = 4.0
                                 elif name == _nw2:
-                                    if _fhol or _lv2 == "공휴":
+                                    if _fhol:
                                         _frow["유휴근로"] = 8.0; _frow["야간근로"] = _nb2; _frow["휴일연장"] = 4.0; _frow["휴일비근로"] = 8.0
                                     else:
                                         _frow["정상근로"] = 8.0; _frow["야간근로"] = _nb2; _frow["연장근로"] = 4.0
@@ -2601,35 +2590,9 @@ def page_my_schedule():
         with _rc5:
             _lv_sub = st.selectbox("대근자", [""] + ALL_MEMBERS, key="leave_sub")
 
-        _gonghu_nonholiday = []
-        if _lv_type == "공휴":
-            try:
-                import holidays as _hol
-                _cur = _lv_start
-                _wday = ["월", "화", "수", "목", "금", "토", "일"]
-                while _cur <= _lv_end:
-                    _kr = _hol.SouthKorea(years=_cur.year)
-                    if _cur not in _kr:
-                        _gonghu_nonholiday.append(f"{_cur.strftime('%m/%d')}({_wday[_cur.weekday()]})")
-                    _cur += datetime.timedelta(days=1)
-            except Exception:
-                pass
-
-        if _gonghu_nonholiday:
-            st.warning(
-                "⚠️ **공휴는 국경일·명절·대체공휴일에만 적용 가능합니다.**  \n"
-                f"선택 기간 중 법정공휴일이 아닌 날: **{', '.join(_gonghu_nonholiday)}**  \n"
-                "그래도 등록하려면 아래를 체크하세요."
-            )
-            _gonghu_confirmed = st.checkbox("⚠️ 비공휴일 포함을 확인하고 등록합니다.", key="gonghu_confirm")
-        else:
-            _gonghu_confirmed = True
-
         if st.button("✅ 등록", use_container_width=True, key="add_leave"):
             if _lv_start > _lv_end:
                 st.error("시작일이 종료일보다 늦습니다.")
-            elif _gonghu_nonholiday and not _gonghu_confirmed:
-                st.error("⛔ 비공휴일 포함 시 확인 체크가 필요합니다.")
             else:
                 st.session_state["leave_list"].append({
                     "name": _lv_name, "type": _lv_type,
@@ -3430,24 +3393,8 @@ def _att_lv_dialog():
         with _rc: _lvs2 = st.date_input("시작일", today_d, key="att_lv_start")
         with _rd: _lve2 = st.date_input("종료일", today_d, key="att_lv_end")
 
-        _gnh = []
-        if _lvt == "공휴":
-            try:
-                import holidays as _hh4; _cd3 = _lvs2; _wd3 = ["월","화","수","목","금","토","일"]
-                while _cd3 <= _lve2:
-                    _krr = _hh4.SouthKorea(years=_cd3.year)
-                    if _cd3 not in _krr: _gnh.append(f"{_cd3.strftime('%m/%d')}({_wd3[_cd3.weekday()]})")
-                    _cd3 += datetime.timedelta(days=1)
-            except Exception: pass
-        if _gnh:
-            st.warning(f"⚠️ 비공휴일 포함: **{', '.join(_gnh)}**")
-            _gc = st.checkbox("⚠️ 확인 후 등록", key="att_gc")
-        else:
-            _gc = True
-
         if st.button("✅ 등록", use_container_width=True, key="att_add_lv"):
             if _lvs2 > _lve2: st.error("시작일이 종료일보다 늦습니다.")
-            elif _gnh and not _gc: st.error("⛔ 확인 체크 필요")
             else:
                 if "leave_list" not in st.session_state:
                     st.session_state["leave_list"] = []
@@ -3591,12 +3538,12 @@ def _render_att_stats(d):
                     _dot2=float(_sh2.get("1근_연장",4) or 4); _not2=float(_sh2.get("2근_연장",4) or 4)
                     if nm==_lp:
                         if _lv3=="공가": _frow["공가"]=8.0
-                        elif _lv3!="공휴": _frow["휴가비근로"]=8.0
+                        else: _frow["휴가비근로"]=8.0
                     elif nm==_dw3:
-                        if _fhol or _lv3=="공휴": _frow["유휴근로"]=8.0;_frow["휴일연장"]=_dot2;_frow["휴일비근로"]=8.0
+                        if _fhol: _frow["유휴근로"]=8.0;_frow["휴일연장"]=_dot2;_frow["휴일비근로"]=8.0
                         else: _frow["정상근로"]=8.0;_frow["연장근로"]=_dot2
                     elif nm==_nw3:
-                        if _fhol or _lv3=="공휴": _frow["유휴근로"]=8.0;_frow["야간근로"]=_nb;_frow["휴일연장"]=_not2;_frow["휴일비근로"]=8.0
+                        if _fhol: _frow["유휴근로"]=8.0;_frow["야간근로"]=_nb;_frow["휴일연장"]=_not2;_frow["휴일비근로"]=8.0
                         else: _frow["정상근로"]=8.0;_frow["야간근로"]=_nb;_frow["연장근로"]=_not2
                 else:
                     for _sk3,_근3 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
@@ -3612,12 +3559,12 @@ def _render_att_stats(d):
                     _nb4=NIGHT_HOURS.get("야간",7.5);_lp4=_fs.get("leave_person","");_dw4=_fs.get("주간_근무자","");_nw4=_fs.get("야간_근무자","");_lv4=_fs.get("leave_type","")
                     if nm==_lp4:
                         if _lv4=="공가": _frow["공가"]=8.0
-                        elif _lv4!="공휴": _frow["휴가비근로"]=8.0
+                        else: _frow["휴가비근로"]=8.0
                     elif nm==_dw4:
-                        if _fhol or _lv4=="공휴": _frow["유휴근로"]=8.0;_frow["휴일연장"]=4.0;_frow["휴일비근로"]=8.0
+                        if _fhol: _frow["유휴근로"]=8.0;_frow["휴일연장"]=4.0;_frow["휴일비근로"]=8.0
                         else: _frow["정상근로"]=8.0;_frow["연장근로"]=4.0
                     elif nm==_nw4:
-                        if _fhol or _lv4=="공휴": _frow["유휴근로"]=8.0;_frow["야간근로"]=_nb4;_frow["휴일연장"]=4.0;_frow["휴일비근로"]=8.0
+                        if _fhol: _frow["유휴근로"]=8.0;_frow["야간근로"]=_nb4;_frow["휴일연장"]=4.0;_frow["휴일비근로"]=8.0
                         else: _frow["정상근로"]=8.0;_frow["야간근로"]=_nb4;_frow["연장근로"]=4.0
                 else:
                     for _sk4,_근4 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
