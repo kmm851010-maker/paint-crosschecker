@@ -4022,15 +4022,15 @@ def page_attendance():
         # ── 요일 헤더 ──
         _WD_LBL = ["일","월","화","수","목","금","토"]
         _WD_CLR = ["#E53935","#424242","#424242","#424242","#424242","#424242","#1565C0"]
-        st.markdown('<div style="margin-top:8px;"></div>', unsafe_allow_html=True)
-        _hdr_cols = st.columns(7)
-        for _hi, (_wd, _wc) in enumerate(zip(_WD_LBL, _WD_CLR)):
-            with _hdr_cols[_hi]:
-                st.markdown(
-                    f'<div style="background:#f9fafb;font-size:13px;font-weight:700;'
-                    f'text-align:center;padding:7px 0 6px;color:{_wc};'
-                    f'border-top:1px solid #e5e7eb;border-bottom:2px solid #d1d5db;">{_wd}</div>',
-                    unsafe_allow_html=True)
+        st.markdown(
+            '<div style="display:flex;background:#f9fafb;border-radius:8px 8px 0 0;'
+            'border:1px solid #e5e7eb;border-bottom:2px solid #d1d5db;margin:8px 0 0;">'
+            + "".join(
+                f'<div style="flex:1;font-size:13px;font-weight:700;text-align:center;'
+                f'padding:9px 2px 8px;color:{wc};">{wd}</div>'
+                for wd, wc in zip(_WD_LBL, _WD_CLR)
+            ) + "</div>", unsafe_allow_html=True,
+        )
 
         # ── 셀 데이터 계산 ──
         _ncells = []
