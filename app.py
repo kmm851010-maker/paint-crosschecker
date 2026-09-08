@@ -4219,13 +4219,9 @@ def page_inventory():
 
     BACKEND = "https://kgcounter.up.railway.app"
 
-    # 재고현황 페이지 전용 CSS
+    # 재고현황 페이지 전용 CSS (슬림 스크롤바)
     st.markdown("""
 <style>
-/* 페이지 전체 스크롤 억제 */
-section[data-testid="stMain"] { overflow: hidden !important; }
-.block-container { overflow: hidden !important; }
-/* 재고 목록 스크롤 영역 슬림 스크롤바 */
 [data-testid="stScrollableElement"]::-webkit-scrollbar { width: 4px; height: 4px; }
 [data-testid="stScrollableElement"]::-webkit-scrollbar-track { background: transparent; }
 [data-testid="stScrollableElement"]::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
