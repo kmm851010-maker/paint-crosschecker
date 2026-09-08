@@ -205,19 +205,20 @@ def init_month_schedule(year: int, month: int, members: dict) -> int:
 
 
 def delete_daily_details_for_leave(leave: dict) -> int:
-    """휴가 삭제 시 오늘 이후 날짜의 저장 일지만 초기화."""
+    """휴가 삭제 시 해당 기간 전체(과거 포함)의 저장 일지 초기화."""
     try:
-        today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
-        start = datetime.date.fromisoformat(leave["start"])
-        end = datetime.date.fromisoformat(leave["end"])
+        start = datetime.date.fromisoformat(str(leave["start"])[:10])
+        end = datetime.date.fromisoformat(str(leave["end"])[:10])
         person = leave["name"]
 
-        res = _sb().table("daily_detail").select("date,data").gte("date", str(max(start, today))).lte("date", str(end)).execute()
+        res = _sb().table("daily_detail").select("date,data").gte("date", str(start)).lte("date", str(end)).execute()
         deleted = 0
         for r in res.data:
             detail = r["data"] or {}
             shift = detail.get("shift", {})
-            if shift.get("is_2person") and shift.get("leave_person") == person:
+            lp = shift.get("leave_person") or ""
+            # leave_person이 일치하거나 비어있는(저장 누락) is_2person 레코드 모두 정리
+            if shift.get("is_2person") and (lp == person or lp == ""):
                 _sb().table("daily_detail").delete().eq("date", r["date"]).execute()
                 deleted += 1
         return deleted
