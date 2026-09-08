@@ -4141,7 +4141,7 @@ def page_attendance():
                             f'<span style="font-size:20px;color:{_dc2};font-weight:800;line-height:1;">{_c["day"]}</span>'
                         )
                         _slots_html = "".join(
-                            f'<div style="color:{clr};font-size:11px;font-weight:700;line-height:1.4;text-align:right;">{lbl}</div>'
+                            f'<div style="color:{clr};font-size:13px;font-weight:700;line-height:1.4;text-align:right;">{lbl}</div>'
                             for lbl, clr in _c.get("slots",[])
                         )
                         _bg = "#EFF6FF" if _c["is_tod"] else "#fff"
