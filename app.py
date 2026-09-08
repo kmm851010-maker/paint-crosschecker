@@ -4218,6 +4218,16 @@ def page_inventory():
     import pandas as _pd
 
     BACKEND = "https://kgcounter.up.railway.app"
+
+    # 재고현황 페이지 전용 CSS (슬림 스크롤바)
+    st.markdown("""
+<style>
+[data-testid="stScrollableElement"]::-webkit-scrollbar { width: 4px; height: 4px; }
+[data-testid="stScrollableElement"]::-webkit-scrollbar-track { background: transparent; }
+[data-testid="stScrollableElement"]::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+[data-testid="stScrollableElement"]::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+</style>""", unsafe_allow_html=True)
+
     _inv_hdr_c1, _inv_hdr_c2 = st.columns([10, 1])
     with _inv_hdr_c1:
         st.subheader("재고 현황")
@@ -4482,27 +4492,31 @@ def page_inventory():
                 for _l in _grp_lots:
                     st.session_state[f"chk_{_l}"] = not _grp_all_sel
                 st.rerun()
+            # 헤더 행 (스크롤 영역 밖 — 고정)
             h1, h2, h3, h4, h5, h6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
             h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
             h4.markdown("**제조사**")
             if sort_mode not in ("섹터별",): h5.markdown("**섹터**")
             h6.markdown("**등록시간**")
-            for _, row in group_df.iterrows():
-                rs = row.get("returnStatus", "")
-                sd = row.get("scanDisabled", "")
-                return_emoji = "🔴" if rs == "불량" else "🟡" if rs == "기술" else "🔵" if rs == "무상" else ""
-                scan_badge = " `스캔불가`" if sd == "Y" else ""
-                c1, c2, c3, c4, c5, c6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
-                checked = c1.checkbox("", key=f"chk_{row['lot']}", label_visibility="collapsed")
-                if checked:
-                    selected_lots.add(row["lot"])
-                _pfx = f"{return_emoji} " if return_emoji else ""
-                c2.markdown(f"{_pfx}**{row.get('product','')}**{scan_badge}")
-                c3.text(row.get("lot", ""))
-                c4.text(row.get("maker", ""))
-                if sort_mode not in ("섹터별",):
-                    c5.text(row.get("sector", ""))
-                c6.text(row.get("registered", ""))
+            # 데이터 행 (자체 스크롤 컨테이너)
+            _row_h = min(450, max(180, cnt * 44))
+            with st.container(height=_row_h):
+                for _, row in group_df.iterrows():
+                    rs = row.get("returnStatus", "")
+                    sd = row.get("scanDisabled", "")
+                    return_emoji = "🔴" if rs == "불량" else "🟡" if rs == "기술" else "🔵" if rs == "무상" else ""
+                    scan_badge = " `스캔불가`" if sd == "Y" else ""
+                    c1, c2, c3, c4, c5, c6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+                    checked = c1.checkbox("", key=f"chk_{row['lot']}", label_visibility="collapsed")
+                    if checked:
+                        selected_lots.add(row["lot"])
+                    _pfx = f"{return_emoji} " if return_emoji else ""
+                    c2.markdown(f"{_pfx}**{row.get('product','')}**{scan_badge}")
+                    c3.text(row.get("lot", ""))
+                    c4.text(row.get("maker", ""))
+                    if sort_mode not in ("섹터별",):
+                        c5.text(row.get("sector", ""))
+                    c6.text(row.get("registered", ""))
 
         _all_groups = list(df_filtered.groupby(group_col, sort=False))
 
@@ -4558,27 +4572,31 @@ def page_inventory():
                             for _l in _grp_lots:
                                 st.session_state[f"chk_{_l}"] = not _grp_all_sel
                             st.rerun()
+                    # 헤더 행 (고정)
                     h1, h2, h3, h4, h5, h6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
                     h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
                     h4.markdown("**제조사**")
                     if sort_mode not in ("섹터별",): h5.markdown("**섹터**")
                     h6.markdown("**등록시간**")
-                    for _, row in group_df.iterrows():
-                        rs = row.get("returnStatus", "")
-                        sd = row.get("scanDisabled", "")
-                        return_emoji = "🔴" if rs == "불량" else "🟡" if rs == "기술" else "🔵" if rs == "무상" else ""
-                        scan_badge = " `스캔불가`" if sd == "Y" else ""
-                        c1, c2, c3, c4, c5, c6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
-                        checked = c1.checkbox("", key=f"chk_{row['lot']}", label_visibility="collapsed")
-                        if checked:
-                            selected_lots.add(row["lot"])
-                        _pfx = f"{return_emoji} " if return_emoji else ""
-                        c2.markdown(f"{_pfx}**{row.get('product','')}**{scan_badge}")
-                        c3.text(row.get("lot", ""))
-                        c4.text(row.get("maker", ""))
-                        if sort_mode not in ("섹터별",):
-                            c5.text(row.get("sector", ""))
-                        c6.text(row.get("registered", ""))
+                    # 데이터 행 (자체 스크롤 컨테이너)
+                    _row_h = min(450, max(180, cnt * 44))
+                    with st.container(height=_row_h):
+                        for _, row in group_df.iterrows():
+                            rs = row.get("returnStatus", "")
+                            sd = row.get("scanDisabled", "")
+                            return_emoji = "🔴" if rs == "불량" else "🟡" if rs == "기술" else "🔵" if rs == "무상" else ""
+                            scan_badge = " `스캔불가`" if sd == "Y" else ""
+                            c1, c2, c3, c4, c5, c6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+                            checked = c1.checkbox("", key=f"chk_{row['lot']}", label_visibility="collapsed")
+                            if checked:
+                                selected_lots.add(row["lot"])
+                            _pfx = f"{return_emoji} " if return_emoji else ""
+                            c2.markdown(f"{_pfx}**{row.get('product','')}**{scan_badge}")
+                            c3.text(row.get("lot", ""))
+                            c4.text(row.get("maker", ""))
+                            if sort_mode not in ("섹터별",):
+                                c5.text(row.get("sector", ""))
+                            c6.text(row.get("registered", ""))
 
         # 선택 항목 엑셀 다운로드
         if selected_lots:
