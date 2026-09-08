@@ -4127,7 +4127,7 @@ def page_attendance():
                     if _cell["type"] == "dim":
                         st.markdown(
                             f'<div class="cal-cell-dim" style="border-bottom:1px solid #e5e7eb;'
-                            f'min-height:70px;padding:5px 6px;background:#f9fafb;">'
+                            f'min-height:90px;padding:5px 6px;background:#f9fafb;">'
                             f'<div style="font-size:16px;font-weight:600;color:#d1d5db;">{_cell["day"]}</div>'
                             f'</div>', unsafe_allow_html=True)
                     else:
@@ -4147,7 +4147,7 @@ def page_attendance():
                         _bg = "#EFF6FF" if _c["is_tod"] else "#fff"
                         st.markdown(
                             f'<div class="cal-cell-curr" style="border-bottom:1px solid #e5e7eb;'
-                            f'min-height:70px;padding:5px 6px 4px;background:{_bg};">'
+                            f'min-height:90px;padding:5px 6px 4px;background:{_bg};">'
                             + _c.get("hol_html","")
                             + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:2px;margin-top:2px;">'
                             + f'<div style="flex:0 0 auto;line-height:1;">{_dt_html}</div>'
