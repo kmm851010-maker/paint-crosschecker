@@ -4145,11 +4145,12 @@ def page_attendance():
                             for lbl, clr in _c.get("slots",[])
                         )
                         _bg = "#EFF6FF" if _c["is_tod"] else "#fff"
+                        _mt = "0" if _c["hol"] else "2px"
                         st.markdown(
                             f'<div class="cal-cell-curr" style="border-bottom:1px solid #e5e7eb;'
                             f'min-height:90px;padding:5px 6px 4px;background:{_bg};">'
                             + _c.get("hol_html","")
-                            + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:2px;margin-top:2px;">'
+                            + f'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:2px;margin-top:{_mt};">'
                             + f'<div style="flex:0 0 auto;line-height:1;">{_dt_html}</div>'
                             + f'<div style="flex:1;display:flex;flex-direction:column;align-items:flex-end;padding-top:2px;">{_slots_html}</div>'
                             + '</div>'
