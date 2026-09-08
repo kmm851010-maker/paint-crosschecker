@@ -541,18 +541,8 @@ def page_cross_check():
         st.caption(f"변환 결과 ({len(_rows_raw)}행 × {len(_exp_h)}열)")
         _tbl_key = f"dlg_tbl_{_pln_name}_{len(_rows_raw)}"
         _tbl_h   = len(_rows_raw) * 35 + 42  # 전체 행 높이 = 내부 수직 스크롤 없음
-        _is_img  = _pln_name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "webp")
-        if _is_img and _pln_bytes:
-            _ci, _ct = st.columns(2)
-            with _ci:
-                st.caption("원본 이미지")
-                st.image(_pln_bytes, use_container_width=True)
-            with _ct:
-                _full_df = st.data_editor(_full_df, use_container_width=True, hide_index=True,
-                    num_rows="fixed", key=_tbl_key, height=_tbl_h)
-        else:
-            _full_df = st.data_editor(_full_df, use_container_width=True, hide_index=True,
-                num_rows="fixed", key=_tbl_key, height=_tbl_h)
+        _full_df = st.data_editor(_full_df, use_container_width=True, hide_index=True,
+            num_rows="fixed", key=_tbl_key, height=_tbl_h)
 
     # 입고예정리스트 팝업: 변환결과 팝업 내 버튼 → rerun → 여기서 단독 트리거
     if st.session_state.get("cc_open_incoming"):
