@@ -339,7 +339,7 @@ def _shift_for_date_2s2(target_date, team):
 # ── 4조2교대 (4팀, 연속 교대, 8일 사이클: 주주→휴휴→야야→휴휴) ──
 _4S2_REF = datetime.date(2026, 7, 27)  # 기준일
 _4S2_CYCLE = ["주간", "주간", "휴무", "휴무", "야간", "야간", "휴무", "휴무"]
-_4S2_OFFSET = {"A": 1, "B": 5, "C": 3, "D": 7}  # A조 2026-08-31=야간, B조 2026-09-01=주간 검증완료
+_4S2_OFFSET = {"A": 1, "B": 5, "C": 7, "D": 3}  # C/D 실제 근무표 기준 검증완료
 
 
 def _shift_for_date_4s2(target_date, team):
@@ -4071,14 +4071,15 @@ def page_attendance():
                     ]
             else:
                 _ALL_TEAM_LABELS = {"3조3교대":["A조","B조","C조"],"2조2교대":["A조","B조"],"4조2교대":["A조","B조","C조","D조"]}
-                _TEAM_COLORS = {"A조":"#1565C0","B조":"#2E7D32","C조":"#C62828","D조":"#6A1B9A"}
                 _SHIFT_FN = {"3조3교대":_shift_for_date_3s3,"2조2교대":_shift_for_date_2s2,"4조2교대":_shift_for_date_4s2}
+                _SHIFT_CLR = {"주간":"#1565C0","야간":"#C62828","1근":"#1565C0","2근":"#2E7D32"}
                 _slots_조 = []
                 for _tm in _ALL_TEAM_LABELS.get(shift_type, []):
                     _fn2 = _SHIFT_FN.get(shift_type)
                     _ts2 = _fn2(d, _tm[0]) if _fn2 else ""
                     if _ts2 and _ts2 != "휴무":
-                        _slots_조.append((_tm, _TEAM_COLORS.get(_tm, "#888")))
+                        _lbl2 = _tm[0] + ("주" if _ts2 == "주간" else "야" if _ts2 == "야간" else _ts2[:1])
+                        _slots_조.append((_lbl2, _SHIFT_CLR.get(_ts2, "#888")))
 
             _hol_html = ""
             if hol:
