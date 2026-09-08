@@ -51,6 +51,18 @@ TABLE_EXTRACT_PROMPT = """당신은 이미지 속 표(테이블)를 완벽하게
 """
 
 
+def _build_image_content(image_bytes: bytes, file_name: str) -> dict:
+    """이미지 바이트를 Claude content block으로 변환."""
+    return {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": detect_media_type(file_name),
+            "data": base64.standard_b64encode(image_bytes).decode("utf-8"),
+        },
+    }
+
+
 def extract_table_from_image(
     image_bytes: bytes,
     file_name: str,
@@ -63,32 +75,42 @@ def extract_table_from_image(
     Returns:
         {"headers": [...], "rows": [[...], ...]}
     """
+    return extract_table_from_images([(image_bytes, file_name)], api_key, model)
+
+
+def extract_table_from_images(
+    images: list,
+    api_key: str,
+    model: str = "claude-opus-4-8",
+) -> dict:
+    """
+    여러 이미지를 순서대로 하나의 표로 추출합니다.
+
+    Args:
+        images: [(image_bytes, file_name), ...] 순서대로
+    Returns:
+        {"headers": [...], "rows": [[...], ...]}
+    """
     client = anthropic.Anthropic(api_key=api_key)
-    b64_image = base64.standard_b64encode(image_bytes).decode("utf-8")
-    media_type = detect_media_type(file_name)
+
+    content = []
+    for idx, (img_bytes, fname) in enumerate(images):
+        if len(images) > 1:
+            content.append({"type": "text", "text": f"[이미지 {idx + 1} / {len(images)}]"})
+        content.append(_build_image_content(img_bytes, fname))
+
+    multi_note = (
+        "\n\n이미지가 여러 장인 경우 모두 동일한 표의 연속 페이지입니다. "
+        "헤더는 첫 이미지 기준으로 한 번만 추출하고, "
+        "모든 이미지의 데이터 행을 위에서 아래로 순서대로 합쳐 하나의 JSON으로 응답하세요."
+    ) if len(images) > 1 else ""
+
+    content.append({"type": "text", "text": TABLE_EXTRACT_PROMPT + multi_note})
 
     response = client.messages.create(
         model=model,
         max_tokens=16000,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": b64_image,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": TABLE_EXTRACT_PROMPT,
-                    },
-                ],
-            }
-        ],
+        messages=[{"role": "user", "content": content}],
     )
 
     text = ""
