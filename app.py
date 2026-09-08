@@ -4191,9 +4191,13 @@ def page_attendance():
                         ) if _c["is_tod"] else (
                             f'<span style="font-size:40px;color:{_dc2};font-weight:800;line-height:1;">{_c["day"]}</span>'
                         )
-                        _slots_html = "".join(
-                            f'<div style="color:{clr};font-size:13px;font-weight:700;line-height:1.4;text-align:center;">{lbl}</div>'
-                            for lbl, clr in _c.get("slots",[])
+                        _slots_html = (
+                            '<div style="display:flex;justify-content:center;gap:3px;flex-wrap:wrap;">'
+                            + "".join(
+                                f'<span style="color:{clr};font-size:13px;font-weight:700;line-height:1.4;">{lbl}</span>'
+                                for lbl, clr in _c.get("slots",[])
+                            )
+                            + '</div>'
                         )
                         _bg = "#EFF6FF" if _c["is_tod"] else "#fff"
                         st.markdown(
