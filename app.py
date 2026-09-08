@@ -564,34 +564,47 @@ def page_cross_check():
         st.subheader("① 생산계획서")
         _fu_col, _btn_col = st.columns([3, 1])
         with _fu_col:
-            plan_file = st.file_uploader(
+            plan_files = st.file_uploader(
                 "생산계획서 업로드 (이미지 · 엑셀 · PDF · Word)",
                 type=["jpg", "jpeg", "png", "webp", "xlsx", "xls", "csv", "pdf", "docx"],
                 key="plan_upload",
-                help="인쇄물 사진, 엑셀, PDF, Word(.docx) 모두 지원",
+                accept_multiple_files=True,
+                help="이미지 여러 장 업로드 시 순서대로 합쳐 인식합니다",
             )
         with _btn_col:
             st.write("")
             st.write("")
-            if plan_file and "cc_plan_df" not in st.session_state:
+            _plan_has_files = bool(plan_files)
+            if _plan_has_files and "cc_plan_df" not in st.session_state:
                 if st.button("추출", type="primary", use_container_width=True, key="btn_extract_plan"):
                     if not api_key:
                         st.error("API Key가 설정되지 않았습니다.")
                         st.stop()
-                    plan_bytes = plan_file.getvalue()
-                    plan_fname = plan_file.name
-                    with st.spinner("생산계획서 분석 중..."):
+                    _IMG_EXTS = {"jpg", "jpeg", "png", "webp"}
+                    _img_files = [f for f in plan_files if f.name.lower().rsplit(".", 1)[-1] in _IMG_EXTS]
+                    with st.spinner(f"생산계획서 분석 중... ({len(plan_files)}장)" if len(plan_files) > 1 else "생산계획서 분석 중..."):
                         try:
-                            from modules.vision_ocr import extract_production_plan
-                            result = extract_production_plan(plan_bytes, plan_fname, api_key)
+                            if len(_img_files) == len(plan_files) and len(_img_files) > 1:
+                                # 이미지 여러 장 → 다중 이미지 OCR
+                                from modules.table_extractor import extract_table_from_images
+                                from modules.vision_ocr import extract_new_items_from_table
+                                _images = [(f.getvalue(), f.name) for f in plan_files]
+                                table_data = extract_table_from_images(_images, api_key)
+                                items = extract_new_items_from_table(table_data)
+                                result = {"items": items, "table_data": table_data}
+                            else:
+                                # 단일 파일 또는 비이미지 → 기존 처리
+                                _pf = plan_files[0]
+                                from modules.vision_ocr import extract_production_plan
+                                result = extract_production_plan(_pf.getvalue(), _pf.name, api_key)
                             plan_df = pd.DataFrame(result["items"])
                             st.session_state["cc_table_data"] = result.get("table_data")
                         except Exception as e:
                             st.error(f"생산계획서 분석 실패: {e}")
                             st.stop()
                     st.session_state["cc_plan_df"] = plan_df
-                    st.session_state["cc_plan_bytes"] = plan_bytes
-                    st.session_state["cc_plan_name"] = plan_fname
+                    st.session_state["cc_plan_bytes"] = plan_files[0].getvalue()
+                    st.session_state["cc_plan_name"] = plan_files[0].name
                     st.rerun()
             elif "cc_plan_df" in st.session_state:
                 table_data = st.session_state.get("cc_table_data")
