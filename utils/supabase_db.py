@@ -217,7 +217,7 @@ def delete_daily_details_for_leave(leave: dict) -> int:
         for r in res.data:
             detail = r["data"] or {}
             shift = detail.get("shift", {})
-            if shift.get("is_2person") and shift.get("3근_근무자") == person:
+            if shift.get("is_2person") and shift.get("leave_person") == person:
                 _sb().table("daily_detail").delete().eq("date", r["date"]).execute()
                 deleted += 1
         return deleted
