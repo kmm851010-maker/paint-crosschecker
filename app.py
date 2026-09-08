@@ -3644,7 +3644,12 @@ def page_attendance():
         st.session_state["att_cal_year"] = today.year
     if "att_cal_month" not in st.session_state:
         st.session_state["att_cal_month"] = today.month
-    if "att_shift_type" not in st.session_state:
+    # 버전 키: 배포 시마다 갱신 → 구버전 세션 강제 리셋
+    _ATT_VER = "2026-09-08-v1"
+    if st.session_state.get("_att_ver") != _ATT_VER:
+        st.session_state["_att_ver"] = _ATT_VER
+        st.session_state["att_shift_type"] = "4조3교대"
+    elif "att_shift_type" not in st.session_state:
         st.session_state["att_shift_type"] = "4조3교대"
     selected_year  = st.session_state["att_cal_year"]
     selected_month = st.session_state["att_cal_month"]
