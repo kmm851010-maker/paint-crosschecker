@@ -3621,7 +3621,7 @@ def _render_att_stats(d, popup_mode=True, section=None):
         if section == "salary":
             _render_salary()
         elif popup_mode:
-            if st.button(f"{selected_month}월 급여시간표", key=f"btn_sal_{nm}_{selected_month}"):
+            if st.button(f"{selected_month}월 급여시간표", key=f"btn_sal_{nm}_{selected_month}", use_container_width=True):
                 st.session_state["_salary_popup_d"] = d
                 _salary_popup_dlg()
         else:
@@ -3633,7 +3633,7 @@ def _render_att_stats(d, popup_mode=True, section=None):
         if section == "cycle":
             _render_cycle()
         elif popup_mode:
-            if st.button("교대주기별 연장 시간", key=f"btn_cyc_{nm}_{selected_month}"):
+            if st.button("교대주기별 연장 시간", key=f"btn_cyc_{nm}_{selected_month}", use_container_width=True):
                 st.session_state["_cycle_popup_d"] = d
                 _cycle_popup_dlg()
         else:
@@ -3881,12 +3881,11 @@ def page_attendance():
                         stats[_ow2]["휴가일수"]+=1; stats[_ow2]["휴가내역"].append(f"{_dstr}: {_ot3} (예정)")
 
         year_leaves = {nm: [] for nm in ALL_MEMBERS}
-        _today_kst = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
         for _lv in base_leaves_s:
             try: _lvs=datetime.date.fromisoformat(_lv["start"]); _lve=datetime.date.fromisoformat(_lv["end"])
             except Exception: continue
             _cur2=_lvs
-            while _cur2<=_lve and _cur2<=_today_kst:
+            while _cur2<=_lve:
                 if _cur2.year==selected_year:
                     _ds2=_cur2.strftime("%Y-%m-%d")
                     if _lv["name"] in year_leaves:
@@ -4200,10 +4199,13 @@ def page_attendance():
                             + '</div>'
                         )
                         _bg = "#EFF6FF" if _c["is_tod"] else "#fff"
+                        _hol_row = _c.get("hol_html","") or (
+                            '<div style="font-size:10px;line-height:1.2;visibility:hidden;">&nbsp;</div>'
+                        )
                         st.markdown(
                             f'<div class="cal-cell-curr" style="border-bottom:1px solid #e5e7eb;'
                             f'min-height:115px;padding:4px 2px 3px;background:{_bg};text-align:center;">'
-                            + _c.get("hol_html","")
+                            + _hol_row
                             + '<div style="display:flex;flex-direction:column;align-items:center;margin-top:1px;">'
                             + f'<div style="line-height:1;">{_dt_html}</div>'
                             + f'<div style="margin-top:2px;">{_slots_html}</div>'
