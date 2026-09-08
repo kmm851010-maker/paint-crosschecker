@@ -339,7 +339,7 @@ def _shift_for_date_2s2(target_date, team):
 # ── 4조2교대 (4팀, 연속 교대, 8일 사이클: 주주→휴휴→야야→휴휴) ──
 _4S2_REF = datetime.date(2026, 7, 27)  # 기준일
 _4S2_CYCLE = ["주간", "주간", "휴무", "휴무", "야간", "야간", "휴무", "휴무"]
-_4S2_OFFSET = {"A": 1, "B": 5, "C": 3, "D": 7}  # A조 2026-08-31=야간, B조 2026-09-01=주간 검증완료
+_4S2_OFFSET = {"A": 1, "B": 5, "C": 7, "D": 3}  # C/D 실제 근무표 기준 검증완료
 
 
 def _shift_for_date_4s2(target_date, team):
