@@ -3445,7 +3445,7 @@ def _att_lv_dialog():
                         st.rerun()
 
 
-def _render_att_stats(d):
+def _render_att_stats(d, popup_mode=True, section=None):
     if not d:
         return
     nm            = d["nm"]
@@ -3463,7 +3463,8 @@ def _render_att_stats(d):
     _mblks        = d["_mblks"]
 
     _조_map = {v: k + "조" for k, v in MEMBERS.items()}
-    st.markdown(f"### {nm} ({_조_map.get(nm,'')}) — {selected_year}년 {selected_month}월")
+    if section is None:
+        st.markdown(f"### {nm} ({_조_map.get(nm,'')}) — {selected_year}년 {selected_month}월")
     _tdh = sum(dd["시간"] for dd in s["대근내역"])
 
     def _fhh(v):
@@ -3503,27 +3504,28 @@ def _render_att_stats(d):
               f'</tr></tbody></table></div>')
         return h
 
-    if s["대근내역"]:
-        with st.expander(f"대근 내역 ({s['대근횟수']}회 · 계 {_fhh(_tdh)}H)", expanded=False):
-            for _dd in s["대근내역"]:
-                st.write(f"{_dd['날짜']} | {_dd['구분']} | {_dd['휴가자']} {_dd['휴가구분']}으로 대근 | {_fhh(_dd['시간'])}H")
-    else:
-        st.caption("대근 없음")
+    if section is None:
+        if s["대근내역"]:
+            with st.expander(f"대근 내역 ({s['대근횟수']}회 · 계 {_fhh(_tdh)}H)", expanded=False):
+                for _dd in s["대근내역"]:
+                    st.write(f"{_dd['날짜']} | {_dd['구분']} | {_dd['휴가자']} {_dd['휴가구분']}으로 대근 | {_fhh(_dd['시간'])}H")
+        else:
+            st.caption("대근 없음")
 
-    if s["휴가내역"]:
-        with st.expander(f"{selected_month}월 휴가 내역 ({s['휴가일수']}일)", expanded=False):
-            for _hh3 in s["휴가내역"]: st.write(_hh3)
-    else:
-        st.caption("이번달 휴가 없음")
+        if s["휴가내역"]:
+            with st.expander(f"{selected_month}월 휴가 내역 ({s['휴가일수']}일)", expanded=False):
+                for _hh3 in s["휴가내역"]: st.write(_hh3)
+        else:
+            st.caption("이번달 휴가 없음")
 
-    if yr_lv:
-        with st.expander(f"{selected_year}년 전체 휴가 ({len(yr_lv)}일)", expanded=False):
-            _tc2 = {}
-            for _lv2 in yr_lv: _tc2[_lv2["구분"]] = _tc2.get(_lv2["구분"], 0) + 1
-            st.info(" | ".join(f"{k}: {v}일" for k, v in _tc2.items()))
-            for _lv2 in yr_lv: st.write(f"{_lv2['날짜']} — {_lv2['구분']}")
+        if yr_lv:
+            with st.expander(f"{selected_year}년 전체 휴가 ({len(yr_lv)}일)", expanded=False):
+                _tc2 = {}
+                for _lv2 in yr_lv: _tc2[_lv2["구분"]] = _tc2.get(_lv2["구분"], 0) + 1
+                st.info(" | ".join(f"{k}: {v}일" for k, v in _tc2.items()))
+                for _lv2 in yr_lv: st.write(f"{_lv2['날짜']} — {_lv2['구분']}")
 
-    with st.expander(f"{selected_month}월 급여시간표", expanded=False):
+    def _render_salary():
         _srows = []
         for _fd in range(1, days_in_month + 1):
             _fd_date = datetime.date(selected_year, selected_month, _fd)
@@ -3583,7 +3585,7 @@ def _render_att_stats(d):
         else:
             st.info("저장된 근무 데이터가 없습니다.")
 
-    with st.expander("교대주기별 연장 시간", expanded=False):
+    def _render_cycle():
         st.caption("교대 주기(연속 근무 5일)별 연장 현황. 주기당 최대 12H — 초과 시 빨간색 경고.")
         if not _mblks:
             st.info("해당 월 교대 주기 없음")
@@ -3614,13 +3616,59 @@ def _render_att_stats(d):
                 _wl=[f'{b[0][0].strftime("%m/%d")}~{b[-1][0].strftime("%m/%d")} ({int(sum(_x[1] for _x in b))}H)' for b in _mblks if int(sum(_x[1] for _x in b))>=_OT]
                 st.error("⚠️ 주 52시간 위배 주기: "+", ".join(_wl))
 
+    # 급여시간표
+    if section in (None, "salary"):
+        if section == "salary":
+            _render_salary()
+        elif popup_mode:
+            if st.button(f"{selected_month}월 급여시간표", key=f"btn_sal_{nm}_{selected_month}"):
+                st.session_state["_salary_popup_d"] = d
+                _salary_popup_dlg()
+        else:
+            with st.expander(f"{selected_month}월 급여시간표", expanded=False):
+                _render_salary()
+
+    # 교대주기별 연장 시간
+    if section in (None, "cycle"):
+        if section == "cycle":
+            _render_cycle()
+        elif popup_mode:
+            if st.button("교대주기별 연장 시간", key=f"btn_cyc_{nm}_{selected_month}"):
+                st.session_state["_cycle_popup_d"] = d
+                _cycle_popup_dlg()
+        else:
+            with st.expander("교대주기별 연장 시간", expanded=False):
+                _render_cycle()
+
+
+@st.dialog("급여시간표", width="large")
+def _salary_popup_dlg():
+    d = st.session_state.get("_salary_popup_d", {})
+    if not d:
+        st.error("데이터 없음"); return
+    nm = d.get("nm", "")
+    month = d.get("month", "")
+    st.markdown(f"**{nm} — {month}월 급여시간표**")
+    _render_att_stats(d, popup_mode=False, section="salary")
+
+
+@st.dialog("교대주기별 연장 시간", width="large")
+def _cycle_popup_dlg():
+    d = st.session_state.get("_cycle_popup_d", {})
+    if not d:
+        st.error("데이터 없음"); return
+    nm = d.get("nm", "")
+    month = d.get("month", "")
+    st.markdown(f"**{nm} — {month}월 교대주기별 연장**")
+    _render_att_stats(d, popup_mode=False, section="cycle")
+
 
 @st.dialog("근무 통계 상세", width="large")
 def _att_stats_dialog():
     d = st.session_state.get("_att_dlg_data", {})
     if not d:
         st.error("데이터 없음"); return
-    _render_att_stats(d)
+    _render_att_stats(d, popup_mode=False)
 
 
 # 근태관리 (근무표 + 근무통계 통합)
@@ -3878,7 +3926,7 @@ def page_attendance():
 
 
     # ── 2열 레이아웃: 좌=근무통계(4) / 우=달력(6) ──
-    _att_left, _att_right = st.columns([3, 7], gap="medium")
+    _att_left, _att_right = st.columns([5, 5], gap="medium")
 
     with _att_left:
         st.markdown('<div class="att-stats-marker"></div>', unsafe_allow_html=True)
@@ -4097,7 +4145,7 @@ def page_attendance():
             # 공휴일 HTML
             _hol_html = (
                 f'<div style="font-size:10px;font-weight:700;color:#E53935;line-height:1.2;'
-                f'overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">{_hol[:6]}</div>'
+                f'text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">{_hol[:6]}</div>'
             ) if _hol else ""
 
             # 메모 HTML
@@ -4139,24 +4187,22 @@ def page_attendance():
                         _dt_html = (
                             '<span style="display:inline-flex;align-items:center;justify-content:center;'
                             'background:#1f2937;color:#fff;border-radius:50%;'
-                            f'width:28px;height:28px;font-size:15px;font-weight:900;">{_c["day"]}</span>'
+                            f'width:40px;height:40px;font-size:22px;font-weight:900;">{_c["day"]}</span>'
                         ) if _c["is_tod"] else (
-                            f'<span style="font-size:20px;color:{_dc2};font-weight:800;line-height:1;">{_c["day"]}</span>'
+                            f'<span style="font-size:40px;color:{_dc2};font-weight:800;line-height:1;">{_c["day"]}</span>'
                         )
                         _slots_html = "".join(
-                            f'<div style="color:{clr};font-size:13px;font-weight:700;line-height:1.4;text-align:right;">{lbl}</div>'
+                            f'<div style="color:{clr};font-size:13px;font-weight:700;line-height:1.4;text-align:center;">{lbl}</div>'
                             for lbl, clr in _c.get("slots",[])
                         )
                         _bg = "#EFF6FF" if _c["is_tod"] else "#fff"
                         st.markdown(
                             f'<div class="cal-cell-curr" style="border-bottom:1px solid #e5e7eb;'
-                            f'min-height:90px;padding:5px 6px 4px;background:{_bg};">'
-                            + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:2px;margin-top:2px;">'
-                            + f'<div style="flex:0 0 auto;line-height:1;">{_dt_html}</div>'
-                            + f'<div style="flex:1;display:flex;flex-direction:column;align-items:flex-end;">'
+                            f'min-height:115px;padding:4px 2px 3px;background:{_bg};text-align:center;">'
                             + _c.get("hol_html","")
-                            + _slots_html
-                            + '</div>'
+                            + '<div style="display:flex;flex-direction:column;align-items:center;margin-top:1px;">'
+                            + f'<div style="line-height:1;">{_dt_html}</div>'
+                            + f'<div style="margin-top:2px;">{_slots_html}</div>'
                             + '</div>'
                             + _c.get("memo","")
                             + '</div>', unsafe_allow_html=True)
