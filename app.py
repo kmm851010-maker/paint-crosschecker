@@ -1195,12 +1195,12 @@ def page_work_log():
         wb.save(output)
         return output.getvalue(), added
 
-    # 휴가 목록 (sheets 연동 — 근무표 메뉴에서 등록)
-    if "leave_list" not in st.session_state:
-        try:
-            from utils.supabase_db import load_leaves as _ll
-            st.session_state["leave_list"] = _ll()
-        except Exception:
+    # 휴가 목록 — 항상 DB에서 최신 로드 (다른 페이지에서 등록된 휴가 즉시 반영)
+    try:
+        from utils.supabase_db import load_leaves as _ll
+        st.session_state["leave_list"] = _ll()
+    except Exception:
+        if "leave_list" not in st.session_state:
             st.session_state["leave_list"] = []
 
     ALL_MEMBERS = list(MEMBERS.values())
@@ -3645,7 +3645,7 @@ def page_attendance():
     if "att_cal_month" not in st.session_state:
         st.session_state["att_cal_month"] = today.month
     # 버전 키: 배포 시마다 갱신 → 구버전 세션 강제 리셋
-    _ATT_VER = "2026-09-08-v1"
+    _ATT_VER = "2026-09-08-v2"
     if st.session_state.get("_att_ver") != _ATT_VER:
         st.session_state["_att_ver"] = _ATT_VER
         st.session_state["att_shift_type"] = "4조3교대"
@@ -3862,13 +3862,13 @@ def page_attendance():
         else: base = "휴무"
         for lv in leave_list:
             try:
-                if lv["name"] == selected_name and datetime.date.fromisoformat(lv["start"]) <= d <= datetime.date.fromisoformat(lv["end"]):
+                if lv["name"] == selected_name and datetime.date.fromisoformat(str(lv["start"])[:10]) <= d <= datetime.date.fromisoformat(str(lv["end"])[:10]):
                     return "휴가", MCLS["휴가"]
             except Exception: pass
         if base != "휴무":
             for lv in leave_list:
                 try:
-                    if lv["name"] != selected_name and datetime.date.fromisoformat(lv["start"]) <= d <= datetime.date.fromisoformat(lv["end"]):
+                    if lv["name"] != selected_name and datetime.date.fromisoformat(str(lv["start"])[:10]) <= d <= datetime.date.fromisoformat(str(lv["end"])[:10]):
                         return "대근", MCLS["대근"]
                 except Exception: pass
         return base, MCLS.get(base, "#ccc")
@@ -4053,11 +4053,29 @@ def page_attendance():
             # 조 슬롯 (조 코드만, 휴가 반영)
             if shift_type == "4조3교대":
                 _base4 = _shift_for_date(d, MEMBERS)
-                _lv4   = _apply_leaves_stat(_base4, d, leave_list)
-                if _lv4.get("is_2person"):
-                    _absent_조 = _base4.get("1근_조", "") if _lv4.get("leave_person") == _base4.get("1근_근무자") else \
-                                 _base4.get("2근_조", "") if _lv4.get("leave_person") == _base4.get("2근_근무자") else \
-                                 _base4.get("3근_조", "")
+                # leave_list에서 직접 탐색 — is_2person의 유일한 근거
+                # (공휴일 포함, 등록된 휴가 없으면 무조건 3교대)
+                _cal_active_lv = None
+                for _lvc in leave_list:
+                    try:
+                        _lvc_s = datetime.date.fromisoformat(str(_lvc.get("start", ""))[:10])
+                        _lvc_e = datetime.date.fromisoformat(str(_lvc.get("end", ""))[:10])
+                    except Exception:
+                        continue
+                    if _lvc_s <= d <= _lvc_e:
+                        _lvc_nm = _lvc.get("name", "")
+                        if _lvc_nm and _lvc_nm in (
+                            _base4.get("1근_근무자"), _base4.get("2근_근무자"), _base4.get("3근_근무자")
+                        ):
+                            _cal_active_lv = _lvc
+                            break
+                if _cal_active_lv:
+                    _lv4 = _apply_leaves_stat(_base4, d, [_cal_active_lv])
+                    _absent_조 = (
+                        _base4.get("1근_조", "") if _cal_active_lv.get("name") == _base4.get("1근_근무자") else
+                        _base4.get("2근_조", "") if _cal_active_lv.get("name") == _base4.get("2근_근무자") else
+                        _base4.get("3근_조", "")
+                    )
                     _slots_조 = [
                         (_absent_조 + "휴", "#F57F17"),
                         (_lv4.get("주간_조", _base4.get("2근_조", "")), "#1565C0"),
