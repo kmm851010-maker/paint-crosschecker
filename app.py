@@ -4064,9 +4064,8 @@ def page_attendance():
                 _nm1 = MEMBERS.get(_cs1, _cs1)
                 _nm2 = MEMBERS.get(_cs2, _cs2)
                 _nm3 = MEMBERS.get(_cs3, _cs3)
-                # 항상 3교대 기본 슬롯 (공휴일 포함 고정)
-                _slts = [(_cs1, "#1565C0"), (_cs2, "#2E7D32"), (_cs3, "#C62828")]
-                # 휴가 배지: DB에서 방금 로드한 _new_cal_leaves만 사용
+                # 기본 슬롯 (휴가자 슬롯은 나중에 교체)
+                _sl1, _sl2, _sl3 = (_cs1, "#1565C0"), (_cs2, "#2E7D32"), (_cs3, "#C62828")
                 for _lv2 in _new_cal_leaves:
                     try:
                         _ls = datetime.date.fromisoformat(str(_lv2.get("start",""))[:10])
@@ -4076,12 +4075,13 @@ def page_attendance():
                     if _ls <= _d <= _le:
                         _lnm = _lv2.get("name","")
                         if _lnm == _nm1:
-                            _slts.append((_cs1 + "休", "#F57F17"))
+                            _sl1 = (_cs1 + "휴", "#F57F17")  # 해당 슬롯을 휴가로 교체
                         elif _lnm == _nm2:
-                            _slts.append((_cs2 + "休", "#F57F17"))
+                            _sl2 = (_cs2 + "휴", "#F57F17")
                         elif _lnm == _nm3:
-                            _slts.append((_cs3 + "休", "#F57F17"))
+                            _sl3 = (_cs3 + "휴", "#F57F17")
                         break
+                _slts = [_sl1, _sl2, _sl3]
             else:
                 _slts = []
                 _nfn = _NSHIFT_FN.get(shift_type)
