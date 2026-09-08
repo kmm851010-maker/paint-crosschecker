@@ -3950,37 +3950,48 @@ def page_attendance():
 
 
     with _att_right:
+        # ════════════════════════════════════════
+        # 근태 달력 (완전 재작성)
+        # ════════════════════════════════════════
         st.markdown('<div class="att-cal-marker"></div>', unsafe_allow_html=True)
-        # 달력 헤더: < year month >  오늘
         st.markdown("""<style>
         [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"]:nth-child(4) span#att-cal-hdr) button {
-            color: #333333 !important;
-            font-weight: 700 !important;
+            color: #333333 !important; font-weight: 700 !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(div.cal-cell-curr),
+        div[data-testid="stHorizontalBlock"]:has(div.cal-cell-dim) {
+            gap: 0 !important; background: #fff; border-left: 1px solid #e5e7eb;
+        }
+        div[data-testid="stColumn"]:has(div.cal-cell-curr),
+        div[data-testid="stColumn"]:has(div.cal-cell-dim) {
+            border-right: 1px solid #e5e7eb !important; padding: 0 !important;
+        }
+        div[data-testid="stColumn"]:has(div.cal-cell-curr) [data-testid="stVerticalBlock"],
+        div[data-testid="stColumn"]:has(div.cal-cell-dim) [data-testid="stVerticalBlock"] { gap: 0 !important; }
+        div[data-testid="stColumn"]:has(div.cal-cell-curr) [data-testid="element-container"],
+        div[data-testid="stColumn"]:has(div.cal-cell-dim) [data-testid="element-container"] {
+            margin-bottom: 0 !important; padding-bottom: 0 !important;
         }
         </style>""", unsafe_allow_html=True)
+
+        # 네비게이션
         _gcl_p, _gcl_title, _gcl_n, _gcl_sp, _gcl_today = st.columns([0.5, 4, 0.5, 0.5, 1])
         with _gcl_p:
             if st.button("❮", key="att_prev_mo", use_container_width=True):
                 if selected_month == 1:
-                    st.session_state["att_cal_year"]  -= 1
-                    st.session_state["att_cal_month"]  = 12
+                    st.session_state["att_cal_year"] -= 1; st.session_state["att_cal_month"] = 12
                 else:
                     st.session_state["att_cal_month"] -= 1
                 st.rerun()
         with _gcl_title:
-            if st.button(
-                f"{selected_year}년 {selected_month}월",
-                key="att_ym_btn",
-                use_container_width=True,
-                help="클릭하면 날짜를 선택할 수 있습니다",
-            ):
+            if st.button(f"{selected_year}년 {selected_month}월", key="att_ym_btn",
+                         use_container_width=True, help="클릭하면 날짜를 선택할 수 있습니다"):
                 st.session_state["_att_dlg_pick_init"] = datetime.date(selected_year, selected_month, 1)
                 _att_date_picker_dialog()
         with _gcl_n:
             if st.button("❯", key="att_next_mo", use_container_width=True):
                 if selected_month == 12:
-                    st.session_state["att_cal_year"]  += 1
-                    st.session_state["att_cal_month"]  = 1
+                    st.session_state["att_cal_year"] += 1; st.session_state["att_cal_month"] = 1
                 else:
                     st.session_state["att_cal_month"] += 1
                 st.rerun()
@@ -3988,189 +3999,162 @@ def page_attendance():
             st.markdown("<span id='att-cal-hdr'></span>", unsafe_allow_html=True)
         with _gcl_today:
             if st.button("오늘", key="att_today_btn", use_container_width=True):
-                st.session_state["att_cal_year"]  = today.year
+                st.session_state["att_cal_year"] = today.year
                 st.session_state["att_cal_month"] = today.month
                 st.rerun()
 
-        # 이전달 마지막 날짜
-        _prev_mo = selected_month - 1 if selected_month > 1 else 12
-        _prev_yr = selected_year if selected_month > 1 else selected_year - 1
-        _prev_days_in_mo = _cal.monthrange(_prev_yr, _prev_mo)[1]
+        # ── 기초 계산값 ──
+        _c_days    = _cal.monthrange(selected_year, selected_month)[1]
+        _c_fwd     = (datetime.date(selected_year, selected_month, 1).weekday() + 1) % 7
+        _pmo       = selected_month - 1 if selected_month > 1 else 12
+        _pyr       = selected_year if selected_month > 1 else selected_year - 1
+        _pdays     = _cal.monthrange(_pyr, _pmo)[1]
 
-        first_wd = (datetime.date(selected_year, selected_month, 1).weekday() + 1) % 7
-        WD_LABELS = ["일", "월", "화", "수", "목", "금", "토"]
-        WD_CLR    = ["#E53935", "#424242", "#424242", "#424242", "#424242", "#424242", "#1565C0"]
-
-        # ── CSS: 달력 그리드 ──
-        st.markdown("""<style>
-        div[data-testid="stHorizontalBlock"]:has(div.cal-cell-curr),
-        div[data-testid="stHorizontalBlock"]:has(div.cal-cell-dim) {
-            gap: 0 !important; background: #fff;
-            border-left: 1px solid #e5e7eb;
-        }
-        div[data-testid="stColumn"]:has(div.cal-cell-curr),
-        div[data-testid="stColumn"]:has(div.cal-cell-dim) {
-            border-right: 1px solid #e5e7eb !important;
-            padding: 0 !important;
-        }
-        /* 셀 내부 Streamlit 여백 제거 */
-        div[data-testid="stColumn"]:has(div.cal-cell-curr) [data-testid="stVerticalBlock"],
-        div[data-testid="stColumn"]:has(div.cal-cell-dim) [data-testid="stVerticalBlock"] {
-            gap: 0 !important;
-        }
-        div[data-testid="stColumn"]:has(div.cal-cell-curr) [data-testid="element-container"],
-        div[data-testid="stColumn"]:has(div.cal-cell-dim) [data-testid="element-container"] {
-            margin-bottom: 0 !important;
-            padding-bottom: 0 !important;
-        }
-        </style>""", unsafe_allow_html=True)
+        # ── 휴가 목록 DB에서 직접 로드 (세션/캐시 완전 우회) ──
+        _new_cal_leaves = []
+        if shift_type == "4조3교대":
+            try:
+                from utils.supabase_db import load_leaves as _ncll
+                _new_cal_leaves = _ncll()
+            except Exception:
+                _new_cal_leaves = []
 
         # ── 요일 헤더 ──
+        _WD_LBL = ["일","월","화","수","목","금","토"]
+        _WD_CLR = ["#E53935","#424242","#424242","#424242","#424242","#424242","#1565C0"]
         st.markdown(
             '<div style="display:flex;background:#f9fafb;border-radius:8px 8px 0 0;'
             'border:1px solid #e5e7eb;border-bottom:2px solid #d1d5db;margin:8px 0 0;overflow:hidden;">'
             + "".join(
                 f'<div style="flex:1;font-size:13px;font-weight:700;text-align:center;'
                 f'padding:7px 2px 6px;color:{wc};">{wd}</div>'
-                for wd, wc in zip(WD_LABELS, WD_CLR)
-            )
-            + "</div>",
-            unsafe_allow_html=True,
+                for wd, wc in zip(_WD_LBL, _WD_CLR)
+            ) + "</div>", unsafe_allow_html=True,
         )
 
-        # ── 셀 데이터 미리 계산 ──
-        _all_cells = []
-        for _pi in range(first_wd):
-            _all_cells.append({"type": "dim", "day": _prev_days_in_mo - first_wd + 1 + _pi})
+        # ── 셀 데이터 계산 ──
+        _ncells = []
+        for _pi in range(_c_fwd):
+            _ncells.append({"type": "dim", "day": _pdays - _c_fwd + 1 + _pi})
 
-        for dn in range(1, days_in_month + 1):
-            d      = datetime.date(selected_year, selected_month, dn)
-            wi     = (d.weekday() + 1) % 7
-            is_tod = (d == today)
-            hol    = _get_holiday_name(d)
-            _d_str = d.strftime("%Y-%m-%d")
+        _NSHIFT_FN = {
+            "3조3교대": _shift_for_date_3s3,
+            "2조2교대": _shift_for_date_2s2,
+            "4조2교대": _shift_for_date_4s2,
+        }
+        _NTEAMS = {
+            "3조3교대": ["A","B","C"],
+            "2조2교대": ["A","B"],
+            "4조2교대": ["A","B","C","D"],
+        }
+        _NCLR = {"주간":"#1565C0","야간":"#C62828","1근":"#1565C0","2근":"#2E7D32"}
 
-            # 조 슬롯 (조 코드만, 휴가 반영)
+        for _dn in range(1, _c_days + 1):
+            _d    = datetime.date(selected_year, selected_month, _dn)
+            _wi   = (_d.weekday() + 1) % 7
+            _itod = (_d == today)
+            _hol  = _get_holiday_name(_d)
+            _ds   = _d.strftime("%Y-%m-%d")
+
+            # 슬롯 계산
             if shift_type == "4조3교대":
-                _base4 = _shift_for_date(d, MEMBERS)
-                # leave_list에서 직접 탐색 — is_2person의 유일한 근거
-                # (공휴일 포함, 등록된 휴가 없으면 무조건 3교대)
-                _cal_active_lv = None
-                for _lvc in leave_list:
+                # _CYCLE_20 직접 참조 — 외부 함수/세션/DB 의존 없음
+                _cidx = (_d - _BASE_DATE).days % 20
+                _cs1, _cs2, _cs3, _ = _CYCLE_20[_cidx]
+                _nm1 = MEMBERS.get(_cs1, _cs1)
+                _nm2 = MEMBERS.get(_cs2, _cs2)
+                _nm3 = MEMBERS.get(_cs3, _cs3)
+                # 항상 3교대 기본 슬롯 (공휴일 포함 고정)
+                _slts = [(_cs1, "#1565C0"), (_cs2, "#2E7D32"), (_cs3, "#C62828")]
+                # 휴가 배지: DB에서 방금 로드한 _new_cal_leaves만 사용
+                for _lv2 in _new_cal_leaves:
                     try:
-                        _lvc_s = datetime.date.fromisoformat(str(_lvc.get("start", ""))[:10])
-                        _lvc_e = datetime.date.fromisoformat(str(_lvc.get("end", ""))[:10])
+                        _ls = datetime.date.fromisoformat(str(_lv2.get("start",""))[:10])
+                        _le = datetime.date.fromisoformat(str(_lv2.get("end",""))[:10])
                     except Exception:
                         continue
-                    if _lvc_s <= d <= _lvc_e:
-                        _lvc_nm = _lvc.get("name", "")
-                        if _lvc_nm and _lvc_nm in (
-                            _base4.get("1근_근무자"), _base4.get("2근_근무자"), _base4.get("3근_근무자")
-                        ):
-                            _cal_active_lv = _lvc
-                            break
-                if _cal_active_lv:
-                    _lv4 = _apply_leaves_stat(_base4, d, [_cal_active_lv])
-                    _absent_조 = (
-                        _base4.get("1근_조", "") if _cal_active_lv.get("name") == _base4.get("1근_근무자") else
-                        _base4.get("2근_조", "") if _cal_active_lv.get("name") == _base4.get("2근_근무자") else
-                        _base4.get("3근_조", "")
-                    )
-                    _slots_조 = [
-                        (_absent_조 + "휴", "#F57F17"),
-                        (_lv4.get("주간_조", _base4.get("2근_조", "")), "#1565C0"),
-                        (_lv4.get("야간_조", _base4.get("3근_조", "")), "#C62828"),
-                    ]
-                else:
-                    _slots_조 = [
-                        (_base4.get("1근_조", ""), "#1565C0"),
-                        (_base4.get("2근_조", ""), "#2E7D32"),
-                        (_base4.get("3근_조", ""), "#C62828"),
-                    ]
+                    if _ls <= _d <= _le:
+                        _lnm = _lv2.get("name","")
+                        if _lnm == _nm1:
+                            _slts.append((_cs1 + "休", "#F57F17"))
+                        elif _lnm == _nm2:
+                            _slts.append((_cs2 + "休", "#F57F17"))
+                        elif _lnm == _nm3:
+                            _slts.append((_cs3 + "休", "#F57F17"))
+                        break
             else:
-                _ALL_TEAM_LABELS = {"3조3교대":["A조","B조","C조"],"2조2교대":["A조","B조"],"4조2교대":["A조","B조","C조","D조"]}
-                _SHIFT_FN = {"3조3교대":_shift_for_date_3s3,"2조2교대":_shift_for_date_2s2,"4조2교대":_shift_for_date_4s2}
-                _SHIFT_CLR = {"주간":"#1565C0","야간":"#C62828","1근":"#1565C0","2근":"#2E7D32"}
-                _slots_조 = []
-                for _tm in _ALL_TEAM_LABELS.get(shift_type, []):
-                    _fn2 = _SHIFT_FN.get(shift_type)
-                    _ts2 = _fn2(d, _tm[0]) if _fn2 else ""
-                    if _ts2 and _ts2 != "휴무":
-                        _lbl2 = _tm[0] + ("주" if _ts2 == "주간" else "야" if _ts2 == "야간" else _ts2[:1])
-                        _slots_조.append((_lbl2, _SHIFT_CLR.get(_ts2, "#888")))
+                _slts = []
+                _nfn = _NSHIFT_FN.get(shift_type)
+                for _ntm in _NTEAMS.get(shift_type, []):
+                    _nts = _nfn(_d, _ntm) if _nfn else ""
+                    if _nts and _nts != "휴무":
+                        _nlbl = _ntm + ("주" if _nts=="주간" else "야" if _nts=="야간" else _nts[:1])
+                        _slts.append((_nlbl, _NCLR.get(_nts, "#888")))
 
-            _hol_html = ""
-            if hol:
-                _hol_html = (
-                    f'<div style="font-size:10px;font-weight:700;color:#E53935;line-height:1.2;'
-                    f'overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">{hol[:6]}</div>'
-                )
+            # 공휴일 HTML
+            _hol_html = (
+                f'<div style="font-size:10px;font-weight:700;color:#E53935;line-height:1.2;'
+                f'overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">{_hol[:6]}</div>'
+            ) if _hol else ""
 
+            # 메모 HTML
             _memo_html = ""
-            if _d_str in _memo_dates:
-                for _mt in _memo_dates[_d_str][:1]:
+            if _ds in _memo_dates:
+                for _mt in _memo_dates[_ds][:1]:
                     _txt = str(_mt)[:7]
                     _memo_html += (
                         f'<div style="background:#F59E0B;color:#fff;border-radius:5px;'
-                        f'font-size:10px;padding:1px 4px;margin-top:1px;'
-                        f'display:inline-block;max-width:100%;overflow:hidden;'
-                        f'white-space:nowrap;text-overflow:ellipsis;">{_txt}</div>'
+                        f'font-size:10px;padding:1px 4px;margin-top:1px;display:inline-block;'
+                        f'max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">{_txt}</div>'
                     )
 
-            _all_cells.append({
-                "type": "curr", "day": dn, "date": d, "date_str": _d_str,
-                "is_tod": is_tod, "wi": wi, "hol": hol, "hol_html": _hol_html,
-                "slots": _slots_조, "memo": _memo_html,
-                "bg": "#E8F0FE" if is_tod else "#fff",
+            _ncells.append({
+                "type":"curr","day":_dn,"date":_d,"date_str":_ds,
+                "is_tod":_itod,"wi":_wi,"hol":_hol,
+                "hol_html":_hol_html,"slots":_slts,"memo":_memo_html,
             })
 
-        _rem_cells = (7 - len(_all_cells) % 7) % 7
-        for _ni in range(1, _rem_cells + 1):
-            _all_cells.append({"type": "dim", "day": _ni})
+        _nrem = (7 - len(_ncells) % 7) % 7
+        for _ni in range(1, _nrem + 1):
+            _ncells.append({"type":"dim","day":_ni})
 
         # ── 주별 렌더링 ──
-        for _ws in range(0, len(_all_cells), 7):
-            _week  = _all_cells[_ws:_ws + 7]
-            _bdr   = "border-top:1px solid #F0F0F0;" if _ws > 0 else ""
-            _wc2   = st.columns(7)
-            for _ci, _cell in enumerate(_week):
+        for _ws in range(0, len(_ncells), 7):
+            _wk = _ncells[_ws:_ws+7]
+            _wc2 = st.columns(7)
+            for _ci, _cell in enumerate(_wk):
                 with _wc2[_ci]:
                     if _cell["type"] == "dim":
                         st.markdown(
-                            f'<div class="cal-cell-dim" style="border-bottom:1px solid #e5e7eb;min-height:70px;'
-                            f'padding:5px 6px;background:#f9fafb;">'
+                            f'<div class="cal-cell-dim" style="border-bottom:1px solid #e5e7eb;'
+                            f'min-height:70px;padding:5px 6px;background:#f9fafb;">'
                             f'<div style="font-size:16px;font-weight:600;color:#d1d5db;">{_cell["day"]}</div>'
-                            f'</div>',
-                            unsafe_allow_html=True,
-                        )
+                            f'</div>', unsafe_allow_html=True)
                     else:
                         _c = _cell
-                        _dc2 = "#E53935" if (_c["wi"] == 0 or _c["hol"]) else ("#1565C0" if _c["wi"] == 6 else "#1f2937")
-                        if _c["is_tod"]:
-                            _dt_html = (
-                                '<span style="display:inline-flex;align-items:center;justify-content:center;'
-                                'background:#1f2937;color:#fff;border-radius:50%;'
-                                f'width:28px;height:28px;font-size:15px;font-weight:900;">{_c["day"]}</span>'
-                            )
-                        else:
-                            _dt_html = f'<span style="font-size:20px;color:{_dc2};font-weight:800;line-height:1;">{_c["day"]}</span>'
+                        _dc2 = "#E53935" if (_c["wi"]==0 or _c["hol"]) else ("#1565C0" if _c["wi"]==6 else "#1f2937")
+                        _dt_html = (
+                            '<span style="display:inline-flex;align-items:center;justify-content:center;'
+                            'background:#1f2937;color:#fff;border-radius:50%;'
+                            f'width:28px;height:28px;font-size:15px;font-weight:900;">{_c["day"]}</span>'
+                        ) if _c["is_tod"] else (
+                            f'<span style="font-size:20px;color:{_dc2};font-weight:800;line-height:1;">{_c["day"]}</span>'
+                        )
                         _slots_html = "".join(
                             f'<div style="color:{clr};font-size:11px;font-weight:700;line-height:1.4;text-align:right;">{lbl}</div>'
-                            for lbl, clr in _c.get("slots", [])
+                            for lbl, clr in _c.get("slots",[])
                         )
                         _bg = "#EFF6FF" if _c["is_tod"] else "#fff"
                         st.markdown(
-                            f'<div class="cal-cell-curr" style="border-bottom:1px solid #e5e7eb;min-height:70px;'
-                            f'padding:5px 6px 4px;background:{_bg};">'
-                            + _c.get("hol_html", "")
-                            + f'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:2px;margin-top:2px;">'
+                            f'<div class="cal-cell-curr" style="border-bottom:1px solid #e5e7eb;'
+                            f'min-height:70px;padding:5px 6px 4px;background:{_bg};">'
+                            + _c.get("hol_html","")
+                            + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:2px;margin-top:2px;">'
                             + f'<div style="flex:0 0 auto;line-height:1;">{_dt_html}</div>'
                             + f'<div style="flex:1;display:flex;flex-direction:column;align-items:flex-end;padding-top:2px;">{_slots_html}</div>'
-                            + f'</div>'
-                            + _c.get("memo", "")
-                            + f'</div>',
-                            unsafe_allow_html=True,
-                        )
+                            + '</div>'
+                            + _c.get("memo","")
+                            + '</div>', unsafe_allow_html=True)
 
 
 
