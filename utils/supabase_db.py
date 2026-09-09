@@ -362,3 +362,131 @@ def set_return_status(drums: list, status: str):
             "return_status": status, "updated_at": now,
         }).eq("lot", drum["lot"]).execute()
     return True
+
+
+# ════════════════════════════════════════════════════════════════════
+# 사용자 관리 (app_users)
+# ════════════════════════════════════════════════════════════════════
+import hashlib as _hl
+import os as _os_
+
+
+def _hash_pw(password: str) -> str:
+    salt = _os_.urandom(16)
+    dk = _hl.pbkdf2_hmac("sha256", password.encode(), salt, 100_000)
+    return salt.hex() + ":" + dk.hex()
+
+
+def _verify_pw(password: str, stored: str) -> bool:
+    try:
+        salt_hex, dk_hex = stored.split(":", 1)
+        dk = _hl.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt_hex), 100_000)
+        return dk.hex() == dk_hex
+    except Exception:
+        return False
+
+
+def register_app_user(department: str, name: str, employee_id: str, password: str) -> bool:
+    """직원 등록. 사번 중복이면 ValueError."""
+    if _sb().table("app_users").select("id").eq("employee_id", employee_id).limit(1).execute().data:
+        raise ValueError(f"사번 '{employee_id}'은 이미 등록된 계정입니다.")
+    _sb().table("app_users").insert({
+        "department": department, "name": name,
+        "employee_id": employee_id,
+        "password_hash": _hash_pw(password), "role": "user",
+    }).execute()
+    return True
+
+
+def authenticate_app_user(department: str, employee_id: str, password: str):
+    """사번+비밀번호 인증. 성공 시 user dict, 실패 시 None."""
+    try:
+        res = _sb().table("app_users").select("department,name,employee_id,role,password_hash") \
+            .eq("department", department).eq("employee_id", employee_id).limit(1).execute()
+        if not res.data:
+            return None
+        row = res.data[0]
+        if _verify_pw(password, row["password_hash"]):
+            return {"department": row["department"], "name": row["name"],
+                    "employee_id": row["employee_id"], "role": row["role"]}
+        return None
+    except Exception:
+        return None
+
+
+def get_app_user_by_employee_id(employee_id: str):
+    """사번으로 사용자 조회. 없으면 None."""
+    try:
+        res = _sb().table("app_users").select("department,name,employee_id,role") \
+            .eq("employee_id", employee_id).limit(1).execute()
+        return res.data[0] if res.data else None
+    except Exception:
+        return None
+
+
+def list_app_users(department: str = None) -> list:
+    """직원 목록 조회."""
+    try:
+        q = _sb().table("app_users").select("department,name,employee_id,role,created_at")
+        if department:
+            q = q.eq("department", department)
+        return q.order("department").order("name").execute().data or []
+    except Exception:
+        return []
+
+
+def delete_app_user(employee_id: str) -> bool:
+    """직원 삭제 (사번 기준)."""
+    _sb().table("app_users").delete().eq("employee_id", employee_id).execute()
+    return True
+
+
+def reset_app_user_password(employee_id: str, new_password: str) -> bool:
+    """비밀번호 초기화 (사번 기준)."""
+    _sb().table("app_users").update({"password_hash": _hash_pw(new_password)}) \
+        .eq("employee_id", employee_id).execute()
+    return True
+
+
+def get_employee_email(employee_id: str) -> str:
+    """직원 이메일 조회."""
+    try:
+        res = _sb().table("app_users").select("email").eq("employee_id", employee_id).limit(1).execute()
+        return (res.data[0].get("email") or "") if res.data else ""
+    except Exception:
+        return ""
+
+
+def update_employee_email(employee_id: str, email: str) -> bool:
+    """직원 이메일 저장."""
+    _sb().table("app_users").update({"email": email}).eq("employee_id", employee_id).execute()
+    return True
+
+
+def create_otp_token(employee_id: str) -> str:
+    """6자리 OTP 생성·저장 (10분 유효). 기존 토큰은 삭제."""
+    import secrets as _sec
+    token = f"{_sec.randbelow(1_000_000):06d}"
+    expires = (datetime.datetime.utcnow() + datetime.timedelta(minutes=10)).isoformat()
+    _sb().table("password_reset_tokens").delete().eq("employee_id", employee_id).execute()
+    _sb().table("password_reset_tokens").insert({
+        "employee_id": employee_id, "token": token,
+        "expires_at": expires, "used": False,
+    }).execute()
+    return token
+
+
+def verify_otp_token(employee_id: str, token: str) -> bool:
+    """OTP 검증 후 사용 처리. 성공 시 True."""
+    try:
+        now = datetime.datetime.utcnow().isoformat()
+        res = _sb().table("password_reset_tokens").select("id") \
+            .eq("employee_id", employee_id).eq("token", token) \
+            .eq("used", False).gt("expires_at", now).limit(1).execute()
+        if not res.data:
+            return False
+        _sb().table("password_reset_tokens").update({"used": True}) \
+            .eq("id", res.data[0]["id"]).execute()
+        return True
+    except Exception:
+        return False

@@ -59,6 +59,151 @@ def _validate_token(token: str):
         return None
 
 # ──────────────────────────────────────
+# 직원 부서 목록 (차후 추가 시 여기에 부서명 추가)
+# ──────────────────────────────────────
+_EMPLOYEE_DEPTS = ["칼라반지게차"]
+_ALLOWED_EMAIL_DOMAIN = "kggroup.co.kr"
+
+
+def _send_otp_email(to_email: str, otp: str, name: str):
+    """Gmail API로 OTP 메일 발송 (기존 gmail_config 시트 재사용)."""
+    from email.mime.text import MIMEText
+    import base64 as _b64
+    from utils.sheets import _get_or_create_sheet as _gos
+    import google.oauth2.credentials as _goauth
+    import googleapiclient.discovery as _gdisco
+
+    body = (
+        f"안녕하세요, {name}님.\n\n"
+        f"KG스틸 업무도우미 비밀번호 변경 인증코드입니다.\n\n"
+        f"  인증코드: {otp}\n\n"
+        f"이 코드는 10분간 유효합니다.\n"
+        f"본인이 요청하지 않았다면 이 메일을 무시하세요."
+    )
+    msg = MIMEText(body, "plain", "utf-8")
+    msg["To"] = to_email
+    msg["Subject"] = "[KG스틸 업무도우미] 비밀번호 변경 인증코드"
+
+    _gcfg_ws = _gos("gmail_config")
+    _gcfg = {r[0]: r[1] for r in _gcfg_ws.get_all_values() if len(r) >= 2}
+    _gcreds = _goauth.Credentials(
+        token=None,
+        refresh_token=_gcfg["refresh_token"],
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=_gcfg["client_id"],
+        client_secret=_gcfg["client_secret"],
+    )
+    _svc = _gdisco.build("gmail", "v1", credentials=_gcreds)
+    _raw = _b64.urlsafe_b64encode(msg.as_bytes()).decode()
+    _svc.users().messages().send(userId="me", body={"raw": _raw}).execute()
+
+
+@st.dialog("🔑 비밀번호 변경", width="small")
+def _pw_change_dialog():
+    from utils.supabase_db import (
+        get_employee_email, update_employee_email,
+        create_otp_token, verify_otp_token, reset_app_user_password,
+    )
+    emp_id   = st.session_state.get("user_employee_id", "")
+    emp_name = st.session_state.get("user_employee_name", "")
+    step     = st.session_state.get("_pw_step", 0)
+
+    # ── Step 0: 이메일 입력 & OTP 발송 ──
+    if step == 0:
+        st.markdown("**1단계** — 본인 이메일 입력")
+        saved_email = get_employee_email(emp_id)
+        default_email = saved_email or ""
+        email = st.text_input(
+            f"@{_ALLOWED_EMAIL_DOMAIN} 이메일",
+            value=default_email,
+            placeholder=f"example@{_ALLOWED_EMAIL_DOMAIN}",
+            key="_pw_email_input",
+        )
+        if st.button("인증코드 발송", type="primary", use_container_width=True):
+            email = email.strip().lower()
+            if not email.endswith(f"@{_ALLOWED_EMAIL_DOMAIN}"):
+                st.error(f"@{_ALLOWED_EMAIL_DOMAIN} 도메인 이메일만 사용 가능합니다.")
+            else:
+                with st.spinner("인증코드 발송 중..."):
+                    try:
+                        otp = create_otp_token(emp_id)
+                        _send_otp_email(email, otp, emp_name)
+                        st.session_state["_pw_step"] = 1
+                        st.session_state["_pw_email"] = email
+                        step = 1
+                    except Exception as _e:
+                        st.error(f"메일 발송 실패: {_e}")
+
+    # ── Step 1: OTP 입력 ──
+    if step == 1:
+        _email = st.session_state.get("_pw_email", "")
+        st.markdown("**2단계** — 인증코드 입력")
+        st.caption(f"{_email} 로 발송된 6자리 코드를 입력하세요. (10분 유효)")
+        otp_input = st.text_input("인증코드", max_chars=6, placeholder="000000", key="_pw_otp_input")
+        _c1, _c2 = st.columns(2)
+        with _c1:
+            if st.button("← 다시 발송", use_container_width=True):
+                st.session_state["_pw_step"] = 0
+                st.rerun()
+        with _c2:
+            if st.button("확인", type="primary", use_container_width=True):
+                if verify_otp_token(emp_id, otp_input.strip()):
+                    st.session_state["_pw_step"] = 2
+                    step = 2
+                else:
+                    st.error("코드가 올바르지 않거나 만료되었습니다.")
+
+    # ── Step 2: 새 비밀번호 입력 ──
+    if step == 2:
+        st.markdown("**3단계** — 새 비밀번호 설정")
+        new_pw  = st.text_input("새 비밀번호", type="password", placeholder="4자 이상", key="_pw_new1")
+        new_pw2 = st.text_input("비밀번호 확인", type="password", key="_pw_new2")
+        if st.button("변경 완료", type="primary", use_container_width=True):
+            if len(new_pw) < 4:
+                st.error("비밀번호는 4자 이상이어야 합니다.")
+            elif new_pw != new_pw2:
+                st.error("비밀번호가 일치하지 않습니다.")
+            else:
+                try:
+                    reset_app_user_password(emp_id, new_pw)
+                    update_employee_email(emp_id, st.session_state.get("_pw_email", ""))
+                    for k in ("_pw_step", "_pw_email"):
+                        st.session_state.pop(k, None)
+                    st.success("비밀번호가 변경되었습니다!")
+                    st.balloons()
+                except Exception as _e:
+                    st.error(f"오류: {_e}")
+
+def _restore_user_role(identifier: str):
+    """토큰 복원 후 role/dept 세션 복구. identifier = 사번(직원) or 아이디(관리자)."""
+    _auth = st.secrets.get("auth", {})
+    _admins = dict(_auth.get("users", {}))
+    if identifier in _admins or (not _admins and identifier in ("user", "")):
+        st.session_state.setdefault("username", identifier)
+        st.session_state.setdefault("user_role", "admin")
+        st.session_state.setdefault("user_dept", None)
+        st.session_state.setdefault("user_employee_name", None)
+        st.session_state.setdefault("user_employee_id", None)
+        return
+    try:
+        from utils.supabase_db import get_app_user_by_employee_id as _gabi
+        _u = _gabi(identifier)
+        if _u:
+            st.session_state.setdefault("username", _u["name"])
+            st.session_state.setdefault("user_role", _u["role"])
+            st.session_state.setdefault("user_dept", _u["department"])
+            st.session_state.setdefault("user_employee_name", _u["name"])
+            st.session_state.setdefault("user_employee_id", _u["employee_id"])
+            return
+    except Exception:
+        pass
+    st.session_state.setdefault("username", identifier)
+    st.session_state.setdefault("user_role", "admin")
+    st.session_state.setdefault("user_dept", None)
+    st.session_state.setdefault("user_employee_name", None)
+    st.session_state.setdefault("user_employee_id", None)
+
+# ──────────────────────────────────────
 # 로그인 처리
 # ──────────────────────────────────────
 def _check_login():
@@ -73,8 +218,8 @@ def _check_login():
         uname = _validate_token(token)
         if uname:
             st.session_state["authenticated"] = True
-            st.session_state["username"] = uname
             st.session_state["_token"] = token
+            _restore_user_role(uname)  # username도 여기서 설정
             return True
         else:
             # 만료된 토큰 제거
@@ -111,35 +256,55 @@ def _check_login():
     <div class="login-body"></div>
     """, unsafe_allow_html=True)
 
-    with st.form("login_form"):
-        uid = st.text_input("아이디", placeholder="아이디를 입력하세요")
-        pw = st.text_input("비밀번호", type="password", placeholder="비밀번호를 입력하세요")
-        submitted = st.form_submit_button("🔐  로그인", use_container_width=True, type="primary")
+    dept = st.selectbox("부서 선택", _EMPLOYEE_DEPTS + ["관리자"], key="_login_dept_sel",
+                        label_visibility="visible")
 
-    if submitted:
-        # users dict 있으면 개인 ID/PW, 없으면 단일 PW
-        if users:
-            if users.get(uid.strip().lower()) == pw:
-                uname = uid.strip().lower()
+    if dept == "관리자":
+        with st.form("login_form_admin"):
+            uid = st.text_input("아이디", placeholder="관리자 아이디")
+            pw = st.text_input("비밀번호", type="password", placeholder="비밀번호를 입력하세요")
+            submitted = st.form_submit_button("🔐  로그인", use_container_width=True, type="primary")
+        if submitted:
+            ok = (users.get(uid.strip().lower()) == pw) if users else (pw == single_pw)
+            if ok:
+                uname = uid.strip().lower() if users else (uid or "user")
                 token = _create_token(uname)
-                st.session_state["authenticated"] = True
-                st.session_state["username"] = uname
-                st.session_state["_token"] = token
+                st.session_state.update({
+                    "authenticated": True, "username": uname, "_token": token,
+                    "user_role": "admin", "user_dept": None,
+                    "user_employee_name": None, "user_employee_id": None,
+                })
                 st.query_params["t"] = token
                 st.rerun()
             else:
                 st.error("아이디 또는 비밀번호가 올바르지 않습니다.")
-        else:
-            if pw == single_pw:
-                uname = uid or "user"
-                token = _create_token(uname)
-                st.session_state["authenticated"] = True
-                st.session_state["username"] = uname
-                st.session_state["_token"] = token
+    else:
+        with st.form("login_form_emp"):
+            emp_id = st.text_input("사번", placeholder="사번을 입력하세요")
+            pw = st.text_input("비밀번호", type="password", placeholder="비밀번호를 입력하세요")
+            submitted = st.form_submit_button("🔐  로그인", use_container_width=True, type="primary")
+        if submitted:
+            emp_id = emp_id.strip()
+            try:
+                from utils.supabase_db import authenticate_app_user as _aau
+                _user = _aau(dept, emp_id, pw)
+            except Exception:
+                _user = None
+            if _user:
+                token = _create_token(emp_id)  # 토큰에 사번 저장 (고유값)
+                st.session_state.update({
+                    "authenticated": True,
+                    "username": _user["name"],  # 표시용 이름
+                    "_token": token,
+                    "user_role": _user["role"],
+                    "user_dept": dept,
+                    "user_employee_name": _user["name"],
+                    "user_employee_id": emp_id,
+                })
                 st.query_params["t"] = token
                 st.rerun()
             else:
-                st.error("비밀번호가 올바르지 않습니다.")
+                st.error("사번 또는 비밀번호가 올바르지 않습니다.")
     return False
 
 if not _check_login():
@@ -243,7 +408,7 @@ _team = st.secrets.get("company", {}).get("team", "")
 st.sidebar.caption(f"{_dept}\n{_team} 업무도우미" if _dept else "KG스틸 업무도우미")
 st.sidebar.markdown("---")
 
-_VALID_PAGES = {"근태관리", "일일 작업 일지", "재고 현황", "입고 관리", "반품 관리"}
+_VALID_PAGES = {"근태관리", "일일 작업 일지", "재고 현황", "입고 관리", "반품 관리", "직원 관리"}
 if st.session_state.get("page") not in _VALID_PAGES:
     # 세션 만료·WebSocket 재연결 시 URL 파라미터에서 페이지 복원
     _page_from_url = st.query_params.get("page", "근태관리")
@@ -264,13 +429,26 @@ st.sidebar.markdown("**KG 재고관리**")
 _nav("재고 현황", "재고 현황")
 _nav("입고 관리", "입고 관리")
 _nav("반품 관리", "반품 관리")
+if st.session_state.get("user_role", "admin") == "admin":
+    st.sidebar.markdown("**시스템 관리**")
+    _nav("직원 관리", "직원 관리")
 
 page = st.session_state["page"]
 
 st.sidebar.markdown("---")
 _uname = st.session_state.get("username", "")
+_urole = st.session_state.get("user_role", "admin")
+_udept = st.session_state.get("user_dept") or ""
 if _uname:
-    st.sidebar.caption(f"{_uname}")
+    if _urole == "admin":
+        st.sidebar.caption(f"👑 관리자: {_uname}")
+    else:
+        st.sidebar.caption(f"👤 {_udept}\n{_uname}")
+if st.session_state.get("user_role") == "user":
+    if st.sidebar.button("🔑 비밀번호 변경", use_container_width=True):
+        st.session_state.pop("_pw_step", None)
+        st.session_state.pop("_pw_email", None)
+        _pw_change_dialog()
 if st.sidebar.button("🚪 로그아웃", use_container_width=True):
     st.query_params.clear()
     st.session_state.clear()
@@ -2694,7 +2872,16 @@ div[data-testid="stSelectbox"] div[data-baseweb="select"] span {
     _team_code = ""  # non-4조3교대용 팀 코드 (A/B/C/D)
 
     with _sc2:
-        selected_name = st.selectbox(_team_label, _SHIFT_TEAMS[shift_type], key="sched_name")
+        _ms_role = st.session_state.get("user_role", "admin")
+        _ms_emp  = st.session_state.get("user_employee_name", "")
+        if _ms_role == "user" and _ms_emp and shift_type == "4조3교대":
+            selected_name = _ms_emp
+            st.markdown(
+                f'<div style="padding:6px 0;font-size:16px;font-weight:700;color:#CDD6F4;">{selected_name}</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            selected_name = st.selectbox(_team_label, _SHIFT_TEAMS[shift_type], key="sched_name")
     with _sc3:
         selected_year = st.selectbox("년도", list(range(2020, today.year + 6)), index=list(range(2020, today.year + 6)).index(today.year), key="sched_yr")
     with _sc4:
@@ -3678,6 +3865,12 @@ def page_attendance():
 
     MEMBERS = dict(st.secrets.get("members", {'A': '직원A', 'B': '직원B', 'C': '직원C', 'D': '직원D'}))
     ALL_MEMBERS = list(MEMBERS.values())
+
+    # 직원 로그인 시: 본인 데이터만 보이도록 필터 (UI는 동일)
+    _is_employee = st.session_state.get("user_role") == "user"
+    _emp_name = st.session_state.get("user_employee_name", "")
+    if _is_employee and _emp_name and _emp_name in ALL_MEMBERS:
+        ALL_MEMBERS = [_emp_name]
     today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
 
     # ── 전체화면 달력 모드 ──
@@ -3934,13 +4127,16 @@ def page_attendance():
             st.info("상세 통계는 4조3교대 근무 형태에서만 지원됩니다.")
         else:
             _조_map = {v: k for k, v in MEMBERS.items()}
-            _sel_nm = st.selectbox(
-                "근무자",
-                ALL_MEMBERS,
-                format_func=lambda x: f"{x} ({_조_map.get(x,'')}조)",
-                key="att_stat_sel_member",
-                label_visibility="collapsed",
-            )
+            if _is_employee and _emp_name:
+                _sel_nm = _emp_name
+            else:
+                _sel_nm = st.selectbox(
+                    "근무자",
+                    ALL_MEMBERS,
+                    format_func=lambda x: f"{x} ({_조_map.get(x,'')}조)",
+                    key="att_stat_sel_member",
+                    label_visibility="collapsed",
+                )
             _tk2 = next((k for k, v in MEMBERS.items() if v == _sel_nm), None)
             _mblks2 = []
             _obd2 = {}
@@ -5196,6 +5392,159 @@ def page_inventory_return():
                 st.rerun()
 
 
+# ══════════════════════════════════════
+# 직원 관리 (관리자 전용)
+# ══════════════════════════════════════
+def page_employee_admin():
+    from utils.supabase_db import (
+        list_app_users, register_app_user,
+        delete_app_user, reset_app_user_password,
+    )
+
+    if st.session_state.get("user_role", "admin") != "admin":
+        st.error("관리자만 접근 가능합니다.")
+        return
+
+    st.markdown("## 직원 관리")
+
+    # ── CSV 일괄 등록 ──
+    with st.expander("📂 CSV 일괄 등록", expanded=False):
+        # 템플릿 다운로드
+        _tmpl = "부서,사번,이름\n칼라반지게차,270253,최준일\n칼라반지게차,270254,문주영\n"
+        st.download_button(
+            "📥 템플릿 다운로드 (CSV)",
+            data=_tmpl.encode("utf-8-sig"),
+            file_name="직원등록_템플릿.csv",
+            mime="text/csv",
+        )
+        st.caption("열 순서: 부서 / 사번 / 이름  |  초기 비밀번호는 사번으로 자동 설정됩니다.")
+        _csv_file = st.file_uploader("CSV 파일 업로드", type=["csv"], key="emp_csv_upload")
+        if _csv_file:
+            try:
+                import io as _io
+                _df = pd.read_csv(_io.BytesIO(_csv_file.read()), dtype=str).fillna("")
+                # 컬럼명 정규화
+                _df.columns = [c.strip() for c in _df.columns]
+                if not {"부서", "사번", "이름"}.issubset(set(_df.columns)):
+                    st.error("CSV 컬럼이 올바르지 않습니다. 템플릿을 다운로드해서 사용하세요.")
+                else:
+                    _df = _df[["부서", "사번", "이름"]].copy()
+                    _df = _df[(_df["사번"].str.strip() != "") & (_df["이름"].str.strip() != "")]
+                    st.markdown(f"**미리보기** ({len(_df)}명)")
+                    st.dataframe(_df.reset_index(drop=True), use_container_width=True)
+                    if st.button("일괄 등록 실행", type="primary", key="csv_bulk_insert"):
+                        _ok, _skip, _err = 0, 0, []
+                        for _, _row in _df.iterrows():
+                            try:
+                                register_app_user(
+                                    _row["부서"].strip(),
+                                    _row["이름"].strip(),
+                                    _row["사번"].strip(),
+                                    _row["사번"].strip(),  # 초기 pw = 사번
+                                )
+                                _ok += 1
+                            except ValueError:
+                                _skip += 1
+                            except Exception as _ex:
+                                _err.append(f"{_row['이름']}: {_ex}")
+                        msg = f"완료: 신규 {_ok}명 등록, {_skip}명 건너뜀(중복)"
+                        if _err:
+                            st.warning(msg + f"\n오류: {', '.join(_err)}")
+                        else:
+                            st.success(msg)
+                        st.rerun()
+            except Exception as _e:
+                st.error(f"파일 읽기 오류: {_e}")
+
+    # ── 직원 등록 ──
+    with st.expander("➕ 직원 등록 (개별)", expanded=False):
+        with st.form("emp_add_form"):
+            _c1, _c2, _c3, _c4 = st.columns(4)
+            with _c1:
+                _add_dept = st.selectbox("부서", _EMPLOYEE_DEPTS, key="emp_add_dept")
+            with _c2:
+                _add_eid = st.text_input("사번", key="emp_add_eid", placeholder="예: 270253")
+            with _c3:
+                _add_name = st.text_input("이름", key="emp_add_name", placeholder="예: 최준일")
+            with _c4:
+                _add_pw = st.text_input("초기 비밀번호", key="emp_add_pw", placeholder="미입력 시 사번으로 설정")
+            _add_submitted = st.form_submit_button("등록", type="primary", use_container_width=True)
+        if _add_submitted:
+            _add_eid = _add_eid.strip()
+            _add_name = _add_name.strip()
+            _init_pw = _add_pw.strip() or _add_eid  # 비어있으면 사번이 초기 비밀번호
+            if not _add_eid or not _add_name:
+                st.error("사번과 이름을 입력하세요.")
+            else:
+                try:
+                    register_app_user(_add_dept, _add_name, _add_eid, _init_pw)
+                    st.success(f"'{_add_name}({_add_eid})' 등록 완료! 초기 비밀번호: {_init_pw}")
+                    st.rerun()
+                except ValueError as _ve:
+                    st.error(str(_ve))
+                except Exception as _e:
+                    st.error(f"오류: {_e}")
+
+    # ── secrets 마이그레이션 (secrets에 직원이 있는 경우 1회성 등록) ──
+    # secrets 구조: [부서명] 이름 = "사번"
+    _mig_candidates = []
+    for _d in _EMPLOYEE_DEPTS:
+        for _n, _eid in dict(st.secrets.get(_d, {})).items():
+            _mig_candidates.append((_d, _n, _eid))
+    if _mig_candidates:
+        with st.expander("⬆️ 기존 직원 일괄 등록 (secrets → Supabase)", expanded=False):
+            st.caption("secrets.toml 직원 목록을 Supabase로 이전합니다. 초기 비밀번호 = 사번. 이미 등록된 계정은 건너뜁니다.")
+            for _d, _n, _eid in _mig_candidates:
+                st.markdown(f"- **{_d}** | {_n} (사번: {_eid})")
+            if st.button("일괄 등록 실행", type="primary"):
+                _ok, _skip = 0, 0
+                for _d, _n, _eid in _mig_candidates:
+                    try:
+                        register_app_user(_d, _n, _eid, _eid)  # 초기 pw = 사번
+                        _ok += 1
+                    except ValueError:
+                        _skip += 1
+                    except Exception:
+                        pass
+                st.success(f"완료: 신규 {_ok}명 등록, {_skip}명 건너뜀 (이미 존재)")
+                st.rerun()
+
+    # ── 직원 목록 ──
+    st.markdown("### 등록된 직원")
+    _emp_list = list_app_users()
+    if not _emp_list:
+        st.info("등록된 직원이 없습니다. 위에서 등록하거나 일괄 등록을 실행하세요.")
+        return
+
+    _dept_groups = {}
+    for _e in _emp_list:
+        _dept_groups.setdefault(_e["department"], []).append(_e)
+
+    for _dept_name, _emps in _dept_groups.items():
+        st.markdown(f"**{_dept_name}** ({len(_emps)}명)")
+        for _e in _emps:
+            _col_n, _col_eid, _col_pw, _col_del = st.columns([2, 1.5, 2, 1])
+            with _col_n:
+                st.markdown(f"👤 {_e['name']}")
+            with _col_eid:
+                st.caption(f"사번: {_e.get('employee_id', '-')}")
+            with _col_pw:
+                with st.popover("🔑 비밀번호 초기화"):
+                    with st.form(f"pw_reset_{_e.get('employee_id', _e['name'])}"):
+                        _new_pw = st.text_input("새 비밀번호", key=f"npw_{_e.get('employee_id')}")
+                        if st.form_submit_button("초기화", type="primary"):
+                            if _new_pw.strip():
+                                reset_app_user_password(_e["employee_id"], _new_pw.strip())
+                                st.success("변경 완료")
+                            else:
+                                st.error("비밀번호를 입력하세요.")
+            with _col_del:
+                if st.button("삭제", key=f"del_{_e.get('employee_id', _e['name'])}", type="secondary"):
+                    delete_app_user(_e["employee_id"])
+                    st.rerun()
+        st.markdown("---")
+
+
 # ──────────────────────────────────────
 # 메뉴 라우팅
 # ──────────────────────────────────────
@@ -5209,3 +5558,5 @@ elif page == "입고 관리":
     page_cross_check()
 elif page == "반품 관리":
     page_inventory_return()
+elif page == "직원 관리":
+    page_employee_admin()
