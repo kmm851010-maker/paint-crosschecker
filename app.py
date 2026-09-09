@@ -1986,6 +1986,11 @@ def page_work_log():
                                     part.add_header('Content-Disposition', 'attachment', filename=('utf-8', '', fname))
                                     msg.attach(part)
                                 if _attach_default:
+                                    if not st.session_state.get('_monthly_bytes'):
+                                        _mbytes, _mcount = generate_monthly_work_log_excel(selected_date)
+                                        st.session_state['_monthly_bytes'] = _mbytes
+                                        st.session_state['_monthly_count'] = _mcount
+                                        st.session_state['_monthly_ym'] = (selected_date.year, selected_date.month)
                                     _attach_file(st.session_state['_monthly_bytes'], _monthly_fname)
                                 for _ef in (_extra_files or []):
                                     _attach_file(_ef.getvalue(), _ef.name)
