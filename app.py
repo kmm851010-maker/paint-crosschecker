@@ -59,6 +59,30 @@ def _validate_token(token: str):
         return None
 
 # ──────────────────────────────────────
+# 직원 부서 목록 (차후 추가 시 여기에 부서명 추가)
+# ──────────────────────────────────────
+_EMPLOYEE_DEPTS = ["칼라반지게차"]
+
+def _restore_user_role(uname: str):
+    """토큰 복원 후 role/dept 세션 복구 (서버 재시작 대응)."""
+    _auth = st.secrets.get("auth", {})
+    _admins = dict(_auth.get("users", {}))
+    if uname in _admins or (not _admins and uname in ("user", "")):
+        st.session_state.setdefault("user_role", "admin")
+        st.session_state.setdefault("user_dept", None)
+        st.session_state.setdefault("user_employee_name", None)
+        return
+    for _dept in _EMPLOYEE_DEPTS:
+        if uname in dict(st.secrets.get(_dept, {})):
+            st.session_state.setdefault("user_role", "user")
+            st.session_state.setdefault("user_dept", _dept)
+            st.session_state.setdefault("user_employee_name", uname)
+            return
+    st.session_state.setdefault("user_role", "admin")
+    st.session_state.setdefault("user_dept", None)
+    st.session_state.setdefault("user_employee_name", None)
+
+# ──────────────────────────────────────
 # 로그인 처리
 # ──────────────────────────────────────
 def _check_login():
@@ -75,6 +99,7 @@ def _check_login():
             st.session_state["authenticated"] = True
             st.session_state["username"] = uname
             st.session_state["_token"] = token
+            _restore_user_role(uname)
             return True
         else:
             # 만료된 토큰 제거
@@ -111,35 +136,45 @@ def _check_login():
     <div class="login-body"></div>
     """, unsafe_allow_html=True)
 
-    with st.form("login_form"):
-        uid = st.text_input("아이디", placeholder="아이디를 입력하세요")
-        pw = st.text_input("비밀번호", type="password", placeholder="비밀번호를 입력하세요")
-        submitted = st.form_submit_button("🔐  로그인", use_container_width=True, type="primary")
+    dept = st.selectbox("부서 선택", _EMPLOYEE_DEPTS + ["관리자"], key="_login_dept_sel",
+                        label_visibility="visible")
 
-    if submitted:
-        # users dict 있으면 개인 ID/PW, 없으면 단일 PW
-        if users:
-            if users.get(uid.strip().lower()) == pw:
-                uname = uid.strip().lower()
+    if dept == "관리자":
+        with st.form("login_form_admin"):
+            uid = st.text_input("아이디", placeholder="관리자 아이디")
+            pw = st.text_input("비밀번호", type="password", placeholder="비밀번호를 입력하세요")
+            submitted = st.form_submit_button("🔐  로그인", use_container_width=True, type="primary")
+        if submitted:
+            ok = (users.get(uid.strip().lower()) == pw) if users else (pw == single_pw)
+            if ok:
+                uname = uid.strip().lower() if users else (uid or "user")
                 token = _create_token(uname)
-                st.session_state["authenticated"] = True
-                st.session_state["username"] = uname
-                st.session_state["_token"] = token
+                st.session_state.update({
+                    "authenticated": True, "username": uname, "_token": token,
+                    "user_role": "admin", "user_dept": None, "user_employee_name": None,
+                })
                 st.query_params["t"] = token
                 st.rerun()
             else:
                 st.error("아이디 또는 비밀번호가 올바르지 않습니다.")
-        else:
-            if pw == single_pw:
-                uname = uid or "user"
-                token = _create_token(uname)
-                st.session_state["authenticated"] = True
-                st.session_state["username"] = uname
-                st.session_state["_token"] = token
+    else:
+        dept_users = dict(st.secrets.get(dept, {}))
+        with st.form("login_form_emp"):
+            name = st.text_input("이름", placeholder="이름을 입력하세요")
+            pw = st.text_input("비밀번호 (사번)", type="password", placeholder="사번을 입력하세요")
+            submitted = st.form_submit_button("🔐  로그인", use_container_width=True, type="primary")
+        if submitted:
+            name = name.strip()
+            if name in dept_users and dept_users[name] == pw:
+                token = _create_token(name)
+                st.session_state.update({
+                    "authenticated": True, "username": name, "_token": token,
+                    "user_role": "user", "user_dept": dept, "user_employee_name": name,
+                })
                 st.query_params["t"] = token
                 st.rerun()
             else:
-                st.error("비밀번호가 올바르지 않습니다.")
+                st.error("이름 또는 비밀번호(사번)가 올바르지 않습니다.")
     return False
 
 if not _check_login():
@@ -269,8 +304,13 @@ page = st.session_state["page"]
 
 st.sidebar.markdown("---")
 _uname = st.session_state.get("username", "")
+_urole = st.session_state.get("user_role", "admin")
+_udept = st.session_state.get("user_dept") or ""
 if _uname:
-    st.sidebar.caption(f"{_uname}")
+    if _urole == "admin":
+        st.sidebar.caption(f"👑 관리자: {_uname}")
+    else:
+        st.sidebar.caption(f"👤 {_udept}\n{_uname}")
 if st.sidebar.button("🚪 로그아웃", use_container_width=True):
     st.query_params.clear()
     st.session_state.clear()
@@ -2694,7 +2734,16 @@ div[data-testid="stSelectbox"] div[data-baseweb="select"] span {
     _team_code = ""  # non-4조3교대용 팀 코드 (A/B/C/D)
 
     with _sc2:
-        selected_name = st.selectbox(_team_label, _SHIFT_TEAMS[shift_type], key="sched_name")
+        _ms_role = st.session_state.get("user_role", "admin")
+        _ms_emp  = st.session_state.get("user_employee_name", "")
+        if _ms_role == "user" and _ms_emp and shift_type == "4조3교대":
+            selected_name = _ms_emp
+            st.markdown(
+                f'<div style="padding:6px 0;font-size:16px;font-weight:700;color:#CDD6F4;">{selected_name}</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            selected_name = st.selectbox(_team_label, _SHIFT_TEAMS[shift_type], key="sched_name")
     with _sc3:
         selected_year = st.selectbox("년도", list(range(2020, today.year + 6)), index=list(range(2020, today.year + 6)).index(today.year), key="sched_yr")
     with _sc4:
@@ -3675,6 +3724,14 @@ def _att_stats_dialog():
 # ══════════════════════════════════════
 def page_attendance():
     import calendar as _cal
+
+    # 직원 로그인 시: 개인 근무표로 바로 진입 (다른 직원 데이터 차단)
+    if st.session_state.get("user_role") == "user":
+        _emp = st.session_state.get("user_employee_name", "")
+        if _emp:
+            st.session_state["sched_name"] = _emp
+        page_my_schedule()
+        return
 
     MEMBERS = dict(st.secrets.get("members", {'A': '직원A', 'B': '직원B', 'C': '직원C', 'D': '직원D'}))
     ALL_MEMBERS = list(MEMBERS.values())
