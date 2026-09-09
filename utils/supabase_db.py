@@ -386,35 +386,39 @@ def _verify_pw(password: str, stored: str) -> bool:
         return False
 
 
-def register_app_user(department: str, name: str, password: str) -> bool:
-    """직원 등록. 이미 존재하면 ValueError."""
-    if _sb().table("app_users").select("id").eq("department", department).eq("name", name).limit(1).execute().data:
-        raise ValueError(f"'{name}'은 이미 등록된 계정입니다.")
+def register_app_user(department: str, name: str, employee_id: str, password: str) -> bool:
+    """직원 등록. 사번 중복이면 ValueError."""
+    if _sb().table("app_users").select("id").eq("employee_id", employee_id).limit(1).execute().data:
+        raise ValueError(f"사번 '{employee_id}'은 이미 등록된 계정입니다.")
     _sb().table("app_users").insert({
         "department": department, "name": name,
+        "employee_id": employee_id,
         "password_hash": _hash_pw(password), "role": "user",
     }).execute()
     return True
 
 
-def authenticate_app_user(department: str, name: str, password: str):
-    """인증 성공 시 user dict, 실패 시 None."""
+def authenticate_app_user(department: str, employee_id: str, password: str):
+    """사번+비밀번호 인증. 성공 시 user dict, 실패 시 None."""
     try:
-        res = _sb().table("app_users").select("department,name,role,password_hash").eq("department", department).eq("name", name).limit(1).execute()
+        res = _sb().table("app_users").select("department,name,employee_id,role,password_hash") \
+            .eq("department", department).eq("employee_id", employee_id).limit(1).execute()
         if not res.data:
             return None
         row = res.data[0]
         if _verify_pw(password, row["password_hash"]):
-            return {"department": row["department"], "name": row["name"], "role": row["role"]}
+            return {"department": row["department"], "name": row["name"],
+                    "employee_id": row["employee_id"], "role": row["role"]}
         return None
     except Exception:
         return None
 
 
-def get_app_user_by_name(name: str):
-    """이름으로 사용자 조회 (부서 무관). 없으면 None."""
+def get_app_user_by_employee_id(employee_id: str):
+    """사번으로 사용자 조회. 없으면 None."""
     try:
-        res = _sb().table("app_users").select("department,name,role").eq("name", name).limit(1).execute()
+        res = _sb().table("app_users").select("department,name,employee_id,role") \
+            .eq("employee_id", employee_id).limit(1).execute()
         return res.data[0] if res.data else None
     except Exception:
         return None
@@ -423,7 +427,7 @@ def get_app_user_by_name(name: str):
 def list_app_users(department: str = None) -> list:
     """직원 목록 조회."""
     try:
-        q = _sb().table("app_users").select("department,name,role,created_at")
+        q = _sb().table("app_users").select("department,name,employee_id,role,created_at")
         if department:
             q = q.eq("department", department)
         return q.order("department").order("name").execute().data or []
@@ -431,13 +435,14 @@ def list_app_users(department: str = None) -> list:
         return []
 
 
-def delete_app_user(department: str, name: str) -> bool:
-    """직원 삭제."""
-    _sb().table("app_users").delete().eq("department", department).eq("name", name).execute()
+def delete_app_user(employee_id: str) -> bool:
+    """직원 삭제 (사번 기준)."""
+    _sb().table("app_users").delete().eq("employee_id", employee_id).execute()
     return True
 
 
-def reset_app_user_password(department: str, name: str, new_password: str) -> bool:
-    """비밀번호 초기화."""
-    _sb().table("app_users").update({"password_hash": _hash_pw(new_password)}).eq("department", department).eq("name", name).execute()
+def reset_app_user_password(employee_id: str, new_password: str) -> bool:
+    """비밀번호 초기화 (사번 기준)."""
+    _sb().table("app_users").update({"password_hash": _hash_pw(new_password)}) \
+        .eq("employee_id", employee_id).execute()
     return True

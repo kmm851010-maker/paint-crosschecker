@@ -63,28 +63,34 @@ def _validate_token(token: str):
 # ──────────────────────────────────────
 _EMPLOYEE_DEPTS = ["칼라반지게차"]
 
-def _restore_user_role(uname: str):
-    """토큰 복원 후 role/dept 세션 복구 (서버 재시작 대응)."""
+def _restore_user_role(identifier: str):
+    """토큰 복원 후 role/dept 세션 복구. identifier = 사번(직원) or 아이디(관리자)."""
     _auth = st.secrets.get("auth", {})
     _admins = dict(_auth.get("users", {}))
-    if uname in _admins or (not _admins and uname in ("user", "")):
+    if identifier in _admins or (not _admins and identifier in ("user", "")):
+        st.session_state.setdefault("username", identifier)
         st.session_state.setdefault("user_role", "admin")
         st.session_state.setdefault("user_dept", None)
         st.session_state.setdefault("user_employee_name", None)
+        st.session_state.setdefault("user_employee_id", None)
         return
     try:
-        from utils.supabase_db import get_app_user_by_name as _gabn
-        _u = _gabn(uname)
+        from utils.supabase_db import get_app_user_by_employee_id as _gabi
+        _u = _gabi(identifier)
         if _u:
+            st.session_state.setdefault("username", _u["name"])
             st.session_state.setdefault("user_role", _u["role"])
             st.session_state.setdefault("user_dept", _u["department"])
             st.session_state.setdefault("user_employee_name", _u["name"])
+            st.session_state.setdefault("user_employee_id", _u["employee_id"])
             return
     except Exception:
         pass
+    st.session_state.setdefault("username", identifier)
     st.session_state.setdefault("user_role", "admin")
     st.session_state.setdefault("user_dept", None)
     st.session_state.setdefault("user_employee_name", None)
+    st.session_state.setdefault("user_employee_id", None)
 
 # ──────────────────────────────────────
 # 로그인 처리
@@ -101,9 +107,8 @@ def _check_login():
         uname = _validate_token(token)
         if uname:
             st.session_state["authenticated"] = True
-            st.session_state["username"] = uname
             st.session_state["_token"] = token
-            _restore_user_role(uname)
+            _restore_user_role(uname)  # username도 여기서 설정
             return True
         else:
             # 만료된 토큰 제거
@@ -155,7 +160,8 @@ def _check_login():
                 token = _create_token(uname)
                 st.session_state.update({
                     "authenticated": True, "username": uname, "_token": token,
-                    "user_role": "admin", "user_dept": None, "user_employee_name": None,
+                    "user_role": "admin", "user_dept": None,
+                    "user_employee_name": None, "user_employee_id": None,
                 })
                 st.query_params["t"] = token
                 st.rerun()
@@ -163,26 +169,31 @@ def _check_login():
                 st.error("아이디 또는 비밀번호가 올바르지 않습니다.")
     else:
         with st.form("login_form_emp"):
-            name = st.text_input("이름", placeholder="이름을 입력하세요")
-            pw = st.text_input("비밀번호 (사번)", type="password", placeholder="사번을 입력하세요")
+            emp_id = st.text_input("사번", placeholder="사번을 입력하세요")
+            pw = st.text_input("비밀번호", type="password", placeholder="비밀번호를 입력하세요")
             submitted = st.form_submit_button("🔐  로그인", use_container_width=True, type="primary")
         if submitted:
-            name = name.strip()
+            emp_id = emp_id.strip()
             try:
                 from utils.supabase_db import authenticate_app_user as _aau
-                _user = _aau(dept, name, pw)
+                _user = _aau(dept, emp_id, pw)
             except Exception:
                 _user = None
             if _user:
-                token = _create_token(name)
+                token = _create_token(emp_id)  # 토큰에 사번 저장 (고유값)
                 st.session_state.update({
-                    "authenticated": True, "username": name, "_token": token,
-                    "user_role": _user["role"], "user_dept": dept, "user_employee_name": name,
+                    "authenticated": True,
+                    "username": _user["name"],  # 표시용 이름
+                    "_token": token,
+                    "user_role": _user["role"],
+                    "user_dept": dept,
+                    "user_employee_name": _user["name"],
+                    "user_employee_id": emp_id,
                 })
                 st.query_params["t"] = token
                 st.rerun()
             else:
-                st.error("이름 또는 비밀번호(사번)가 올바르지 않습니다.")
+                st.error("사번 또는 비밀번호가 올바르지 않습니다.")
     return False
 
 if not _check_login():
@@ -5282,22 +5293,26 @@ def page_employee_admin():
     # ── 직원 등록 ──
     with st.expander("➕ 직원 등록", expanded=False):
         with st.form("emp_add_form"):
-            _c1, _c2, _c3 = st.columns(3)
+            _c1, _c2, _c3, _c4 = st.columns(4)
             with _c1:
                 _add_dept = st.selectbox("부서", _EMPLOYEE_DEPTS, key="emp_add_dept")
             with _c2:
-                _add_name = st.text_input("이름", key="emp_add_name")
+                _add_eid = st.text_input("사번", key="emp_add_eid", placeholder="예: 270253")
             with _c3:
-                _add_pw = st.text_input("초기 비밀번호 (사번)", key="emp_add_pw")
+                _add_name = st.text_input("이름", key="emp_add_name", placeholder="예: 최준일")
+            with _c4:
+                _add_pw = st.text_input("초기 비밀번호", key="emp_add_pw", placeholder="미입력 시 사번으로 설정")
             _add_submitted = st.form_submit_button("등록", type="primary", use_container_width=True)
         if _add_submitted:
+            _add_eid = _add_eid.strip()
             _add_name = _add_name.strip()
-            if not _add_name or not _add_pw:
-                st.error("이름과 비밀번호를 입력하세요.")
+            _init_pw = _add_pw.strip() or _add_eid  # 비어있으면 사번이 초기 비밀번호
+            if not _add_eid or not _add_name:
+                st.error("사번과 이름을 입력하세요.")
             else:
                 try:
-                    register_app_user(_add_dept, _add_name, _add_pw)
-                    st.success(f"'{_add_name}' 등록 완료!")
+                    register_app_user(_add_dept, _add_name, _add_eid, _init_pw)
+                    st.success(f"'{_add_name}({_add_eid})' 등록 완료! 초기 비밀번호: {_init_pw}")
                     st.rerun()
                 except ValueError as _ve:
                     st.error(str(_ve))
@@ -5305,18 +5320,21 @@ def page_employee_admin():
                     st.error(f"오류: {_e}")
 
     # ── secrets 마이그레이션 (secrets에 직원이 있는 경우 1회성 등록) ──
+    # secrets 구조: [부서명] 이름 = "사번"
     _mig_candidates = []
     for _d in _EMPLOYEE_DEPTS:
-        for _n, _p in dict(st.secrets.get(_d, {})).items():
-            _mig_candidates.append((_d, _n, _p))
+        for _n, _eid in dict(st.secrets.get(_d, {})).items():
+            _mig_candidates.append((_d, _n, _eid))
     if _mig_candidates:
         with st.expander("⬆️ 기존 직원 일괄 등록 (secrets → Supabase)", expanded=False):
-            st.caption("secrets.toml에 등록된 직원을 Supabase로 한번에 이전합니다. 이미 등록된 계정은 건너뜁니다.")
+            st.caption("secrets.toml 직원 목록을 Supabase로 이전합니다. 초기 비밀번호 = 사번. 이미 등록된 계정은 건너뜁니다.")
+            for _d, _n, _eid in _mig_candidates:
+                st.markdown(f"- **{_d}** | {_n} (사번: {_eid})")
             if st.button("일괄 등록 실행", type="primary"):
                 _ok, _skip = 0, 0
-                for _d, _n, _p in _mig_candidates:
+                for _d, _n, _eid in _mig_candidates:
                     try:
-                        register_app_user(_d, _n, _p)
+                        register_app_user(_d, _n, _eid, _eid)  # 초기 pw = 사번
                         _ok += 1
                     except ValueError:
                         _skip += 1
@@ -5329,7 +5347,7 @@ def page_employee_admin():
     st.markdown("### 등록된 직원")
     _emp_list = list_app_users()
     if not _emp_list:
-        st.info("등록된 직원이 없습니다.")
+        st.info("등록된 직원이 없습니다. 위에서 등록하거나 일괄 등록을 실행하세요.")
         return
 
     _dept_groups = {}
@@ -5339,22 +5357,24 @@ def page_employee_admin():
     for _dept_name, _emps in _dept_groups.items():
         st.markdown(f"**{_dept_name}** ({len(_emps)}명)")
         for _e in _emps:
-            _col_n, _col_pw, _col_del = st.columns([3, 2, 1])
+            _col_n, _col_eid, _col_pw, _col_del = st.columns([2, 1.5, 2, 1])
             with _col_n:
                 st.markdown(f"👤 {_e['name']}")
+            with _col_eid:
+                st.caption(f"사번: {_e.get('employee_id', '-')}")
             with _col_pw:
                 with st.popover("🔑 비밀번호 초기화"):
-                    with st.form(f"pw_reset_{_dept_name}_{_e['name']}"):
-                        _new_pw = st.text_input("새 비밀번호", key=f"npw_{_dept_name}_{_e['name']}")
+                    with st.form(f"pw_reset_{_e.get('employee_id', _e['name'])}"):
+                        _new_pw = st.text_input("새 비밀번호", key=f"npw_{_e.get('employee_id')}")
                         if st.form_submit_button("초기화", type="primary"):
                             if _new_pw.strip():
-                                reset_app_user_password(_dept_name, _e["name"], _new_pw.strip())
+                                reset_app_user_password(_e["employee_id"], _new_pw.strip())
                                 st.success("변경 완료")
                             else:
                                 st.error("비밀번호를 입력하세요.")
             with _col_del:
-                if st.button("삭제", key=f"del_{_dept_name}_{_e['name']}", type="secondary"):
-                    delete_app_user(_dept_name, _e["name"])
+                if st.button("삭제", key=f"del_{_e.get('employee_id', _e['name'])}", type="secondary"):
+                    delete_app_user(_e["employee_id"])
                     st.rerun()
         st.markdown("---")
 
