@@ -435,6 +435,18 @@ def list_app_users(department: str = None) -> list:
         return []
 
 
+def get_members_dict(department: str = "칼라반지게차") -> dict:
+    """조(team) → 이름 매핑 딕셔너리 반환. team 컬럼이 있는 직원만 포함."""
+    try:
+        rows = _sb().table("app_users").select("team,name") \
+            .eq("department", department) \
+            .not_.is_("team", "null") \
+            .execute().data or []
+        return {r["team"]: r["name"] for r in rows if r.get("team") and r.get("name")}
+    except Exception:
+        return {}
+
+
 def delete_app_user(employee_id: str) -> bool:
     """직원 삭제 (사번 기준)."""
     _sb().table("app_users").delete().eq("employee_id", employee_id).execute()
