@@ -117,27 +117,29 @@ def _pw_change_dialog():
             f"@{_ALLOWED_EMAIL_DOMAIN} 이메일",
             value=default_email,
             placeholder=f"example@{_ALLOWED_EMAIL_DOMAIN}",
+            key="_pw_email_input",
         )
         if st.button("인증코드 발송", type="primary", use_container_width=True):
             email = email.strip().lower()
             if not email.endswith(f"@{_ALLOWED_EMAIL_DOMAIN}"):
                 st.error(f"@{_ALLOWED_EMAIL_DOMAIN} 도메인 이메일만 사용 가능합니다.")
             else:
-                try:
-                    otp = create_otp_token(emp_id)
-                    _send_otp_email(email, otp, emp_name)
-                    st.session_state["_pw_step"] = 1
-                    st.session_state["_pw_email"] = email
-                    st.rerun()
-                except Exception as _e:
-                    st.error(f"메일 발송 실패: {_e}")
+                with st.spinner("인증코드 발송 중..."):
+                    try:
+                        otp = create_otp_token(emp_id)
+                        _send_otp_email(email, otp, emp_name)
+                        st.session_state["_pw_step"] = 1
+                        st.session_state["_pw_email"] = email
+                        step = 1
+                    except Exception as _e:
+                        st.error(f"메일 발송 실패: {_e}")
 
     # ── Step 1: OTP 입력 ──
-    elif step == 1:
+    if step == 1:
         _email = st.session_state.get("_pw_email", "")
         st.markdown("**2단계** — 인증코드 입력")
         st.caption(f"{_email} 로 발송된 6자리 코드를 입력하세요. (10분 유효)")
-        otp_input = st.text_input("인증코드", max_chars=6, placeholder="000000")
+        otp_input = st.text_input("인증코드", max_chars=6, placeholder="000000", key="_pw_otp_input")
         _c1, _c2 = st.columns(2)
         with _c1:
             if st.button("← 다시 발송", use_container_width=True):
@@ -147,15 +149,15 @@ def _pw_change_dialog():
             if st.button("확인", type="primary", use_container_width=True):
                 if verify_otp_token(emp_id, otp_input.strip()):
                     st.session_state["_pw_step"] = 2
-                    st.rerun()
+                    step = 2
                 else:
                     st.error("코드가 올바르지 않거나 만료되었습니다.")
 
     # ── Step 2: 새 비밀번호 입력 ──
-    elif step == 2:
+    if step == 2:
         st.markdown("**3단계** — 새 비밀번호 설정")
-        new_pw  = st.text_input("새 비밀번호", type="password", placeholder="4자 이상")
-        new_pw2 = st.text_input("비밀번호 확인", type="password")
+        new_pw  = st.text_input("새 비밀번호", type="password", placeholder="4자 이상", key="_pw_new1")
+        new_pw2 = st.text_input("비밀번호 확인", type="password", key="_pw_new2")
         if st.button("변경 완료", type="primary", use_container_width=True):
             if len(new_pw) < 4:
                 st.error("비밀번호는 4자 이상이어야 합니다.")
