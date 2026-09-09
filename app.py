@@ -5290,8 +5290,57 @@ def page_employee_admin():
 
     st.markdown("## 직원 관리")
 
+    # ── CSV 일괄 등록 ──
+    with st.expander("📂 CSV 일괄 등록", expanded=False):
+        # 템플릿 다운로드
+        _tmpl = "부서,사번,이름\n칼라반지게차,270253,최준일\n칼라반지게차,270254,문주영\n"
+        st.download_button(
+            "📥 템플릿 다운로드 (CSV)",
+            data=_tmpl.encode("utf-8-sig"),
+            file_name="직원등록_템플릿.csv",
+            mime="text/csv",
+        )
+        st.caption("열 순서: 부서 / 사번 / 이름  |  초기 비밀번호는 사번으로 자동 설정됩니다.")
+        _csv_file = st.file_uploader("CSV 파일 업로드", type=["csv"], key="emp_csv_upload")
+        if _csv_file:
+            try:
+                import io as _io
+                _df = pd.read_csv(_io.BytesIO(_csv_file.read()), dtype=str).fillna("")
+                # 컬럼명 정규화
+                _df.columns = [c.strip() for c in _df.columns]
+                if not {"부서", "사번", "이름"}.issubset(set(_df.columns)):
+                    st.error("CSV 컬럼이 올바르지 않습니다. 템플릿을 다운로드해서 사용하세요.")
+                else:
+                    _df = _df[["부서", "사번", "이름"]].copy()
+                    _df = _df[(_df["사번"].str.strip() != "") & (_df["이름"].str.strip() != "")]
+                    st.markdown(f"**미리보기** ({len(_df)}명)")
+                    st.dataframe(_df.reset_index(drop=True), use_container_width=True)
+                    if st.button("일괄 등록 실행", type="primary", key="csv_bulk_insert"):
+                        _ok, _skip, _err = 0, 0, []
+                        for _, _row in _df.iterrows():
+                            try:
+                                register_app_user(
+                                    _row["부서"].strip(),
+                                    _row["이름"].strip(),
+                                    _row["사번"].strip(),
+                                    _row["사번"].strip(),  # 초기 pw = 사번
+                                )
+                                _ok += 1
+                            except ValueError:
+                                _skip += 1
+                            except Exception as _ex:
+                                _err.append(f"{_row['이름']}: {_ex}")
+                        msg = f"완료: 신규 {_ok}명 등록, {_skip}명 건너뜀(중복)"
+                        if _err:
+                            st.warning(msg + f"\n오류: {', '.join(_err)}")
+                        else:
+                            st.success(msg)
+                        st.rerun()
+            except Exception as _e:
+                st.error(f"파일 읽기 오류: {_e}")
+
     # ── 직원 등록 ──
-    with st.expander("➕ 직원 등록", expanded=False):
+    with st.expander("➕ 직원 등록 (개별)", expanded=False):
         with st.form("emp_add_form"):
             _c1, _c2, _c3, _c4 = st.columns(4)
             with _c1:
