@@ -3747,16 +3747,14 @@ def _att_stats_dialog():
 def page_attendance():
     import calendar as _cal
 
-    # 직원 로그인 시: 개인 근무표로 바로 진입 (다른 직원 데이터 차단)
-    if st.session_state.get("user_role") == "user":
-        _emp = st.session_state.get("user_employee_name", "")
-        if _emp:
-            st.session_state["sched_name"] = _emp
-        page_my_schedule()
-        return
-
     MEMBERS = dict(st.secrets.get("members", {'A': '직원A', 'B': '직원B', 'C': '직원C', 'D': '직원D'}))
     ALL_MEMBERS = list(MEMBERS.values())
+
+    # 직원 로그인 시: 본인 데이터만 보이도록 필터 (UI는 동일)
+    _is_employee = st.session_state.get("user_role") == "user"
+    _emp_name = st.session_state.get("user_employee_name", "")
+    if _is_employee and _emp_name and _emp_name in ALL_MEMBERS:
+        ALL_MEMBERS = [_emp_name]
     today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
 
     # ── 전체화면 달력 모드 ──
@@ -4013,13 +4011,16 @@ def page_attendance():
             st.info("상세 통계는 4조3교대 근무 형태에서만 지원됩니다.")
         else:
             _조_map = {v: k for k, v in MEMBERS.items()}
-            _sel_nm = st.selectbox(
-                "근무자",
-                ALL_MEMBERS,
-                format_func=lambda x: f"{x} ({_조_map.get(x,'')}조)",
-                key="att_stat_sel_member",
-                label_visibility="collapsed",
-            )
+            if _is_employee and _emp_name:
+                _sel_nm = _emp_name
+            else:
+                _sel_nm = st.selectbox(
+                    "근무자",
+                    ALL_MEMBERS,
+                    format_func=lambda x: f"{x} ({_조_map.get(x,'')}조)",
+                    key="att_stat_sel_member",
+                    label_visibility="collapsed",
+                )
             _tk2 = next((k for k, v in MEMBERS.items() if v == _sel_nm), None)
             _mblks2 = []
             _obd2 = {}
