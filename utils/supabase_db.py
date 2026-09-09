@@ -446,3 +446,47 @@ def reset_app_user_password(employee_id: str, new_password: str) -> bool:
     _sb().table("app_users").update({"password_hash": _hash_pw(new_password)}) \
         .eq("employee_id", employee_id).execute()
     return True
+
+
+def get_employee_email(employee_id: str) -> str:
+    """직원 이메일 조회."""
+    try:
+        res = _sb().table("app_users").select("email").eq("employee_id", employee_id).limit(1).execute()
+        return (res.data[0].get("email") or "") if res.data else ""
+    except Exception:
+        return ""
+
+
+def update_employee_email(employee_id: str, email: str) -> bool:
+    """직원 이메일 저장."""
+    _sb().table("app_users").update({"email": email}).eq("employee_id", employee_id).execute()
+    return True
+
+
+def create_otp_token(employee_id: str) -> str:
+    """6자리 OTP 생성·저장 (10분 유효). 기존 토큰은 삭제."""
+    import secrets as _sec
+    token = f"{_sec.randbelow(1_000_000):06d}"
+    expires = (datetime.datetime.utcnow() + datetime.timedelta(minutes=10)).isoformat()
+    _sb().table("password_reset_tokens").delete().eq("employee_id", employee_id).execute()
+    _sb().table("password_reset_tokens").insert({
+        "employee_id": employee_id, "token": token,
+        "expires_at": expires, "used": False,
+    }).execute()
+    return token
+
+
+def verify_otp_token(employee_id: str, token: str) -> bool:
+    """OTP 검증 후 사용 처리. 성공 시 True."""
+    try:
+        now = datetime.datetime.utcnow().isoformat()
+        res = _sb().table("password_reset_tokens").select("id") \
+            .eq("employee_id", employee_id).eq("token", token) \
+            .eq("used", False).gt("expires_at", now).limit(1).execute()
+        if not res.data:
+            return False
+        _sb().table("password_reset_tokens").update({"used": True}) \
+            .eq("id", res.data[0]["id"]).execute()
+        return True
+    except Exception:
+        return False

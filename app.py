@@ -62,6 +62,115 @@ def _validate_token(token: str):
 # 직원 부서 목록 (차후 추가 시 여기에 부서명 추가)
 # ──────────────────────────────────────
 _EMPLOYEE_DEPTS = ["칼라반지게차"]
+_ALLOWED_EMAIL_DOMAIN = "kggroup.co.kr"
+
+
+def _send_otp_email(to_email: str, otp: str, name: str):
+    """Gmail API로 OTP 메일 발송 (기존 gmail_config 시트 재사용)."""
+    from email.mime.text import MIMEText
+    import base64 as _b64
+    from utils.sheets import _get_or_create_sheet as _gos
+    import google.oauth2.credentials as _goauth
+    import googleapiclient.discovery as _gdisco
+
+    body = (
+        f"안녕하세요, {name}님.\n\n"
+        f"KG스틸 업무도우미 비밀번호 변경 인증코드입니다.\n\n"
+        f"  인증코드: {otp}\n\n"
+        f"이 코드는 10분간 유효합니다.\n"
+        f"본인이 요청하지 않았다면 이 메일을 무시하세요."
+    )
+    msg = MIMEText(body, "plain", "utf-8")
+    msg["To"] = to_email
+    msg["Subject"] = "[KG스틸 업무도우미] 비밀번호 변경 인증코드"
+
+    _gcfg_ws = _gos("gmail_config")
+    _gcfg = {r[0]: r[1] for r in _gcfg_ws.get_all_values() if len(r) >= 2}
+    _gcreds = _goauth.Credentials(
+        token=None,
+        refresh_token=_gcfg["refresh_token"],
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=_gcfg["client_id"],
+        client_secret=_gcfg["client_secret"],
+    )
+    _svc = _gdisco.build("gmail", "v1", credentials=_gcreds)
+    _raw = _b64.urlsafe_b64encode(msg.as_bytes()).decode()
+    _svc.users().messages().send(userId="me", body={"raw": _raw}).execute()
+
+
+@st.dialog("🔑 비밀번호 변경", width="small")
+def _pw_change_dialog():
+    from utils.supabase_db import (
+        get_employee_email, update_employee_email,
+        create_otp_token, verify_otp_token, reset_app_user_password,
+    )
+    emp_id   = st.session_state.get("user_employee_id", "")
+    emp_name = st.session_state.get("user_employee_name", "")
+    step     = st.session_state.get("_pw_step", 0)
+
+    # ── Step 0: 이메일 입력 & OTP 발송 ──
+    if step == 0:
+        st.markdown("**1단계** — 본인 이메일 입력")
+        saved_email = get_employee_email(emp_id)
+        default_email = saved_email or ""
+        email = st.text_input(
+            f"@{_ALLOWED_EMAIL_DOMAIN} 이메일",
+            value=default_email,
+            placeholder=f"example@{_ALLOWED_EMAIL_DOMAIN}",
+        )
+        if st.button("인증코드 발송", type="primary", use_container_width=True):
+            email = email.strip().lower()
+            if not email.endswith(f"@{_ALLOWED_EMAIL_DOMAIN}"):
+                st.error(f"@{_ALLOWED_EMAIL_DOMAIN} 도메인 이메일만 사용 가능합니다.")
+            else:
+                try:
+                    otp = create_otp_token(emp_id)
+                    _send_otp_email(email, otp, emp_name)
+                    st.session_state["_pw_step"] = 1
+                    st.session_state["_pw_email"] = email
+                    st.rerun()
+                except Exception as _e:
+                    st.error(f"메일 발송 실패: {_e}")
+
+    # ── Step 1: OTP 입력 ──
+    elif step == 1:
+        _email = st.session_state.get("_pw_email", "")
+        st.markdown("**2단계** — 인증코드 입력")
+        st.caption(f"{_email} 로 발송된 6자리 코드를 입력하세요. (10분 유효)")
+        otp_input = st.text_input("인증코드", max_chars=6, placeholder="000000")
+        _c1, _c2 = st.columns(2)
+        with _c1:
+            if st.button("← 다시 발송", use_container_width=True):
+                st.session_state["_pw_step"] = 0
+                st.rerun()
+        with _c2:
+            if st.button("확인", type="primary", use_container_width=True):
+                if verify_otp_token(emp_id, otp_input.strip()):
+                    st.session_state["_pw_step"] = 2
+                    st.rerun()
+                else:
+                    st.error("코드가 올바르지 않거나 만료되었습니다.")
+
+    # ── Step 2: 새 비밀번호 입력 ──
+    elif step == 2:
+        st.markdown("**3단계** — 새 비밀번호 설정")
+        new_pw  = st.text_input("새 비밀번호", type="password", placeholder="4자 이상")
+        new_pw2 = st.text_input("비밀번호 확인", type="password")
+        if st.button("변경 완료", type="primary", use_container_width=True):
+            if len(new_pw) < 4:
+                st.error("비밀번호는 4자 이상이어야 합니다.")
+            elif new_pw != new_pw2:
+                st.error("비밀번호가 일치하지 않습니다.")
+            else:
+                try:
+                    reset_app_user_password(emp_id, new_pw)
+                    update_employee_email(emp_id, st.session_state.get("_pw_email", ""))
+                    for k in ("_pw_step", "_pw_email"):
+                        st.session_state.pop(k, None)
+                    st.success("비밀번호가 변경되었습니다!")
+                    st.balloons()
+                except Exception as _e:
+                    st.error(f"오류: {_e}")
 
 def _restore_user_role(identifier: str):
     """토큰 복원 후 role/dept 세션 복구. identifier = 사번(직원) or 아이디(관리자)."""
@@ -333,6 +442,11 @@ if _uname:
         st.sidebar.caption(f"👑 관리자: {_uname}")
     else:
         st.sidebar.caption(f"👤 {_udept}\n{_uname}")
+if st.session_state.get("user_role") == "user":
+    if st.sidebar.button("🔑 비밀번호 변경", use_container_width=True):
+        st.session_state.pop("_pw_step", None)
+        st.session_state.pop("_pw_email", None)
+        _pw_change_dialog()
 if st.sidebar.button("🚪 로그아웃", use_container_width=True):
     st.query_params.clear()
     st.session_state.clear()
