@@ -429,7 +429,7 @@ st.sidebar.markdown("**KG 재고관리**")
 _nav("재고 현황", "재고 현황")
 _nav("입고 관리", "입고 관리")
 _nav("반품 관리", "반품 관리")
-if st.session_state.get("user_role", "admin") == "admin":
+if st.session_state.get("username") == "admin":
     st.sidebar.markdown("**시스템 관리**")
     _nav("직원 관리", "직원 관리")
 
@@ -5406,8 +5406,8 @@ def page_employee_admin():
         delete_app_user, reset_app_user_password,
     )
 
-    if st.session_state.get("user_role", "admin") != "admin":
-        st.error("관리자만 접근 가능합니다.")
+    if st.session_state.get("username") != "admin":
+        st.error("접근 권한이 없습니다.")
         return
 
     st.markdown("## 직원 관리")
