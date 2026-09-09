@@ -4332,7 +4332,7 @@ def page_attendance():
                         elif _lnm == _nm3:
                             _sl3 = (_cs3 + "휴", "#F57F17")
                         break
-                _slts = [_sl1, _sl2, _sl3]
+                _slts = [s for s in [_sl1, _sl2, _sl3] if not s[0].endswith("휴")]
             else:
                 _slts = []
                 _nfn = _NSHIFT_FN.get(shift_type)
