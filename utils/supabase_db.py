@@ -362,3 +362,82 @@ def set_return_status(drums: list, status: str):
             "return_status": status, "updated_at": now,
         }).eq("lot", drum["lot"]).execute()
     return True
+
+
+# ════════════════════════════════════════════════════════════════════
+# 사용자 관리 (app_users)
+# ════════════════════════════════════════════════════════════════════
+import hashlib as _hl
+import os as _os_
+
+
+def _hash_pw(password: str) -> str:
+    salt = _os_.urandom(16)
+    dk = _hl.pbkdf2_hmac("sha256", password.encode(), salt, 100_000)
+    return salt.hex() + ":" + dk.hex()
+
+
+def _verify_pw(password: str, stored: str) -> bool:
+    try:
+        salt_hex, dk_hex = stored.split(":", 1)
+        dk = _hl.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt_hex), 100_000)
+        return dk.hex() == dk_hex
+    except Exception:
+        return False
+
+
+def register_app_user(department: str, name: str, password: str) -> bool:
+    """직원 등록. 이미 존재하면 ValueError."""
+    if _sb().table("app_users").select("id").eq("department", department).eq("name", name).limit(1).execute().data:
+        raise ValueError(f"'{name}'은 이미 등록된 계정입니다.")
+    _sb().table("app_users").insert({
+        "department": department, "name": name,
+        "password_hash": _hash_pw(password), "role": "user",
+    }).execute()
+    return True
+
+
+def authenticate_app_user(department: str, name: str, password: str):
+    """인증 성공 시 user dict, 실패 시 None."""
+    try:
+        res = _sb().table("app_users").select("department,name,role,password_hash").eq("department", department).eq("name", name).limit(1).execute()
+        if not res.data:
+            return None
+        row = res.data[0]
+        if _verify_pw(password, row["password_hash"]):
+            return {"department": row["department"], "name": row["name"], "role": row["role"]}
+        return None
+    except Exception:
+        return None
+
+
+def get_app_user_by_name(name: str):
+    """이름으로 사용자 조회 (부서 무관). 없으면 None."""
+    try:
+        res = _sb().table("app_users").select("department,name,role").eq("name", name).limit(1).execute()
+        return res.data[0] if res.data else None
+    except Exception:
+        return None
+
+
+def list_app_users(department: str = None) -> list:
+    """직원 목록 조회."""
+    try:
+        q = _sb().table("app_users").select("department,name,role,created_at")
+        if department:
+            q = q.eq("department", department)
+        return q.order("department").order("name").execute().data or []
+    except Exception:
+        return []
+
+
+def delete_app_user(department: str, name: str) -> bool:
+    """직원 삭제."""
+    _sb().table("app_users").delete().eq("department", department).eq("name", name).execute()
+    return True
+
+
+def reset_app_user_password(department: str, name: str, new_password: str) -> bool:
+    """비밀번호 초기화."""
+    _sb().table("app_users").update({"password_hash": _hash_pw(new_password)}).eq("department", department).eq("name", name).execute()
+    return True
