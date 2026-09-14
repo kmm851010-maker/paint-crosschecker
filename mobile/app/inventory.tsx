@@ -50,13 +50,13 @@ const toLetter = (c: string) => LETTER_FIX[c] ?? c;
 // LOT: 영어(제조사) + 숫자2(년도) + 영어(월A-L) + 숫자5(일련번호)
 // - 제조사 자리: S↔5, G↔6 허용
 // - 월 자리: I↔1, B↔8, G↔6 허용
-// - 일련번호: I↔1, O↔0, B↔8, S↔5 허용
-const LOT_RE = /[GDKSYP56][0-9]{2}[A-L168][0-9OIBS]{5}/;
+// - 일련번호: I↔1, O↔0 허용 (B/S는 오매칭 위험으로 제외)
+const LOT_RE = /[GDKSYP56][0-9]{2}[A-L1][0-9OI]{5}/;
 function normalizeLot(raw: string): string {
   const a = raw.split("");
   a[0] = ({ "5": "S", "6": "G" }[a[0]] ?? a[0]);   // 제조사: 무조건 영어
-  a[3] = ({ "1": "I", "8": "B", "6": "G" }[a[3]] ?? a[3]); // 월: 무조건 영어 A-L
-  for (let i = 4; i <= 8; i++) a[i] = toDigit(a[i]);        // 일련번호: 무조건 숫자
+  a[3] = ({ "1": "I" }[a[3]] ?? a[3]);              // 월: I(9월)↔1만 처리
+  for (let i = 4; i <= 8; i++) a[i] = a[i] === "I" ? "1" : a[i] === "O" ? "0" : a[i]; // 일련번호: I→1, O→0만
   return a.join("");
 }
 
