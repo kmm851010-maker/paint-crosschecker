@@ -42,7 +42,17 @@ const MAKER_MAP: Record<string, string> = {
 // LOT: 제조사(G/D/K/S/Y/P) + 년도2자리 + 월(A=1월~L=12월) + 일련번호5자리
 const LOT_RE = /[GDKSYP][0-9]{2}[A-L][0-9]{5}/;
 // 품명: 영문1 + 숫자1 + 영문1 + (영문or숫자)1 + 숫자2 + 영문1 = 7자  예) P7M122B, P7YA83B
-const ITEM_RE = /[A-Z][0-9][A-Z][A-Z0-9][0-9]{2}[A-Z]/;
+// 숫자 자리에 I/O도 허용 (OCR이 1↔I, 0↔O를 혼동하는 경우 대응)
+const ITEM_RE = /[A-Z][0-9IO][A-Z][A-Z0-9][0-9IO]{2}[A-Z]/;
+// OCR 매칭 후 숫자 자리의 I→1, O→0 정규화 (2번째, 5번째, 6번째 자리는 무조건 숫자)
+function normalizeProduct(raw: string): string {
+  const a = raw.split("");
+  const toDigit = (c: string) => c === "I" ? "1" : c === "O" ? "0" : c;
+  a[1] = toDigit(a[1]); // 2번째: 숫자 자리
+  a[4] = toDigit(a[4]); // 5번째: 숫자 자리
+  a[5] = toDigit(a[5]); // 6번째: 숫자 자리
+  return a.join("");
+}
 const LOT_KEYWORDS = ["DRUM LOT", "LOT.NO", "DRUM NO", "LOT NO", "LOT", "롯트번호"];
 
 type OcrParseResult = {
@@ -82,7 +92,7 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
   let product = "";
   const itemMatch = flat.match(ITEM_RE);
   if (itemMatch) {
-    product = itemMatch[0];
+    product = normalizeProduct(itemMatch[0]); // 숫자 자리 I→1, O→0 정규화
   }
 
   const maker = lot ? (MAKER_MAP[lot[0]] ?? lot[0]) : "";
@@ -349,7 +359,9 @@ export default function InventoryScreen() {
       } else if (!parsed.lotFound) {
         _setScanError({ type: "noLot", detail: `라벨을 선명하게 비춰주세요 — LOT 인식 안됨` });
       } else if (!parsed.productFound) {
-        _setScanError({ type: "noProduct", detail: `라벨을 선명하게 비춰주세요 — 품명 인식 안됨` });
+        // LOT은 인식됐으나 품명 인식 실패 → 편집 모달에서 수동 입력
+        _setScanError({ type: "noProduct", detail: `품명 인식 안됨 — 직접 입력해주세요 (${parsed.lot})` });
+        setEditingItem({ index: -1, lot: parsed.lot, product: "" });
       } else if (batchRef.current.some(d => d.lot === parsed.lot)) {
         _setScanError({ type: "duplicate", detail: `중복 스캔: ${parsed.lot}` });
       } else if (Object.entries(sectorDataRef.current).find(([, drums]) => (drums as any[]).some(d => d.lot === parsed.lot))) {
