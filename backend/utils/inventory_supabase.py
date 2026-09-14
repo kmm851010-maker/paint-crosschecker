@@ -159,19 +159,19 @@ def get_sector_inventory() -> dict:
 
 
 def set_scan_disabled(drums: list, disabled: bool):
-    """스캔불가 플래그 설정/해제."""
+    """스캔불가 플래그 설정/해제 (배치 처리)."""
     now = _kst_now()
     val = "Y" if disabled else ""
-    for drum in drums:
-        _sb().table("inventory").update({
-            "scan_disabled": val, "updated_at": now,
-        }).eq("lot", drum["lot"]).execute()
+    lots = [d["lot"] for d in drums]
+    _sb().table("inventory").update({
+        "scan_disabled": val, "updated_at": now,
+    }).in_("lot", lots).execute()
     return True
 
 
 def get_inventory_history(from_dt: str, to_dt: str):
     """이력 조회 (from_dt ~ to_dt, 'YYYY-MM-DD HH:MM' 형식)."""
-    res = _sb().table("inventory_history").select("*").gte("recorded_at", from_dt).lte("recorded_at", to_dt).order("recorded_at").execute()
+    res = _sb().table("inventory_history").select("*").gte("recorded_at", from_dt).lte("recorded_at", to_dt).order("recorded_at").limit(10000).execute()
 
     result = []
     for r in res.data:
@@ -200,12 +200,12 @@ def get_inventory_history(from_dt: str, to_dt: str):
 
 
 def set_return_status(drums: list, status: str):
-    """반품상태 플래그 설정/해제."""
+    """반품상태 플래그 설정/해제 (배치 처리)."""
     now = _kst_now()
-    for drum in drums:
-        _sb().table("inventory").update({
-            "return_status": status, "updated_at": now,
-        }).eq("lot", drum["lot"]).execute()
+    lots = [d["lot"] for d in drums]
+    _sb().table("inventory").update({
+        "return_status": status, "updated_at": now,
+    }).in_("lot", lots).execute()
     return True
 
 
