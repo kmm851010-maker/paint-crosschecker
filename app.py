@@ -456,7 +456,7 @@ if st.sidebar.button("🚪 로그아웃", use_container_width=True):
 st.sidebar.markdown("---")
 st.sidebar.markdown("**모바일 앱**")
 st.sidebar.markdown(
-    '<a href="https://expo.dev/accounts/sergekang/projects/kg-steel-paint-checker/builds/b271b7c9-b1c2-4c1f-b514-2d8dba88a745" '
+    '<a href="https://expo.dev/accounts/sergekang/projects/kg-steel-paint-checker/builds/6d287fc7-d867-4d12-aa8b-e5a82f0df369" '
     'style="display:block;text-align:center;padding:10px;background:#F5A623;color:#1A1A2E;'
     'border-radius:8px;font-weight:700;text-decoration:none;">⬇️ KG OPS 설치</a>',
     unsafe_allow_html=True,
