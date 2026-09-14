@@ -439,7 +439,7 @@ export default function InventoryScreen() {
                 cooldownRef.current = false;
                 const drumItem: DrumItem = { lot: parsed.lot, product: fuzzy.match, maker: parsed.maker };
                 setBatch(prev => prev.some(d => d.lot === parsed.lot) ? prev : [...prev, drumItem]);
-                triggerFlash();
+                triggerFeedback();
                 Vibration.vibrate(80);
                 _setScanError(null);
               }},
