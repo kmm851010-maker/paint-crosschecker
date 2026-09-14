@@ -126,21 +126,21 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
   // 공백·하이픈 제거 + 대문자 통일
   const flat = allText.replace(/[-\s]/g, "").toUpperCase();
 
-  // 1. LOT 추출 — 패턴 우선, 키워드 보조
+  // 1. LOT 추출 — 키워드 우선(정확), 패턴 폴백(키워드 없을 때)
   let lot = "";
-  const lotMatch = flat.match(LOT_RE);
-  if (lotMatch) {
-    lot = normalizeLot(lotMatch[0]); // 월 자리 1→I 정규화
-  } else {
-    const upper = allText.toUpperCase();
-    for (const kw of LOT_KEYWORDS) {
-      const idx = upper.indexOf(kw);
-      if (idx !== -1) {
-        const after = allText.slice(idx + kw.length).replace(/[-\s]/g, "").toUpperCase();
-        const m = after.match(LOT_RE);
-        if (m) { lot = normalizeLot(m[0]); break; } // 월 자리 1→I 정규화
-      }
+  const upper = allText.toUpperCase();
+  for (const kw of LOT_KEYWORDS) {
+    const idx = upper.indexOf(kw);
+    if (idx !== -1) {
+      const after = allText.slice(idx + kw.length).replace(/[-\s]/g, "").toUpperCase();
+      const m = after.match(LOT_RE);
+      if (m) { lot = normalizeLot(m[0]); break; }
     }
+  }
+  if (!lot) {
+    // 키워드로 못 찾으면 전체 텍스트에서 패턴 매칭
+    const lotMatch = flat.match(LOT_RE);
+    if (lotMatch) lot = normalizeLot(lotMatch[0]);
   }
 
   // 2. 품명 추출 — 전체 매칭 후 승인목록 우선 선택
