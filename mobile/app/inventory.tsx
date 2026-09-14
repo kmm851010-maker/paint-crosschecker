@@ -38,12 +38,78 @@ const MAKER_MAP: Record<string, string> = {
   S: "삼화", Y: "애경", P: "동주(PPG)",
 };
 
+// ── OCR 오인식 혼동 맵 ──
+// 숫자 자리에 올 수 있는 글자→숫자 변환 (OCR이 숫자를 비슷한 글자로 읽는 경우)
+const DIGIT_FIX: Record<string, string> = { I: "1", O: "0", B: "8", S: "5" };
+// 영어 자리에 올 수 있는 숫자→글자 변환 (OCR이 글자를 비슷한 숫자로 읽는 경우)
+const LETTER_FIX: Record<string, string> = { "1": "I", "0": "O", "8": "B", "5": "S" };
+const toDigit  = (c: string) => DIGIT_FIX[c]  ?? c;
+const toLetter = (c: string) => LETTER_FIX[c] ?? c;
+
 // ── OCR 추출 패턴 ──
-// LOT: 제조사(G/D/K/S/Y/P) + 년도2자리 + 월(A=1월~L=12월) + 일련번호5자리
-const LOT_RE = /[GDKSYP][0-9]{2}[A-L][0-9]{5}/;
-// 품명: 영문1 + 숫자1 + 영문1 + (영문or숫자)1 + 숫자2 + 영문1 = 7자  예) P7M122B, P7YA83B
-const ITEM_RE = /[A-Z][0-9][A-Z][A-Z0-9][0-9]{2}[A-Z]/;
+// LOT: 영어(제조사) + 숫자2(년도) + 영어(월A-L) + 숫자5(일련번호)
+// - 제조사 자리: S↔5, G↔6 허용
+// - 월 자리: I↔1, B↔8, G↔6 허용
+// - 일련번호: I↔1, O↔0 허용 (B/S는 오매칭 위험으로 제외)
+const LOT_RE = /[GDKSYP56][0-9]{2}[A-L1][0-9OI]{5}/;
+function normalizeLot(raw: string): string {
+  const a = raw.split("");
+  a[0] = ({ "5": "S", "6": "G" }[a[0]] ?? a[0]);   // 제조사: 무조건 영어
+  a[3] = ({ "1": "I" }[a[3]] ?? a[3]);              // 월: I(9월)↔1만 처리
+  for (let i = 4; i <= 8; i++) a[i] = a[i] === "I" ? "1" : a[i] === "O" ? "0" : a[i]; // 일련번호: I→1, O→0만
+  return a.join("");
+}
+
+// 품명: 영어1 + 숫자1 + 영어1 + (영어|숫자)1 + 숫자2 + 영어1 = 7자
+// 숫자 자리(2,5,6번째)에만 I/O 허용 — B,S는 화학명(KOCOSOL 등) 오매칭 유발로 제외
+// 영어 자리(1,3,7번째)는 [A-Z] 유지 — 확장 시 false positive 폭증
+const ITEM_RE = /[A-Z][0-9IO][A-Z][A-Z0-9][0-9IO]{2}[A-Z]/g;
+function normalizeProduct(raw: string): string {
+  const a = raw.split("");
+  // 숫자 자리(index 1,4,5)만 정규화: I→1, O→0
+  const fixDigit = (c: string) => c === "I" ? "1" : c === "O" ? "0" : c;
+  a[1] = fixDigit(a[1]);
+  a[4] = fixDigit(a[4]);
+  a[5] = fixDigit(a[5]);
+  return a.join("");
+}
 const LOT_KEYWORDS = ["DRUM LOT", "LOT.NO", "DRUM NO", "LOT NO", "LOT", "롯트번호"];
+
+// ── 퍼지 매칭 ──
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+  return dp[m][n];
+}
+
+// OCR 텍스트에서 품명 후보 추출 (5~9자 영숫자, 영문 시작)
+function extractProductCandidates(rawText: string): string[] {
+  const flat = rawText.replace(/[-\s]/g, "").toUpperCase();
+  const matches = flat.match(/[A-Z][A-Z0-9]{4,8}/g) ?? [];
+  return [...new Set(matches.map(m => normalizeProduct(m.slice(0, 7))))]; // 7자로 정규화
+}
+
+// APPROVED_PRODUCTS + 사용자 승인 목록 대비 퍼지 매칭 (거리 ≤ 2)
+function fuzzyMatchProduct(candidates: string[], localApproved: Set<string>): { match: string; distance: number } | null {
+  let best: { match: string; distance: number } | null = null;
+  const allSets = [APPROVED_PRODUCTS, localApproved];
+  for (const set of allSets) {
+    for (const product of set) {
+      for (const cand of candidates) {
+        const d = levenshtein(cand, product);
+        if (d <= 2 && (!best || d < best.distance)) {
+          best = { match: product, distance: d };
+        }
+      }
+    }
+  }
+  return best;
+}
 
 type OcrParseResult = {
   lot: string;
@@ -60,29 +126,29 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
   // 공백·하이픈 제거 + 대문자 통일
   const flat = allText.replace(/[-\s]/g, "").toUpperCase();
 
-  // 1. LOT 추출 — 패턴 우선, 키워드 보조
+  // 1. LOT 추출 — 키워드 우선(정확), 패턴 폴백(키워드 없을 때)
   let lot = "";
-  const lotMatch = flat.match(LOT_RE);
-  if (lotMatch) {
-    lot = lotMatch[0];
-  } else {
-    const upper = allText.toUpperCase();
-    for (const kw of LOT_KEYWORDS) {
-      const idx = upper.indexOf(kw);
-      if (idx !== -1) {
-        const after = allText.slice(idx + kw.length).replace(/[-\s]/g, "").toUpperCase();
-        const m = after.match(LOT_RE);
-        if (m) { lot = m[0]; break; }
-      }
+  const upper = allText.toUpperCase();
+  for (const kw of LOT_KEYWORDS) {
+    const idx = upper.indexOf(kw);
+    if (idx !== -1) {
+      const after = allText.slice(idx + kw.length).replace(/[-\s]/g, "").toUpperCase();
+      const m = after.match(LOT_RE);
+      if (m) { lot = normalizeLot(m[0]); break; }
     }
   }
+  if (!lot) {
+    // 키워드로 못 찾으면 전체 텍스트에서 패턴 매칭
+    const lotMatch = flat.match(LOT_RE);
+    if (lotMatch) lot = normalizeLot(lotMatch[0]);
+  }
 
-  // 2. 품명 추출 — 엄격한 패턴만 적용 (fallback 없음)
-  // 패턴: 영문1 + 숫자1 + 영문1 + (영문|숫자)1 + 숫자2 + 영문1 = 7자
+  // 2. 품명 추출 — 전체 매칭 후 승인목록 우선 선택
+  // 여러 후보 중 APPROVED_PRODUCTS에 있는 것 우선, 없으면 첫 번째
   let product = "";
-  const itemMatch = flat.match(ITEM_RE);
-  if (itemMatch) {
-    product = itemMatch[0];
+  const allItemMatches = [...flat.matchAll(ITEM_RE)].map(m => normalizeProduct(m[0]));
+  if (allItemMatches.length > 0) {
+    product = allItemMatches.find(p => APPROVED_PRODUCTS.has(p)) ?? allItemMatches[0];
   }
 
   const maker = lot ? (MAKER_MAP[lot[0]] ?? lot[0]) : "";
@@ -149,6 +215,8 @@ export default function InventoryScreen() {
   const [loading, setLoading] = useState(false);
   const [sectorData, setSectorData] = useState<Record<string, any[]>>({});
   const [editingItem, setEditingItem] = useState<{ index: number; lot: string; product: string } | null>(null);
+  const MAX_BULK_LOTS = 30;
+  const [manualBulk, setManualBulk] = useState<{ product: string; lots: string[] } | null>(null);
   const [searchText, setSearchText] = useState("");
   const [sortMode, setSortMode] = useState<"maker"|"sector"|"lot"|"product"|"return">("sector");
   const [returnFilter, setReturnFilter] = useState<"무상"|"기술"|"불량"|"">(""); 
@@ -349,7 +417,38 @@ export default function InventoryScreen() {
       } else if (!parsed.lotFound) {
         _setScanError({ type: "noLot", detail: `라벨을 선명하게 비춰주세요 — LOT 인식 안됨` });
       } else if (!parsed.productFound) {
-        _setScanError({ type: "noProduct", detail: `라벨을 선명하게 비춰주세요 — 품명 인식 안됨` });
+        // LOT은 인식됐으나 품명 인식 실패 → 퍼지 매칭 시도 후 수동 입력
+        const allText = result.blocks?.map((b: any) => b.text).join("\n") ?? "";
+        const candidates = extractProductCandidates(allText);
+        const fuzzy = fuzzyMatchProduct(candidates, localApprovedRef.current);
+        if (fuzzy) {
+          _setScanError({ type: "noProduct", detail: `품명 불명확 — "${fuzzy.match}" 확인 필요` });
+          cooldownRef.current = true;
+          alertActiveRef.current = true;
+          Alert.alert(
+            "품명 확인",
+            `라벨이 훼손되어 품명을 정확히 읽지 못했습니다.\n\n혹시 이 품목인가요?\n\n▶ ${fuzzy.match}`,
+            [
+              { text: "아니오", style: "cancel", onPress: () => {
+                alertActiveRef.current = false;
+                cooldownRef.current = false;
+                setEditingItem({ index: -1, lot: parsed.lot, product: "" });
+              }},
+              { text: "맞습니다", onPress: () => {
+                alertActiveRef.current = false;
+                cooldownRef.current = false;
+                const drumItem: DrumItem = { lot: parsed.lot, product: fuzzy.match, maker: parsed.maker };
+                setBatch(prev => prev.some(d => d.lot === parsed.lot) ? prev : [...prev, drumItem]);
+                triggerFlash();
+                Vibration.vibrate(80);
+                _setScanError(null);
+              }},
+            ]
+          );
+        } else {
+          _setScanError({ type: "noProduct", detail: `품명 인식 안됨 — 직접 입력해주세요 (${parsed.lot})` });
+          setEditingItem({ index: -1, lot: parsed.lot, product: "" });
+        }
       } else if (batchRef.current.some(d => d.lot === parsed.lot)) {
         _setScanError({ type: "duplicate", detail: `중복 스캔: ${parsed.lot}` });
       } else if (Object.entries(sectorDataRef.current).find(([, drums]) => (drums as any[]).some(d => d.lot === parsed.lot))) {
@@ -473,6 +572,53 @@ export default function InventoryScreen() {
       </View>
     );
   }
+
+  // ── 수동 일괄 등록 저장 핸들러 ──
+  const handleManualBulkSave = () => {
+    if (!manualBulk) return;
+    const product = manualBulk.product.trim();
+    if (!product) { Alert.alert("오류", "품명을 입력해주세요."); return; }
+
+    const filledLots = manualBulk.lots
+      .map(l => l.trim().toUpperCase().replace(/[^A-Z0-9]/g, ""))
+      .filter(l => l.length > 0);
+
+    if (filledLots.length === 0) { Alert.alert("오류", "LOT번호를 1개 이상 입력해주세요."); return; }
+
+    const invalidLots = filledLots.filter(l => !LOT_VALID.test(l));
+    if (invalidLots.length > 0) {
+      Alert.alert("형식 오류", `올바르지 않은 LOT번호:\n${invalidLots.join("\n")}`);
+      return;
+    }
+
+    const doSave = () => {
+      const newItems: DrumItem[] = filledLots
+        .filter(l => !batchRef.current.some(d => d.lot === l))
+        .map(l => ({ lot: l, product, maker: MAKER_MAP[l[0]] ?? "미상" }));
+      setBatch(prev => [...prev, ...newItems]);
+      setManualBulk(null);
+    };
+
+    if (!APPROVED_PRODUCTS.has(product) && !localApprovedRef.current.has(product)) {
+      Alert.alert(
+        "미등록 품목",
+        `"${product}" 은(는) 승인 목록에 없는 품목입니다.\n신규 제품으로 저장하시겠습니까?`,
+        [
+          { text: "취소", style: "cancel" },
+          { text: "저장", onPress: () => {
+            localApprovedRef.current.add(product);
+            AsyncStorage.getItem(ASYNC_KEY_APPROVED).then(val => {
+              const arr: string[] = val ? JSON.parse(val) : [];
+              if (!arr.includes(product)) { arr.push(product); AsyncStorage.setItem(ASYNC_KEY_APPROVED, JSON.stringify(arr)); }
+            }).catch(() => {});
+            doSave();
+          }},
+        ]
+      );
+      return;
+    }
+    doSave();
+  };
 
   // ── 편집 모달 저장 핸들러 ──
   const handleEditSave = () => {
@@ -677,7 +823,7 @@ export default function InventoryScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.doneSmallBtn, { backgroundColor: "#555" }]}
-              onPress={() => setEditingItem({ index: -1, lot: "", product: "" })}
+              onPress={() => setManualBulk({ product: "", lots: Array(MAX_BULK_LOTS).fill("") })}
             >
               <Text style={styles.doneSmallBtnText}>수동등록</Text>
             </TouchableOpacity>
@@ -761,6 +907,65 @@ export default function InventoryScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity style={[styles.editBtn, { flex: 2, backgroundColor: COLORS.primary }]} onPress={handleEditSave}>
                     <Text style={styles.editBtnText}>저장</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        {/* 수동 일괄 등록 모달 */}
+        <Modal visible={manualBulk !== null} animationType="slide" transparent>
+          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+            <View style={styles.bulkModalOverlay}>
+              <View style={styles.bulkModalCard}>
+                <Text style={styles.editTitle}>수동 일괄 등록</Text>
+
+                {/* 품명 (고정 상단) */}
+                <Text style={styles.editLabel}>품명 (공통 적용)</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={manualBulk?.product ?? ""}
+                  onChangeText={v => setManualBulk(prev => prev ? { ...prev, product: v.toUpperCase().replace(/[^A-Z0-9]/g, "") } : prev)}
+                  autoCapitalize="characters"
+                  placeholder="예) E8T017I"
+                  autoFocus
+                  returnKeyType="next"
+                />
+
+                {/* LOT 입력 (스크롤) */}
+                <Text style={[styles.editLabel, { marginBottom: 6 }]}>
+                  LOT번호 입력 ({(manualBulk?.lots ?? []).filter(l => l.trim().length > 0).length}/{MAX_BULK_LOTS})
+                </Text>
+                <ScrollView style={styles.bulkLotScroll} keyboardShouldPersistTaps="handled">
+                  {(manualBulk?.lots ?? []).map((lot, idx) => (
+                    <View key={idx} style={styles.bulkLotRow}>
+                      <Text style={styles.bulkLotNum}>{idx + 1}</Text>
+                      <TextInput
+                        style={styles.bulkLotInput}
+                        value={lot}
+                        onChangeText={v => setManualBulk(prev => {
+                          if (!prev) return prev;
+                          const next = [...prev.lots];
+                          next[idx] = v.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                          return { ...prev, lots: next };
+                        })}
+                        autoCapitalize="characters"
+                        placeholder="예) D26I24002"
+                        returnKeyType={idx < MAX_BULK_LOTS - 1 ? "next" : "done"}
+                      />
+                    </View>
+                  ))}
+                </ScrollView>
+
+                <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+                  <TouchableOpacity style={[styles.editBtn, { backgroundColor: "#888" }]} onPress={() => setManualBulk(null)}>
+                    <Text style={styles.editBtnText}>취소</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.editBtn, { flex: 2, backgroundColor: COLORS.primary }]} onPress={handleManualBulkSave}>
+                    <Text style={styles.editBtnText}>
+                      등록 ({(manualBulk?.lots ?? []).filter(l => l.trim().length > 0).length}개)
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1350,6 +1555,17 @@ const styles = StyleSheet.create({
   scanErrorText: { color: "#FEF3C7", fontSize: 12, fontWeight: "600" },
 
   cancelBtnText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+
+  // 수동 일괄 등록 모달
+  bulkModalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", paddingHorizontal: 16 },
+  bulkModalCard: { backgroundColor: "#fff", borderRadius: 16, padding: 20, maxHeight: "85%" },
+  bulkLotScroll: { maxHeight: 320, marginBottom: 4 },
+  bulkLotRow: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
+  bulkLotNum: { width: 26, fontSize: 12, color: COLORS.textSecondary, textAlign: "right", marginRight: 8 },
+  bulkLotInput: {
+    flex: 1, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 8, fontSize: 14, color: COLORS.textPrimary,
+  },
 
   // 편집 모달
   editCard: { backgroundColor: "#fff", borderRadius: 16, padding: 20, margin: 24 },
