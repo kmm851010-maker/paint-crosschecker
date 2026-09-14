@@ -64,40 +64,57 @@ def parse_barcode(raw_text: str):
 
 
 def save_drums_to_sector(drums: list, sector: str):
-    """드럼 목록을 지정 섹터에 등록/이동."""
+    """드럼 목록을 지정 섹터에 등록/이동 (배치 처리)."""
     now = _kst_now()
     sb = _sb()
-    already_same = []  # 이미 같은 섹터에 등록된 드럼 LOT 목록
+    drum_map = {d["lot"]: d for d in drums}
+    lots = list(drum_map.keys())
 
-    for drum in drums:
-        lot = drum["lot"]
-        product = drum["product"]
-        maker = drum["maker"]
+    # 1) 기존 재고 일괄 조회
+    existing_res = sb.table("inventory").select("lot,sector").in_("lot", lots).execute()
+    existing_map = {r["lot"]: r["sector"] for r in existing_res.data}
+
+    already_same = []
+    to_update = []   # 기존 존재 + 섹터 다름
+    to_insert = []   # 신규
+    history_rows = []
+
+    for lot, drum in drum_map.items():
         scan_dis = "Y" if drum.get("scanDisabled") else ""
-
-        res = sb.table("inventory").select("lot,sector").eq("lot", lot).limit(1).execute()
-        if res.data:
-            prev_sector = res.data[0]["sector"]
+        if lot in existing_map:
+            prev_sector = existing_map[lot]
             if prev_sector == sector:
                 already_same.append(lot)
-                continue  # 같은 섹터 → 변경 없음
-            sb.table("inventory").update({
-                "sector": sector, "registered_at": now, "updated_at": now, "scan_disabled": scan_dis,
-            }).eq("lot", lot).execute()
-            sb.table("inventory_history").insert({
-                "lot": lot, "product": product, "maker": maker,
+                continue
+            to_update.append(lot)
+            history_rows.append({
+                "lot": lot, "product": drum["product"], "maker": drum["maker"],
                 "prev_sector": prev_sector, "new_sector": sector, "recorded_at": now,
-            }).execute()
+            })
         else:
-            sb.table("inventory").insert({
-                "lot": lot, "product": product, "maker": maker,
+            to_insert.append({
+                "lot": lot, "product": drum["product"], "maker": drum["maker"],
                 "sector": sector, "registered_at": now, "updated_at": now,
                 "return_status": "", "scan_disabled": scan_dis,
-            }).execute()
-            sb.table("inventory_history").insert({
-                "lot": lot, "product": product, "maker": maker,
+            })
+            history_rows.append({
+                "lot": lot, "product": drum["product"], "maker": drum["maker"],
                 "prev_sector": "", "new_sector": sector, "recorded_at": now,
-            }).execute()
+            })
+
+    # 2) 기존 드럼 일괄 업데이트
+    if to_update:
+        sb.table("inventory").update({
+            "sector": sector, "registered_at": now, "updated_at": now,
+        }).in_("lot", to_update).execute()
+
+    # 3) 신규 드럼 일괄 삽입 (500개 청크)
+    for i in range(0, len(to_insert), 500):
+        sb.table("inventory").insert(to_insert[i:i + 500]).execute()
+
+    # 4) 이력 일괄 삽입 (500개 청크)
+    for i in range(0, len(history_rows), 500):
+        sb.table("inventory_history").insert(history_rows[i:i + 500]).execute()
 
     return {"already_same": already_same, "moved": len(drums) - len(already_same)}
 
