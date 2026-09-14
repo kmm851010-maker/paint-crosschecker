@@ -38,25 +38,41 @@ const MAKER_MAP: Record<string, string> = {
   S: "삼화", Y: "애경", P: "동주(PPG)",
 };
 
+// ── OCR 오인식 혼동 맵 ──
+// 숫자 자리에 올 수 있는 글자→숫자 변환 (OCR이 숫자를 비슷한 글자로 읽는 경우)
+const DIGIT_FIX: Record<string, string> = { I: "1", O: "0", B: "8", S: "5" };
+// 영어 자리에 올 수 있는 숫자→글자 변환 (OCR이 글자를 비슷한 숫자로 읽는 경우)
+const LETTER_FIX: Record<string, string> = { "1": "I", "0": "O", "8": "B", "5": "S" };
+const toDigit  = (c: string) => DIGIT_FIX[c]  ?? c;
+const toLetter = (c: string) => LETTER_FIX[c] ?? c;
+
 // ── OCR 추출 패턴 ──
-// LOT: 제조사(G/D/K/S/Y/P) + 년도2자리 + 월(A=1월~L=12월) + 일련번호5자리
-// 월 자리(4번째)에 1도 허용 — OCR이 I(9월)를 1로 혼동하는 경우 대응
-const LOT_RE = /[GDKSYP][0-9]{2}[A-L1][0-9]{5}/;
-// LOT 매칭 후 월 자리(index 3)의 1→I 정규화 (월 코드는 무조건 영문 A-L)
+// LOT: 영어(제조사) + 숫자2(년도) + 영어(월A-L) + 숫자5(일련번호)
+// - 제조사 자리: S↔5, G↔6 허용
+// - 월 자리: I↔1, B↔8, G↔6 허용
+// - 일련번호: I↔1, O↔0, B↔8, S↔5 허용
+const LOT_RE = /[GDKSYP56][0-9]{2}[A-L168][0-9OIBS]{5}/;
 function normalizeLot(raw: string): string {
-  if (raw[3] === "1") return raw.slice(0, 3) + "I" + raw.slice(4);
-  return raw;
+  const a = raw.split("");
+  a[0] = ({ "5": "S", "6": "G" }[a[0]] ?? a[0]);   // 제조사: 무조건 영어
+  a[3] = ({ "1": "I", "8": "B", "6": "G" }[a[3]] ?? a[3]); // 월: 무조건 영어 A-L
+  for (let i = 4; i <= 8; i++) a[i] = toDigit(a[i]);        // 일련번호: 무조건 숫자
+  return a.join("");
 }
-// 품명: 영문1 + 숫자1 + 영문1 + (영문or숫자)1 + 숫자2 + 영문1 = 7자  예) P7M122B, P7YA83B
-// 숫자 자리에 I/O도 허용 (OCR이 1↔I, 0↔O를 혼동하는 경우 대응)
-const ITEM_RE = /[A-Z][0-9IO][A-Z][A-Z0-9][0-9IO]{2}[A-Z]/;
-// OCR 매칭 후 숫자 자리의 I→1, O→0 정규화 (2번째, 5번째, 6번째 자리는 무조건 숫자)
+
+// 품명: 영어1 + 숫자1 + 영어1 + (영어|숫자)1 + 숫자2 + 영어1 = 7자
+// - 영어 자리(1,3,7번째): 숫자 오인식 허용 → 1,0,8,5
+// - 숫자 자리(2,5,6번째): 글자 오인식 허용 → I,O,B,S
+const ITEM_RE = /[A-Z1058][0-9IOBS][A-Z1058][A-Z0-9][0-9IOBS]{2}[A-Z1058]/;
 function normalizeProduct(raw: string): string {
   const a = raw.split("");
-  const toDigit = (c: string) => c === "I" ? "1" : c === "O" ? "0" : c;
-  a[1] = toDigit(a[1]); // 2번째: 숫자 자리
-  a[4] = toDigit(a[4]); // 5번째: 숫자 자리
-  a[5] = toDigit(a[5]); // 6번째: 숫자 자리
+  a[0] = toLetter(a[0]); // 1번째: 무조건 영어
+  a[1] = toDigit(a[1]);  // 2번째: 무조건 숫자
+  a[2] = toLetter(a[2]); // 3번째: 무조건 영어
+  // a[3]: 영어 또는 숫자 — 정규화 불필요
+  a[4] = toDigit(a[4]);  // 5번째: 무조건 숫자
+  a[5] = toDigit(a[5]);  // 6번째: 무조건 숫자
+  a[6] = toLetter(a[6]); // 7번째: 무조건 영어
   return a.join("");
 }
 const LOT_KEYWORDS = ["DRUM LOT", "LOT.NO", "DRUM NO", "LOT NO", "LOT", "롯트번호"];
