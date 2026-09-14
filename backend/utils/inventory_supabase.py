@@ -103,27 +103,39 @@ def save_drums_to_sector(drums: list, sector: str):
 
 
 def checkout_drums(drums: list):
-    """라인입고 처리 - 재고에서 제거하고 이력 기록."""
+    """라인입고 처리 - 재고에서 제거하고 이력 기록 (배치 처리)."""
     now = _kst_now()
     sb = _sb()
 
-    for drum in drums:
-        lot = drum["lot"]
-        res = sb.table("inventory").select("lot,sector").eq("lot", lot).limit(1).execute()
-        prev_sector = res.data[0]["sector"] if res.data else "미등록"
+    drum_map = {d["lot"]: d for d in drums}
+    lots = list(drum_map.keys())
 
-        if prev_sector == "미등록":
-            continue
+    # 1) 현재 섹터 일괄 조회
+    existing = sb.table("inventory").select("lot,sector").in_("lot", lots).execute()
+    sector_map = {r["lot"]: r["sector"] for r in existing.data}
 
-        sb.table("inventory").delete().eq("lot", lot).execute()
-        sb.table("inventory_history").insert({
+    lots_to_delete = [lot for lot in lots if lot in sector_map]
+    if not lots_to_delete:
+        return True
+
+    # 2) 일괄 삭제
+    sb.table("inventory").delete().in_("lot", lots_to_delete).execute()
+
+    # 3) 이력 일괄 삽입 (Supabase 최대 크기 대비 500개씩 청크)
+    history_rows = [
+        {
             "lot": lot,
-            "product": drum.get("product", ""),
-            "maker": drum.get("maker", ""),
-            "prev_sector": prev_sector,
+            "product": drum_map[lot].get("product", ""),
+            "maker": drum_map[lot].get("maker", ""),
+            "prev_sector": sector_map[lot],
             "new_sector": CHECKOUT_SECTOR,
             "recorded_at": now,
-        }).execute()
+        }
+        for lot in lots_to_delete
+    ]
+    chunk_size = 500
+    for i in range(0, len(history_rows), chunk_size):
+        sb.table("inventory_history").insert(history_rows[i:i + chunk_size]).execute()
 
     return True
 
