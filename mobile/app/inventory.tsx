@@ -40,7 +40,13 @@ const MAKER_MAP: Record<string, string> = {
 
 // ── OCR 추출 패턴 ──
 // LOT: 제조사(G/D/K/S/Y/P) + 년도2자리 + 월(A=1월~L=12월) + 일련번호5자리
-const LOT_RE = /[GDKSYP][0-9]{2}[A-L][0-9]{5}/;
+// 월 자리(4번째)에 1도 허용 — OCR이 I(9월)를 1로 혼동하는 경우 대응
+const LOT_RE = /[GDKSYP][0-9]{2}[A-L1][0-9]{5}/;
+// LOT 매칭 후 월 자리(index 3)의 1→I 정규화 (월 코드는 무조건 영문 A-L)
+function normalizeLot(raw: string): string {
+  if (raw[3] === "1") return raw.slice(0, 3) + "I" + raw.slice(4);
+  return raw;
+}
 // 품명: 영문1 + 숫자1 + 영문1 + (영문or숫자)1 + 숫자2 + 영문1 = 7자  예) P7M122B, P7YA83B
 // 숫자 자리에 I/O도 허용 (OCR이 1↔I, 0↔O를 혼동하는 경우 대응)
 const ITEM_RE = /[A-Z][0-9IO][A-Z][A-Z0-9][0-9IO]{2}[A-Z]/;
@@ -74,7 +80,7 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
   let lot = "";
   const lotMatch = flat.match(LOT_RE);
   if (lotMatch) {
-    lot = lotMatch[0];
+    lot = normalizeLot(lotMatch[0]); // 월 자리 1→I 정규화
   } else {
     const upper = allText.toUpperCase();
     for (const kw of LOT_KEYWORDS) {
@@ -82,7 +88,7 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
       if (idx !== -1) {
         const after = allText.slice(idx + kw.length).replace(/[-\s]/g, "").toUpperCase();
         const m = after.match(LOT_RE);
-        if (m) { lot = m[0]; break; }
+        if (m) { lot = normalizeLot(m[0]); break; } // 월 자리 1→I 정규화
       }
     }
   }
