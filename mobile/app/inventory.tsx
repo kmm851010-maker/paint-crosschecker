@@ -77,6 +77,42 @@ function normalizeProduct(raw: string): string {
 }
 const LOT_KEYWORDS = ["DRUM LOT", "LOT.NO", "DRUM NO", "LOT NO", "LOT", "롯트번호"];
 
+// ── 퍼지 매칭 ──
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+  return dp[m][n];
+}
+
+// OCR 텍스트에서 품명 후보 추출 (5~9자 영숫자, 영문 시작)
+function extractProductCandidates(rawText: string): string[] {
+  const flat = rawText.replace(/[-\s]/g, "").toUpperCase();
+  const matches = flat.match(/[A-Z][A-Z0-9]{4,8}/g) ?? [];
+  return [...new Set(matches.map(m => normalizeProduct(m.slice(0, 7))))]; // 7자로 정규화
+}
+
+// APPROVED_PRODUCTS + 사용자 승인 목록 대비 퍼지 매칭 (거리 ≤ 2)
+function fuzzyMatchProduct(candidates: string[], localApproved: Set<string>): { match: string; distance: number } | null {
+  let best: { match: string; distance: number } | null = null;
+  const allSets = [APPROVED_PRODUCTS, localApproved];
+  for (const set of allSets) {
+    for (const product of set) {
+      for (const cand of candidates) {
+        const d = levenshtein(cand, product);
+        if (d <= 2 && (!best || d < best.distance)) {
+          best = { match: product, distance: d };
+        }
+      }
+    }
+  }
+  return best;
+}
+
 type OcrParseResult = {
   lot: string;
   product: string;
@@ -383,9 +419,38 @@ export default function InventoryScreen() {
       } else if (!parsed.lotFound) {
         _setScanError({ type: "noLot", detail: `라벨을 선명하게 비춰주세요 — LOT 인식 안됨` });
       } else if (!parsed.productFound) {
-        // LOT은 인식됐으나 품명 인식 실패 → 편집 모달에서 수동 입력
-        _setScanError({ type: "noProduct", detail: `품명 인식 안됨 — 직접 입력해주세요 (${parsed.lot})` });
-        setEditingItem({ index: -1, lot: parsed.lot, product: "" });
+        // LOT은 인식됐으나 품명 인식 실패 → 퍼지 매칭 시도 후 수동 입력
+        const allText = result.blocks?.map((b: any) => b.text).join("\n") ?? "";
+        const candidates = extractProductCandidates(allText);
+        const fuzzy = fuzzyMatchProduct(candidates, localApprovedRef.current);
+        if (fuzzy) {
+          _setScanError({ type: "noProduct", detail: `품명 불명확 — "${fuzzy.match}" 확인 필요` });
+          cooldownRef.current = true;
+          alertActiveRef.current = true;
+          Alert.alert(
+            "품명 확인",
+            `라벨이 훼손되어 품명을 정확히 읽지 못했습니다.\n\n혹시 이 품목인가요?\n\n▶ ${fuzzy.match}`,
+            [
+              { text: "아니오", style: "cancel", onPress: () => {
+                alertActiveRef.current = false;
+                cooldownRef.current = false;
+                setEditingItem({ index: -1, lot: parsed.lot, product: "" });
+              }},
+              { text: "맞습니다", onPress: () => {
+                alertActiveRef.current = false;
+                cooldownRef.current = false;
+                const drumItem: DrumItem = { lot: parsed.lot, product: fuzzy.match, maker: parsed.maker };
+                setBatch(prev => prev.some(d => d.lot === parsed.lot) ? prev : [...prev, drumItem]);
+                triggerFlash();
+                Vibration.vibrate(80);
+                _setScanError(null);
+              }},
+            ]
+          );
+        } else {
+          _setScanError({ type: "noProduct", detail: `품명 인식 안됨 — 직접 입력해주세요 (${parsed.lot})` });
+          setEditingItem({ index: -1, lot: parsed.lot, product: "" });
+        }
       } else if (batchRef.current.some(d => d.lot === parsed.lot)) {
         _setScanError({ type: "duplicate", detail: `중복 스캔: ${parsed.lot}` });
       } else if (Object.entries(sectorDataRef.current).find(([, drums]) => (drums as any[]).some(d => d.lot === parsed.lot))) {
