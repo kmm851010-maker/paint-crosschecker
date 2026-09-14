@@ -181,6 +181,8 @@ export default function InventoryScreen() {
   const [loading, setLoading] = useState(false);
   const [sectorData, setSectorData] = useState<Record<string, any[]>>({});
   const [editingItem, setEditingItem] = useState<{ index: number; lot: string; product: string } | null>(null);
+  const MAX_BULK_LOTS = 30;
+  const [manualBulk, setManualBulk] = useState<{ product: string; lots: string[] } | null>(null);
   const [searchText, setSearchText] = useState("");
   const [sortMode, setSortMode] = useState<"maker"|"sector"|"lot"|"product"|"return">("sector");
   const [returnFilter, setReturnFilter] = useState<"무상"|"기술"|"불량"|"">(""); 
@@ -508,6 +510,53 @@ export default function InventoryScreen() {
     );
   }
 
+  // ── 수동 일괄 등록 저장 핸들러 ──
+  const handleManualBulkSave = () => {
+    if (!manualBulk) return;
+    const product = manualBulk.product.trim();
+    if (!product) { Alert.alert("오류", "품명을 입력해주세요."); return; }
+
+    const filledLots = manualBulk.lots
+      .map(l => l.trim().toUpperCase().replace(/[^A-Z0-9]/g, ""))
+      .filter(l => l.length > 0);
+
+    if (filledLots.length === 0) { Alert.alert("오류", "LOT번호를 1개 이상 입력해주세요."); return; }
+
+    const invalidLots = filledLots.filter(l => !LOT_VALID.test(l));
+    if (invalidLots.length > 0) {
+      Alert.alert("형식 오류", `올바르지 않은 LOT번호:\n${invalidLots.join("\n")}`);
+      return;
+    }
+
+    const doSave = () => {
+      const newItems: DrumItem[] = filledLots
+        .filter(l => !batchRef.current.some(d => d.lot === l))
+        .map(l => ({ lot: l, product, maker: MAKER_MAP[l[0]] ?? "미상" }));
+      setBatch(prev => [...prev, ...newItems]);
+      setManualBulk(null);
+    };
+
+    if (!APPROVED_PRODUCTS.has(product) && !localApprovedRef.current.has(product)) {
+      Alert.alert(
+        "미등록 품목",
+        `"${product}" 은(는) 승인 목록에 없는 품목입니다.\n신규 제품으로 저장하시겠습니까?`,
+        [
+          { text: "취소", style: "cancel" },
+          { text: "저장", onPress: () => {
+            localApprovedRef.current.add(product);
+            AsyncStorage.getItem(ASYNC_KEY_APPROVED).then(val => {
+              const arr: string[] = val ? JSON.parse(val) : [];
+              if (!arr.includes(product)) { arr.push(product); AsyncStorage.setItem(ASYNC_KEY_APPROVED, JSON.stringify(arr)); }
+            }).catch(() => {});
+            doSave();
+          }},
+        ]
+      );
+      return;
+    }
+    doSave();
+  };
+
   // ── 편집 모달 저장 핸들러 ──
   const handleEditSave = () => {
     if (!editingItem) return;
@@ -711,7 +760,7 @@ export default function InventoryScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.doneSmallBtn, { backgroundColor: "#555" }]}
-              onPress={() => setEditingItem({ index: -1, lot: "", product: "" })}
+              onPress={() => setManualBulk({ product: "", lots: Array(MAX_BULK_LOTS).fill("") })}
             >
               <Text style={styles.doneSmallBtnText}>수동등록</Text>
             </TouchableOpacity>
@@ -795,6 +844,65 @@ export default function InventoryScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity style={[styles.editBtn, { flex: 2, backgroundColor: COLORS.primary }]} onPress={handleEditSave}>
                     <Text style={styles.editBtnText}>저장</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        {/* 수동 일괄 등록 모달 */}
+        <Modal visible={manualBulk !== null} animationType="slide" transparent>
+          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+            <View style={styles.bulkModalOverlay}>
+              <View style={styles.bulkModalCard}>
+                <Text style={styles.editTitle}>수동 일괄 등록</Text>
+
+                {/* 품명 (고정 상단) */}
+                <Text style={styles.editLabel}>품명 (공통 적용)</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={manualBulk?.product ?? ""}
+                  onChangeText={v => setManualBulk(prev => prev ? { ...prev, product: v.toUpperCase().replace(/[^A-Z0-9]/g, "") } : prev)}
+                  autoCapitalize="characters"
+                  placeholder="예) E8T017I"
+                  autoFocus
+                  returnKeyType="next"
+                />
+
+                {/* LOT 입력 (스크롤) */}
+                <Text style={[styles.editLabel, { marginBottom: 6 }]}>
+                  LOT번호 입력 ({(manualBulk?.lots ?? []).filter(l => l.trim().length > 0).length}/{MAX_BULK_LOTS})
+                </Text>
+                <ScrollView style={styles.bulkLotScroll} keyboardShouldPersistTaps="handled">
+                  {(manualBulk?.lots ?? []).map((lot, idx) => (
+                    <View key={idx} style={styles.bulkLotRow}>
+                      <Text style={styles.bulkLotNum}>{idx + 1}</Text>
+                      <TextInput
+                        style={styles.bulkLotInput}
+                        value={lot}
+                        onChangeText={v => setManualBulk(prev => {
+                          if (!prev) return prev;
+                          const next = [...prev.lots];
+                          next[idx] = v.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                          return { ...prev, lots: next };
+                        })}
+                        autoCapitalize="characters"
+                        placeholder="예) D26I24002"
+                        returnKeyType={idx < MAX_BULK_LOTS - 1 ? "next" : "done"}
+                      />
+                    </View>
+                  ))}
+                </ScrollView>
+
+                <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+                  <TouchableOpacity style={[styles.editBtn, { backgroundColor: "#888" }]} onPress={() => setManualBulk(null)}>
+                    <Text style={styles.editBtnText}>취소</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.editBtn, { flex: 2, backgroundColor: COLORS.primary }]} onPress={handleManualBulkSave}>
+                    <Text style={styles.editBtnText}>
+                      등록 ({(manualBulk?.lots ?? []).filter(l => l.trim().length > 0).length}개)
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1384,6 +1492,17 @@ const styles = StyleSheet.create({
   scanErrorText: { color: "#FEF3C7", fontSize: 12, fontWeight: "600" },
 
   cancelBtnText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+
+  // 수동 일괄 등록 모달
+  bulkModalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", paddingHorizontal: 16 },
+  bulkModalCard: { backgroundColor: "#fff", borderRadius: 16, padding: 20, maxHeight: "85%" },
+  bulkLotScroll: { maxHeight: 320, marginBottom: 4 },
+  bulkLotRow: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
+  bulkLotNum: { width: 26, fontSize: 12, color: COLORS.textSecondary, textAlign: "right", marginRight: 8 },
+  bulkLotInput: {
+    flex: 1, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 8, fontSize: 14, color: COLORS.textPrimary,
+  },
 
   // 편집 모달
   editCard: { backgroundColor: "#fff", borderRadius: 16, padding: 20, margin: 24 },
