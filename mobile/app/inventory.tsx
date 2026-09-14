@@ -61,18 +61,16 @@ function normalizeLot(raw: string): string {
 }
 
 // 품명: 영어1 + 숫자1 + 영어1 + (영어|숫자)1 + 숫자2 + 영어1 = 7자
-// - 영어 자리(1,3,7번째): 숫자 오인식 허용 → 1,0,8,5
-// - 숫자 자리(2,5,6번째): 글자 오인식 허용 → I,O,B,S
-const ITEM_RE = /[A-Z1058][0-9IOBS][A-Z1058][A-Z0-9][0-9IOBS]{2}[A-Z1058]/;
+// 숫자 자리(2,5,6번째)에만 I/O 허용 — B,S는 화학명(KOCOSOL 등) 오매칭 유발로 제외
+// 영어 자리(1,3,7번째)는 [A-Z] 유지 — 확장 시 false positive 폭증
+const ITEM_RE = /[A-Z][0-9IO][A-Z][A-Z0-9][0-9IO]{2}[A-Z]/g;
 function normalizeProduct(raw: string): string {
   const a = raw.split("");
-  a[0] = toLetter(a[0]); // 1번째: 무조건 영어
-  a[1] = toDigit(a[1]);  // 2번째: 무조건 숫자
-  a[2] = toLetter(a[2]); // 3번째: 무조건 영어
-  // a[3]: 영어 또는 숫자 — 정규화 불필요
-  a[4] = toDigit(a[4]);  // 5번째: 무조건 숫자
-  a[5] = toDigit(a[5]);  // 6번째: 무조건 숫자
-  a[6] = toLetter(a[6]); // 7번째: 무조건 영어
+  // 숫자 자리(index 1,4,5)만 정규화: I→1, O→0
+  const fixDigit = (c: string) => c === "I" ? "1" : c === "O" ? "0" : c;
+  a[1] = fixDigit(a[1]);
+  a[4] = fixDigit(a[4]);
+  a[5] = fixDigit(a[5]);
   return a.join("");
 }
 const LOT_KEYWORDS = ["DRUM LOT", "LOT.NO", "DRUM NO", "LOT NO", "LOT", "롯트번호"];
@@ -145,12 +143,12 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
     }
   }
 
-  // 2. 품명 추출 — 엄격한 패턴만 적용 (fallback 없음)
-  // 패턴: 영문1 + 숫자1 + 영문1 + (영문|숫자)1 + 숫자2 + 영문1 = 7자
+  // 2. 품명 추출 — 전체 매칭 후 승인목록 우선 선택
+  // 여러 후보 중 APPROVED_PRODUCTS에 있는 것 우선, 없으면 첫 번째
   let product = "";
-  const itemMatch = flat.match(ITEM_RE);
-  if (itemMatch) {
-    product = normalizeProduct(itemMatch[0]); // 숫자 자리 I→1, O→0 정규화
+  const allItemMatches = [...flat.matchAll(ITEM_RE)].map(m => normalizeProduct(m[0]));
+  if (allItemMatches.length > 0) {
+    product = allItemMatches.find(p => APPROVED_PRODUCTS.has(p)) ?? allItemMatches[0];
   }
 
   const maker = lot ? (MAKER_MAP[lot[0]] ?? lot[0]) : "";
