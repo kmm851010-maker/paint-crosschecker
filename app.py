@@ -4898,12 +4898,13 @@ def page_inventory():
         _inv_dt_from = None
         _inv_dt_to = None
         if sort_mode == "등록시간순":
+            _kst_today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
             _tc1, _tc2 = st.columns(2)
             with _tc1:
-                _inv_d_from = st.date_input("시작일", datetime.date.today() - datetime.timedelta(days=1), key="inv_d_from")
+                _inv_d_from = st.date_input("시작일", _kst_today - datetime.timedelta(days=1), key="inv_d_from")
                 _inv_h_from = st.selectbox("시작 시각", _half_hours, index=0, key="inv_h_from")
             with _tc2:
-                _inv_d_to = st.date_input("종료일", datetime.date.today(), key="inv_d_to")
+                _inv_d_to = st.date_input("종료일", _kst_today, key="inv_d_to")
                 _inv_h_to = st.selectbox("종료 시각", _half_hours, index=len(_half_hours)-1, key="inv_h_to")
             _inv_dt_from = datetime.datetime.combine(_inv_d_from, datetime.time(int(_inv_h_from[:2]), int(_inv_h_from[3:])))
             _inv_dt_to = datetime.datetime.combine(_inv_d_to, datetime.time(int(_inv_h_to[:2]), int(_inv_h_to[3:])))
