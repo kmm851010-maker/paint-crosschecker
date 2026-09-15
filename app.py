@@ -700,6 +700,61 @@ def page_cross_check():
             return x if isinstance(x, str) else str(x)
         _full_df = _full_df.apply(lambda col: col.map(_ts))
 
+        # ── 재고 위치 컬럼 삽입 ──
+        _inv_location_map = {}  # {품목코드(정규화): "창고주위(3) / 0~3번자리(2)"}
+        try:
+            from utils.supabase_db import get_sector_inventory as _gsi
+            _inv_raw = _gsi()
+            _prod_sectors: dict = {}
+            for _sec, _drums in _inv_raw.items():
+                for _d in _drums:
+                    _p = str(_d.get("product", "")).strip().upper()
+                    if _p:
+                        _prod_sectors.setdefault(_p, {})
+                        _prod_sectors[_p][_sec] = _prod_sectors[_p].get(_sec, 0) + 1
+            _inv_location_map = {
+                _p: " / ".join(f"{_s}({_n})" for _s, _n in _sv.items())
+                for _p, _sv in _prod_sectors.items()
+            }
+        except Exception:
+            pass
+
+        # 색상코드 컬럼 탐지 (item code 패턴: 영문+숫자 조합)
+        import re as _re
+        _code_col_name = None
+        _code_kws = ["색상코드", "품목코드", "clrcd", "color", "코드", "품목"]
+        for _ch in _full_df.columns:
+            if any(_kw in str(_ch).lower() for _kw in _code_kws):
+                _code_col_name = _ch
+                break
+        if _code_col_name is None:
+            # fallback: 컬럼 값 중 7자리 이상 영숫자 비율이 높은 컬럼
+            for _ch in _full_df.columns:
+                _vals = _full_df[_ch].dropna().astype(str)
+                _match_cnt = _vals.apply(lambda v: bool(_re.match(r"^[A-Za-z][A-Za-z0-9]{5,}$", v.strip()))).sum()
+                if _match_cnt >= len(_vals) * 0.4 and len(_vals) > 0:
+                    _code_col_name = _ch
+                    break
+
+        # 재고 컬럼 우측에 위치 컬럼 삽입
+        _재고_cols = [c for c in _full_df.columns if str(c).strip() == "재고"]
+        if _재고_cols and _code_col_name and _inv_location_map:
+            for _rc in reversed(_재고_cols):
+                _rc_idx = list(_full_df.columns).index(_rc)
+                _위치_vals = []
+                for _, _row in _full_df.iterrows():
+                    _stock = str(_row.get(_rc, "")).strip()
+                    try:
+                        _stock_n = int(_stock) if _stock else 0
+                    except Exception:
+                        _stock_n = 0
+                    if _stock_n > 0:
+                        _code = str(_row.get(_code_col_name, "")).strip().upper()
+                        _위치_vals.append(_inv_location_map.get(_code, ""))
+                    else:
+                        _위치_vals.append("")
+                _full_df.insert(_rc_idx + 1, "위치", _위치_vals)
+
         from modules.excel_converter import convert_to_excel
         _full_excel = convert_to_excel(list(_full_df.columns), _full_df.fillna("").values.tolist())
 
