@@ -470,6 +470,45 @@ def get_employee_email(employee_id: str) -> str:
         return ""
 
 
+# ════════════════════════════════════════════════════════════════════
+# 일일 재고기록 (daily_inventory_remarks)
+# ════════════════════════════════════════════════════════════════════
+
+def get_inventory_registered_in_range(start_kst: str, end_kst: str) -> list:
+    """KST 시간 범위 내 등록된 재고 항목 반환. (registered_at KST 기준)"""
+    try:
+        res = _sb().table("inventory") \
+            .select("lot,product,maker,registered_at") \
+            .gte("registered_at", start_kst) \
+            .lt("registered_at", end_kst) \
+            .order("registered_at") \
+            .execute()
+        return res.data or []
+    except Exception:
+        return []
+
+
+def get_daily_inventory_remarks(date_str: str) -> dict:
+    """날짜별 비고 반환: {(shift, product): remark}"""
+    try:
+        res = _sb().table("daily_inventory_remarks") \
+            .select("shift,product,remark") \
+            .eq("record_date", date_str) \
+            .execute()
+        return {(r["shift"], r["product"]): r["remark"] for r in res.data}
+    except Exception:
+        return {}
+
+
+def upsert_daily_inventory_remark(date_str: str, shift: str, product: str, remark: str):
+    """비고 upsert (record_date + shift + product 기준)."""
+    _sb().table("daily_inventory_remarks").upsert(
+        {"record_date": date_str, "shift": shift, "product": product,
+         "remark": remark, "updated_at": _kst_now()},
+        on_conflict="record_date,shift,product",
+    ).execute()
+
+
 def update_employee_email(employee_id: str, email: str) -> bool:
     """직원 이메일 저장."""
     _sb().table("app_users").update({"email": email}).eq("employee_id", employee_id).execute()

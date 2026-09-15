@@ -429,6 +429,7 @@ st.sidebar.markdown("**KG 재고관리**")
 _nav("입고 관리", "입고 관리")
 _nav("재고 현황", "재고 현황")
 _nav("반품 관리", "반품 관리")
+_nav("일일 재고기록", "일일 재고기록")
 if st.session_state.get("username") == "admin":
     st.sidebar.markdown("**시스템 관리**")
     _nav("직원 관리", "직원 관리")
@@ -5657,6 +5658,220 @@ def page_inventory_return():
 
 
 # ══════════════════════════════════════
+# 일일 재고기록 페이지
+# ══════════════════════════════════════
+def page_daily_inventory_record():
+    import datetime as _dt
+    import pandas as _pd
+    from io import BytesIO as _BytesIO
+    from openpyxl import Workbook as _Workbook
+    from openpyxl.styles import Font as _XFont, Alignment as _XAlign, PatternFill as _XFill, Border as _XBorder, Side as _XSide
+    from openpyxl.utils import get_column_letter as _gcl
+    from utils.supabase_db import (
+        load_daily_detail,
+        get_inventory_registered_in_range,
+        get_daily_inventory_remarks,
+        upsert_daily_inventory_remark,
+    )
+
+    st.subheader("일일 재고기록")
+
+    # 현재 KST 기준 영업일 (06:30 이전이면 전날)
+    _now_kst = _dt.datetime.utcnow() + _dt.timedelta(hours=9)
+    _default_biz = _now_kst.date()
+    if _now_kst.hour < 6 or (_now_kst.hour == 6 and _now_kst.minute < 30):
+        _default_biz -= _dt.timedelta(days=1)
+
+    _dir_c1, _dir_c2 = st.columns([3, 1])
+    with _dir_c1:
+        _sel_date = st.date_input("날짜", _default_biz, key="dir_date",
+                                  min_value=_dt.date(2026, 1, 1),
+                                  max_value=_dt.date(2100, 12, 31))
+    with _dir_c2:
+        st.write("")
+        st.write("")
+        if st.button("🔄", key="dir_refresh", use_container_width=True):
+            st.rerun()
+
+    _date_str = _sel_date.strftime("%Y-%m-%d")
+    _next_date_str = (_sel_date + _dt.timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # 작업일지 shift_data 로드
+    _detail = load_daily_detail(_sel_date)
+    _shift_data = (_detail.get("shift") or {}) if _detail else {}
+
+    if not _shift_data:
+        st.info(f"{_date_str} 작업일지 근무 매칭 정보가 없습니다. 작업일지를 먼저 저장해주세요.")
+        return
+
+    _is_2p = _shift_data.get("is_2person", False)
+
+    # 근별 (이름, 시작KST, 종료KST, 근무자)
+    if _is_2p:
+        _shifts = [
+            ("주간", f"{_date_str} 06:30:00",     f"{_date_str} 18:30:00",     _shift_data.get("주간_근무자", "")),
+            ("야간", f"{_date_str} 18:30:00",     f"{_next_date_str} 06:30:00", _shift_data.get("야간_근무자", "")),
+        ]
+    else:
+        _shifts = [
+            ("1근", f"{_date_str} 06:30:00",     f"{_date_str} 14:30:00",     _shift_data.get("1근_근무자", "")),
+            ("2근", f"{_date_str} 14:30:00",     f"{_date_str} 22:30:00",     _shift_data.get("2근_근무자", "")),
+            ("3근", f"{_date_str} 22:30:00",     f"{_next_date_str} 06:30:00", _shift_data.get("3근_근무자", "")),
+        ]
+
+    # 기존 비고
+    _remarks_map = get_daily_inventory_remarks(_date_str)
+
+    # 근별 품목 그룹 구성
+    _shift_groups = []  # [(shift_name, worker, [{품명, 수량, lots, 비고}])]
+    for _sname, _sstart, _send, _sworker in _shifts:
+        _items = get_inventory_registered_in_range(_sstart, _send)
+        _pmap: dict = {}
+        for _it in _items:
+            _prod = (_it.get("product") or "").strip() or "미상"
+            _pmap.setdefault(_prod, []).append((_it.get("lot") or "").strip())
+        _rows = [
+            {"품명": _p, "수량": len(_ls), "lots": sorted(_ls),
+             "비고": _remarks_map.get((_sname, _p), "")}
+            for _p, _ls in _pmap.items()
+        ]
+        _shift_groups.append((_sname, _sworker, _rows))
+
+    # ── 비고 저장 콜백 ──
+    def _save_remark(_d, _s, _p, _key):
+        _val = st.session_state.get(_key, "")
+        _old = _remarks_map.get((_s, _p), "")
+        if _val != _old:
+            upsert_daily_inventory_remark(_d, _s, _p, _val)
+
+    # ── 화면 표시 ──
+    st.markdown("---")
+    for _sname, _sworker, _rows in _shift_groups:
+        _label = f"**{_sname}**  <span style='color:#666;font-size:0.9em'>({_sworker})</span>"
+        st.markdown(_label, unsafe_allow_html=True)
+
+        if not _rows:
+            st.caption("등록된 재고 없음")
+            st.write("")
+            continue
+
+        # 헤더
+        _hcols = st.columns([3, 1, 3, 3])
+        for _htxt, _hcol in zip(["품명", "수량", "LOT번호", "비고"], _hcols):
+            _hcol.markdown(f"<div style='font-weight:600;font-size:0.85em;color:#444;border-bottom:1px solid #ddd;padding-bottom:2px'>{_htxt}</div>",
+                           unsafe_allow_html=True)
+
+        for _ri, _row in enumerate(_rows):
+            _rc1, _rc2, _rc3, _rc4 = st.columns([3, 1, 3, 3])
+            with _rc1:
+                st.markdown(f"<div style='padding:4px 0'>{_row['품명']}</div>", unsafe_allow_html=True)
+            with _rc2:
+                st.markdown(f"<div style='padding:4px 0;text-align:center'>{_row['수량']}</div>", unsafe_allow_html=True)
+            with _rc3:
+                _lot_key = f"lot_{_date_str}_{_sname}_{_ri}"
+                if len(_row["lots"]) > 1:
+                    st.selectbox("LOT", _row["lots"], key=_lot_key, label_visibility="collapsed")
+                else:
+                    st.markdown(f"<div style='padding:4px 0;font-size:0.9em'>{_row['lots'][0] if _row['lots'] else '-'}</div>",
+                                unsafe_allow_html=True)
+            with _rc4:
+                _rem_key = f"rem_{_date_str}_{_sname}_{_ri}"
+                st.text_input("비고", value=_row["비고"], key=_rem_key,
+                              label_visibility="collapsed",
+                              on_change=_save_remark,
+                              args=(_date_str, _sname, _row["품명"], _rem_key))
+
+        st.write("")
+
+    # ── 엑셀 다운로드 ──
+    def _make_excel():
+        _wb = _Workbook()
+        _ws = _wb.active
+        _ws.title = "일일재고기록"
+
+        _thin = _XBorder(
+            left=_XSide(style="thin"), right=_XSide(style="thin"),
+            top=_XSide(style="thin"), bottom=_XSide(style="thin"),
+        )
+        _hdr_fill  = _XFill(start_color="2F3542", end_color="2F3542", fill_type="solid")
+        _sec_fill  = _XFill(start_color="D6DCE4", end_color="D6DCE4", fill_type="solid")
+        _ctr       = _XAlign(horizontal="center", vertical="center", wrap_text=True)
+        _lft       = _XAlign(horizontal="left",   vertical="center", wrap_text=True)
+
+        # 타이틀
+        _ws.merge_cells("A1:E1")
+        _tc = _ws["A1"]
+        _tc.value = f"페인트 재고 기록지  {_date_str}"
+        _tc.font = _XFont(name="맑은 고딕", bold=True, size=13)
+        _tc.alignment = _ctr
+        _tc.border = _thin
+        _ws.row_dimensions[1].height = 22
+
+        # 컬럼 너비
+        for _ci, _w in zip("ABCDE", [4, 16, 6, 22, 18]):
+            _ws.column_dimensions[_gcl(_ci.encode()[0] - 64)].width = _w
+
+        _cur_row = 2
+        for _sname, _sworker, _rows in _shift_groups:
+            # 근 헤더행
+            _ws.merge_cells(f"A{_cur_row}:E{_cur_row}")
+            _sc = _ws.cell(row=_cur_row, column=1,
+                           value=f"{_sname}  ({_sworker})")
+            _sc.font = _XFont(name="맑은 고딕", bold=True, size=11)
+            _sc.fill = _sec_fill
+            _sc.alignment = _ctr
+            _sc.border = _thin
+            for _ci in range(1, 6):
+                _ws.cell(row=_cur_row, column=_ci).border = _thin
+            _cur_row += 1
+
+            # 컬럼 헤더
+            for _ci, _htxt in enumerate(["No.", "품명", "수량", "LOT번호", "비고"], 1):
+                _hc = _ws.cell(row=_cur_row, column=_ci, value=_htxt)
+                _hc.font = _XFont(name="맑은 고딕", bold=True, size=10, color="FFFFFF")
+                _hc.fill = _hdr_fill
+                _hc.alignment = _ctr
+                _hc.border = _thin
+            _cur_row += 1
+
+            if not _rows:
+                _ws.merge_cells(f"A{_cur_row}:E{_cur_row}")
+                _ec = _ws.cell(row=_cur_row, column=1, value="등록된 재고 없음")
+                _ec.alignment = _ctr
+                _ec.border = _thin
+                for _ci in range(1, 6):
+                    _ws.cell(row=_cur_row, column=_ci).border = _thin
+                _cur_row += 1
+            else:
+                for _ri, _row in enumerate(_rows, 1):
+                    _lot_str = "\n".join(_row["lots"])
+                    for _ci, _val in enumerate([_ri, _row["품명"], _row["수량"], _lot_str, _row["비고"]], 1):
+                        _dc = _ws.cell(row=_cur_row, column=_ci, value=_val)
+                        _dc.font = _XFont(name="맑은 고딕", size=10)
+                        _dc.border = _thin
+                        _dc.alignment = _ctr if _ci in (1, 3) else _lft
+                    _line_cnt = max(1, len(_row["lots"]))
+                    _ws.row_dimensions[_cur_row].height = max(16, _line_cnt * 15)
+                    _cur_row += 1
+
+            _cur_row += 1  # 구분 빈 행
+
+        _buf = _BytesIO()
+        _wb.save(_buf)
+        return _buf.getvalue()
+
+    st.markdown("---")
+    _dl_date = _sel_date.strftime("%y%m%d")
+    st.download_button(
+        label="엑셀 다운로드",
+        data=_make_excel(),
+        file_name=f"{_dl_date}일일재고기록.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=False,
+    )
+
+
+# ══════════════════════════════════════
 # 직원 관리 (관리자 전용)
 # ══════════════════════════════════════
 def page_employee_admin():
@@ -5822,5 +6037,7 @@ elif page == "입고 관리":
     page_cross_check()
 elif page == "반품 관리":
     page_inventory_return()
+elif page == "일일 재고기록":
+    page_daily_inventory_record()
 elif page == "직원 관리":
     page_employee_admin()
