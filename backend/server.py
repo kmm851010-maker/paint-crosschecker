@@ -347,6 +347,17 @@ async def get_inventory_sectors():
     return {"success": True, "sectors": sectors}
 
 
+@app.get("/api/inventory/product-whitelist")
+async def get_product_whitelist_endpoint():
+    """ERP 입고 등록된 품명 화이트리스트 반환 (모바일 스캔 승인 목록)."""
+    from utils.inventory_supabase import get_product_whitelist
+    try:
+        products = get_product_whitelist()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, "products": products}
+
+
 @app.get("/api/inventory/history")
 async def get_inventory_history_endpoint(from_dt: str = "", to_dt: str = ""):
     """재고 이력 조회 (from_dt/to_dt: 'YYYY-MM-DD HH:MM', 기본값 오늘 KST 00:00~23:59)"""
