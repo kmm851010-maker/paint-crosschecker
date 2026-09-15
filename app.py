@@ -5724,24 +5724,30 @@ def page_daily_inventory_record():
     _remarks_map = get_daily_inventory_remarks(_date_str)
 
     # 근별 품목 그룹 구성
-    _shift_groups = []  # [(shift_name, worker, [{품명, 수량, lots, 비고}])]
+    _shift_groups = []   # [(shift_name, worker, [{품명, 수량, lots, 비고}])]
+    _manual_counts = {}  # {shift_name: 수동등록 수량합계} — ERP(remark=신규) 제외
     for _sname, _sstart, _send, _sworker in _shifts:
         _items = get_inventory_registered_in_range(_sstart, _send)
         _pmap: dict = {}
+        _manual_cnt = 0
         for _it in _items:
             _prod = (_it.get("product") or "").strip() or "미상"
             _pmap.setdefault(_prod, []).append((_it.get("lot") or "").strip())
+            if (_it.get("remark") or "") != "신규":
+                _manual_cnt += 1
         _rows = [
             {"품명": _p, "수량": len(_ls), "lots": sorted(_ls),
              "비고": _remarks_map.get((_sname, _p), "")}
             for _p, _ls in _pmap.items()
         ]
         _shift_groups.append((_sname, _sworker, _rows))
+        _manual_counts[_sname] = _manual_cnt
 
     # ── 작업일지 '재고 페인트 창고 입고' 자동 동기화 ──
+    # remark="신규"(ERP 라인입고) 제외, OCR/웹앱 수동 등록만 집계
     # 수량이 마지막 자동 동기화 시점과 달라졌을 때만 업데이트 → 근무자 수동 수정 보존
     _AUTO_KEY = "__inv_auto_count__"
-    _cur_counts = {_sn: sum(_r["수량"] for _r in _rws) for _sn, _, _rws in _shift_groups}
+    _cur_counts = _manual_counts  # ERP(신규) 제외한 수동 등록 수량
     _sync_needed = any(
         _cur_counts[_sn] != int(_remarks_map.get((_sn, _AUTO_KEY), -1) or -1)
         for _sn in _cur_counts
