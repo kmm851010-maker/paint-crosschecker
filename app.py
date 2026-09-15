@@ -628,7 +628,7 @@ def page_cross_check():
 
         if _inc_excel:
             st.download_button("입고예정 엑셀 다운로드", data=_inc_excel,
-                file_name="incoming_plan.xlsx",
+                file_name=f"{(datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime('%y%m%d')}입고예정품목.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
         _ed_key = f"inc_dlg_ed_{_pln_name}_{len(_inc_df)}"
