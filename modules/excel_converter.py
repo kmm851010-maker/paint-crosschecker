@@ -229,6 +229,20 @@ def convert_erp_filled_to_excel(filled_df) -> bytes:
                 elif 신규_n == 0 and 입고_n > 0:
                     cell.fill = FILL_YELLOW
 
+    # 위치 컬럼 포함 행 높이 조정
+    import re as _re_erp_h
+    _e위치_idxs = {i for i, h in enumerate(headers) if _re_erp_h.match(r'^위치(_\d+)?$', str(h).strip())}
+    if _e위치_idxs:
+        for row_idx, row_data in enumerate(rows, 2):
+            max_lines = 1
+            for ci in _e위치_idxs:
+                if ci < len(row_data):
+                    val = str(row_data[ci]) if row_data[ci] else ""
+                    lines = val.count(" / ") + 1 if val else 1
+                    max_lines = max(max_lines, lines)
+            if max_lines > 1:
+                ws.row_dimensions[row_idx].height = max_lines * 16
+
     # 열 너비 자동
     for ci in range(1, len(headers) + 1):
         max_len = len(str(headers[ci - 1]))

@@ -1086,7 +1086,49 @@ def page_cross_check():
                     st.caption("신규 옆 입고 칸에 ERP 실입고 수량이 자동 기입된 양식입니다. 🟥 미입고 · 🟩 일치 · 🟡 초과 · 🟠 일부입고")
                 with _dl_col:
                     from modules.excel_converter import convert_erp_filled_to_excel
-                    _erp_excel = convert_erp_filled_to_excel(_filled)
+                    import re as _re_erp
+                    # 재고 위치 맵 구성
+                    _erp_loc_map = {}
+                    try:
+                        from utils.supabase_db import get_sector_inventory as _gsi_erp
+                        _erp_inv_raw = _gsi_erp()
+                        _erp_prod_sec: dict = {}
+                        for _sec, _drums in _erp_inv_raw.items():
+                            for _d in _drums:
+                                _p = str(_d.get("product", "")).strip().upper()
+                                if _p:
+                                    _erp_prod_sec.setdefault(_p, {})
+                                    _erp_prod_sec[_p][_sec] = _erp_prod_sec[_p].get(_sec, 0) + 1
+                        _erp_loc_map = {
+                            _p: " / ".join(f"{_s}({_n})" for _s, _n in _sv.items())
+                            for _p, _sv in _erp_prod_sec.items()
+                        }
+                    except Exception:
+                        pass
+                    # 재고 컬럼 옆에 위치 컬럼 삽입 (엑셀용 복사본에만 적용)
+                    _filled_loc = _filled.copy()
+                    _erp_재고_cols = [c for c in _filled_loc.columns if _re_erp.match(r'^재고(_\d+)?$', str(c).strip())]
+                    if _erp_재고_cols and _erp_loc_map:
+                        for _erc in reversed(_erp_재고_cols):
+                            _esuffix = str(_erc)[2:]
+                            _ecorr_col = f"색상코드{_esuffix}"
+                            if _ecorr_col not in _filled_loc.columns:
+                                _ecorr_col = next((c for c in _filled_loc.columns if "색상코드" in str(c)), None)
+                            _erc_idx = list(_filled_loc.columns).index(_erc)
+                            _e위치_vals = []
+                            for _, _erow in _filled_loc.iterrows():
+                                _est = str(_erow.get(_erc, "")).strip()
+                                try:
+                                    _est_n = int(_est) if _est else 0
+                                except Exception:
+                                    _est_n = 0
+                                if _est_n > 0 and _ecorr_col:
+                                    _ecode = str(_erow.get(_ecorr_col, "")).strip().upper()
+                                    _e위치_vals.append(_erp_loc_map.get(_ecode, ""))
+                                else:
+                                    _e위치_vals.append("")
+                            _filled_loc.insert(_erc_idx + 1, f"위치{_esuffix}", _e위치_vals)
+                    _erp_excel = convert_erp_filled_to_excel(_filled_loc)
                     st.write("")
                     st.write("")
                     st.download_button(
