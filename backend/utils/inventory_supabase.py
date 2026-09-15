@@ -105,7 +105,7 @@ def save_drums_to_sector(drums: list, sector: str, remark: str = ""):
     # 2) 기존 드럼 일괄 업데이트
     if to_update:
         sb.table("inventory").update({
-            "sector": sector, "registered_at": now, "updated_at": now,
+            "sector": sector, "registered_at": now, "updated_at": now, "remark": "",
         }).in_("lot", to_update).execute()
 
     # 3) 신규 드럼 일괄 삽입 (500개 청크)
