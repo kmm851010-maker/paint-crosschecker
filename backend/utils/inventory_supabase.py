@@ -241,7 +241,7 @@ def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: 
 
     _sb().table("inventory").update({
         "lot": new_lot, "product": new_product,
-        "maker": new_maker, "sector": new_sector, "updated_at": now, "remark": new_remark,
+        "maker": new_maker, "sector": new_sector, "registered_at": now, "updated_at": now, "remark": new_remark,
     }).eq("lot", old_lot).execute()
     _sb().table("inventory_history").insert({
         "lot": new_lot, "product": new_product, "maker": new_maker,
