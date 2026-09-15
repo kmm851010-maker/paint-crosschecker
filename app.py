@@ -761,8 +761,10 @@ def page_cross_check():
         # 상단 소형 버튼 행 (이모티콘 없음)
         _dc1, _dc2, _dc3 = st.columns([2, 2, 3])
         with _dc1:
+            import datetime as _dt_dl
+            _dl_date = (_dt_dl.datetime.utcnow() + _dt_dl.timedelta(hours=9)).strftime("%y%m%d")
             st.download_button("전체 엑셀 다운로드", data=_full_excel,
-                file_name="plan_full_table.xlsx",
+                file_name=f"{_dl_date}생산계획서변환.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True)
         with _dc2:
