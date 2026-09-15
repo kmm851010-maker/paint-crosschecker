@@ -902,6 +902,13 @@ def page_cross_check():
                 disabled=not (erp_file and "cc_plan_df" in st.session_state),
                 key="btn_run_crosscheck",
             )
+            new_reg_button = st.button(
+                "신규 입고처리",
+                use_container_width=True,
+                disabled=not erp_file,
+                key="btn_new_register",
+                help="생산계획서 없이 ERP 명세서만으로 재고 등록",
+            )
 
         if run_button:
             if not api_key:
@@ -918,7 +925,80 @@ def page_cross_check():
             result_df = cross_check(plan_df, erp_df)
             st.session_state["cc_erp_df"] = erp_df
             st.session_state["cc_result_df"] = result_df
+            # 교차검증과 동시에 입고처리용 드럼 리스트 추출
+            from modules.erp_parser import extract_drums_list
+            st.session_state["cc_crosscheck_reg_drums"] = extract_drums_list(erp_bytes, erp_file.name)
             st.rerun()
+
+        if new_reg_button:
+            from modules.erp_parser import extract_drums_list
+            erp_bytes = erp_file.getvalue()
+            drums = extract_drums_list(erp_bytes, erp_file.name)
+            if not drums:
+                st.error("ERP 파일에서 드럼 데이터를 추출하지 못했습니다. 엑셀/CSV 형식인지 확인하세요.")
+            else:
+                st.session_state["cc_new_reg_drums"] = drums
+                st.rerun()
+
+    # ── 신규 입고처리 결과 ──
+    if "cc_new_reg_drums" in st.session_state:
+        from backend.utils.inventory_supabase import SECTORS
+        import requests as _req
+
+        _drums = st.session_state["cc_new_reg_drums"]
+        _no_lot = [d for d in _drums if not d["lot"]]
+        _has_lot = [d for d in _drums if d["lot"]]
+
+        st.markdown("---")
+        st.subheader("신규 입고처리")
+
+        if _no_lot:
+            st.warning(f"LOT번호 없는 드럼 {len(_no_lot)}개는 품목코드만 확인됨. LOT는 추후 스캔으로 등록 필요.")
+
+        # 드럼 목록 표시
+        import pandas as _pd
+        _disp_df = _pd.DataFrame(_drums)
+        _disp_df.columns = ["LOT번호", "품목코드", "제조사"]
+        _disp_df.index = range(1, len(_disp_df) + 1)
+        st.dataframe(_disp_df, use_container_width=True)
+        st.caption(f"총 {len(_drums)}개 드럼")
+
+        _reg_col, _cancel_col = st.columns([3, 1])
+        with _reg_col:
+            _sector_opts = [s for s in SECTORS if s not in ("라인입고", "반품완료")]
+            _sel_sector = st.selectbox("등록할 섹터", _sector_opts, key="new_reg_sector")
+        with _cancel_col:
+            st.write("")
+            st.write("")
+            if st.button("취소", use_container_width=True, key="btn_new_reg_cancel"):
+                del st.session_state["cc_new_reg_drums"]
+                st.rerun()
+
+        _lot_drums = [d for d in _drums if d["lot"]]
+        if not _lot_drums:
+            st.info("LOT번호가 있는 드럼이 없어 재고 등록이 불가합니다. 드럼을 직접 스캔해 등록하세요.")
+        else:
+            if st.button(
+                f"재고 등록 ({len(_lot_drums)}개)",
+                type="primary",
+                key="btn_new_reg_confirm",
+            ):
+                BACKEND = "https://kgcounter.up.railway.app"
+                try:
+                    _res = _req.post(
+                        f"{BACKEND}/api/inventory/register",
+                        json={"drums": _lot_drums, "sector": _sel_sector},
+                        timeout=30,
+                    )
+                    _res.raise_for_status()
+                    _data = _res.json()
+                    _moved = _data.get("moved", len(_lot_drums))
+                    _same = len(_data.get("already_same", []))
+                    st.success(f"{_moved}개 드럼 [{_sel_sector}] 등록 완료!" + (f" ({_same}개는 이미 동일 섹터)" if _same else ""))
+                    del st.session_state["cc_new_reg_drums"]
+                    st.rerun()
+                except Exception as _e:
+                    st.error(f"재고 등록 실패: {_e}")
 
     # ── 교차검증 결과 (①② 컬럼 아래 전체 너비) ──
     if "cc_result_df" in st.session_state:
@@ -1058,6 +1138,50 @@ def page_cross_check():
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True,
                     )
+            # ── 교차검증 후 신규 입고처리 ──
+            if "cc_crosscheck_reg_drums" in st.session_state:
+                from backend.utils.inventory_supabase import SECTORS
+                import requests as _req2
+
+                _cc_drums = st.session_state["cc_crosscheck_reg_drums"]
+                _cc_lot_drums = [d for d in _cc_drums if d["lot"]]
+
+                st.markdown("---")
+                st.subheader("신규 입고처리")
+                if not _cc_lot_drums:
+                    st.info("ERP 파일에 LOT번호가 없어 재고 자동 등록이 불가합니다. 드럼을 직접 스캔해 등록하세요.")
+                else:
+                    st.caption(f"ERP에서 추출된 드럼 {len(_cc_lot_drums)}개를 재고에 등록합니다.")
+                    _cc_sector_opts = [s for s in SECTORS if s not in ("라인입고", "반품완료")]
+                    _cc_reg_col, _cc_btn_col = st.columns([3, 1])
+                    with _cc_reg_col:
+                        _cc_sel_sector = st.selectbox("등록할 섹터", _cc_sector_opts, key="cc_crosscheck_reg_sector")
+                    with _cc_btn_col:
+                        st.write("")
+                        st.write("")
+                        if st.button(
+                            f"재고 등록 ({len(_cc_lot_drums)}개)",
+                            type="primary",
+                            use_container_width=True,
+                            key="btn_cc_reg_confirm",
+                        ):
+                            BACKEND = "https://kgcounter.up.railway.app"
+                            try:
+                                _res2 = _req2.post(
+                                    f"{BACKEND}/api/inventory/register",
+                                    json={"drums": _cc_lot_drums, "sector": _cc_sel_sector},
+                                    timeout=30,
+                                )
+                                _res2.raise_for_status()
+                                _data2 = _res2.json()
+                                _moved2 = _data2.get("moved", len(_cc_lot_drums))
+                                _same2 = len(_data2.get("already_same", []))
+                                st.success(f"{_moved2}개 드럼 [{_cc_sel_sector}] 등록 완료!" + (f" ({_same2}개는 이미 동일 섹터)" if _same2 else ""))
+                                del st.session_state["cc_crosscheck_reg_drums"]
+                                st.rerun()
+                            except Exception as _e2:
+                                st.error(f"재고 등록 실패: {_e2}")
+
         else:
             st.info("신규 요청 수량이 있는 항목이 없습니다.")
 

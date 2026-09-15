@@ -157,6 +157,59 @@ def parse_erp_image(
     return result.reset_index(drop=True)
 
 
+MAKERS_BY_CODE = {
+    "G": "고려(KCC)",
+    "D": "대한(노루)",
+    "K": "건설(제비)",
+    "S": "삼화",
+    "Y": "애경",
+    "P": "동주(PPG)",
+}
+
+
+def extract_drums_list(file_bytes: bytes, file_name: str) -> list[dict]:
+    """ERP 엑셀/CSV에서 개별 드럼 레코드를 추출합니다.
+
+    Returns:
+        list of dict: [{"lot": str, "product": str, "maker": str}, ...]
+        lot이 없으면 빈 문자열, maker는 LOT 첫 글자로 추론합니다.
+    """
+    ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
+    is_ole = len(file_bytes) >= 8 and file_bytes[:8] == bytes.fromhex("d0cf11e0a1b011ae")
+
+    try:
+        df = parse_excel(file_bytes, file_name)
+    except Exception:
+        return []
+
+    col_map = detect_columns(df)
+    color_col = col_map.get("color_code")
+    lot_col = col_map.get("lot_number")
+    weight_col = col_map.get("weight_kg")
+
+    if color_col is None:
+        return []
+
+    drums = []
+    for _, row in df.iterrows():
+        code = normalize_color_code(str(row.get(color_col, "")))
+        if not code:
+            continue
+
+        # 개당 중량 500kg 이상 제외 (벌크)
+        if weight_col and weight_col in df.columns:
+            w = pd.to_numeric(row.get(weight_col, 0), errors="coerce") or 0
+            if w >= 500:
+                continue
+
+        lot = normalize_color_code(str(row.get(lot_col, ""))) if lot_col else ""
+        maker = MAKERS_BY_CODE.get(lot[0].upper(), "") if lot and lot[0].isalpha() else ""
+
+        drums.append({"lot": lot, "product": code, "maker": maker})
+
+    return drums
+
+
 def process_erp_file(
     file_bytes: bytes,
     file_name: str,
