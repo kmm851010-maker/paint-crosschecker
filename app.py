@@ -5763,6 +5763,9 @@ def page_daily_inventory_record():
         for _sn, _cnt in _cur_counts.items():
             upsert_daily_inventory_remark(_date_str, _sn, _AUTO_KEY, str(_cnt))
         _remarks_map = get_daily_inventory_remarks(_date_str)  # 리로드
+        # 작업일지 세션 캐시 무효화 → 다음 방문 시 DB 재로드
+        st.session_state.pop(f"wl_fetched_{_sel_date}", None)
+        st.session_state.pop(f"wl_grid_{_sel_date}", None)
 
     # ── 비고 저장 콜백 ──
     def _save_remark(_d, _s, _p, _key):
