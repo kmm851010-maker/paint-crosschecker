@@ -408,7 +408,7 @@ _team = st.secrets.get("company", {}).get("team", "")
 st.sidebar.caption(f"{_dept}\n{_team} 업무도우미" if _dept else "KG스틸 업무도우미")
 st.sidebar.markdown("---")
 
-_VALID_PAGES = {"근태관리", "일일 작업 일지", "재고 현황", "입고 관리", "반품 관리", "직원 관리"}
+_VALID_PAGES = {"근태관리", "일일 작업 일지", "재고 현황", "입고 관리", "반품 관리", "직원 관리", "일일 재고기록"}
 if st.session_state.get("page") not in _VALID_PAGES:
     # 세션 만료·WebSocket 재연결 시 URL 파라미터에서 페이지 복원
     _page_from_url = st.query_params.get("page", "근태관리")
