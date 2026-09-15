@@ -232,6 +232,7 @@ class InventoryRegisterRequest(BaseModel):
     drums: list[DrumItem]
     sector: str
     remark: str = ""
+    skip_existing: bool = False
 
 
 @app.post("/api/inventory/parse-barcode")
@@ -254,9 +255,10 @@ async def inventory_register(req: InventoryRegisterRequest):
             checkout_drums(drums)
             return {"success": True, "count": len(drums), "sector": req.sector, "already_same": [], "moved": len(drums)}
         else:
-            result = save_drums_to_sector(drums, req.sector, remark=req.remark)
+            result = save_drums_to_sector(drums, req.sector, remark=req.remark, skip_existing=req.skip_existing)
             return {"success": True, "count": len(drums), "sector": req.sector,
-                    "already_same": result["already_same"], "moved": result["moved"]}
+                    "already_same": result["already_same"], "moved": result["moved"],
+                    "skipped": result.get("skipped", [])}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

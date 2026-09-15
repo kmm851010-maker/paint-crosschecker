@@ -987,14 +987,17 @@ def page_cross_check():
                 try:
                     _res = _req.post(
                         f"{BACKEND}/api/inventory/register",
-                        json={"drums": _lot_drums, "sector": _sel_sector, "remark": "신규"},
+                        json={"drums": _lot_drums, "sector": _sel_sector, "remark": "신규", "skip_existing": True},
                         timeout=30,
                     )
                     _res.raise_for_status()
                     _data = _res.json()
                     _moved = _data.get("moved", len(_lot_drums))
-                    _same = len(_data.get("already_same", []))
-                    st.success(f"{_moved}개 드럼 [{_sel_sector}] 등록 완료!" + (f" ({_same}개는 이미 동일 섹터)" if _same else ""))
+                    _skipped = _data.get("skipped", [])
+                    st.success(f"{_moved}개 드럼 [{_sel_sector}] 등록 완료!")
+                    if _skipped:
+                        _skip_lines = "\n".join(f"- {s['lot']} ({s['product']}) ← 현재 [{s['sector']}]" for s in _skipped)
+                        st.warning(f"이미 재고에 있어 건너뛴 드럼 {len(_skipped)}개:\n{_skip_lines}")
                     del st.session_state["cc_new_reg_drums"]
                     st.rerun()
                 except Exception as _e:
@@ -1169,14 +1172,17 @@ def page_cross_check():
                             try:
                                 _res2 = _req2.post(
                                     f"{BACKEND}/api/inventory/register",
-                                    json={"drums": _cc_lot_drums, "sector": _cc_sel_sector, "remark": "신규"},
+                                    json={"drums": _cc_lot_drums, "sector": _cc_sel_sector, "remark": "신규", "skip_existing": True},
                                     timeout=30,
                                 )
                                 _res2.raise_for_status()
                                 _data2 = _res2.json()
                                 _moved2 = _data2.get("moved", len(_cc_lot_drums))
-                                _same2 = len(_data2.get("already_same", []))
-                                st.success(f"{_moved2}개 드럼 [{_cc_sel_sector}] 등록 완료!" + (f" ({_same2}개는 이미 동일 섹터)" if _same2 else ""))
+                                _skipped2 = _data2.get("skipped", [])
+                                st.success(f"{_moved2}개 드럼 [{_cc_sel_sector}] 등록 완료!")
+                                if _skipped2:
+                                    _skip_lines2 = "\n".join(f"- {s['lot']} ({s['product']}) ← 현재 [{s['sector']}]" for s in _skipped2)
+                                    st.warning(f"이미 재고에 있어 건너뛴 드럼 {len(_skipped2)}개:\n{_skip_lines2}")
                                 del st.session_state["cc_crosscheck_reg_drums"]
                                 st.rerun()
                             except Exception as _e2:
