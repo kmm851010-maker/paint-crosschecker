@@ -5002,7 +5002,7 @@ def page_inventory():
                             c4.text(row.get("maker", ""))
                             if sort_mode not in ("섹터별",):
                                 c5.text(row.get("sector", ""))
-                            c6.text(row.get("registered", ""))
+                            c6.markdown(_reg_display(row.get("registered", "")), unsafe_allow_html=True)
                             c7.text(row.get("remark", ""))
 
         # 선택 항목 엑셀 다운로드
