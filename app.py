@@ -5753,19 +5753,32 @@ def page_daily_inventory_record():
         _cur_counts[_sn] != int(_remarks_map.get((_sn, _AUTO_KEY), -1) or -1)
         for _sn in _cur_counts
     )
+    _sync_status = ""
     if _sync_needed:
-        upsert_inventory_work_item(
-            _sel_date,
-            s1=_cur_counts.get("1근", 0), s2=_cur_counts.get("2근", 0),
-            s3=_cur_counts.get("3근", 0), day=_cur_counts.get("주간", 0),
-            night=_cur_counts.get("야간", 0),
-        )
-        for _sn, _cnt in _cur_counts.items():
-            upsert_daily_inventory_remark(_date_str, _sn, _AUTO_KEY, str(_cnt))
-        _remarks_map = get_daily_inventory_remarks(_date_str)  # 리로드
-        # 작업일지 세션 캐시 무효화 → 다음 방문 시 DB 재로드
-        st.session_state.pop(f"wl_fetched_{_sel_date}", None)
-        st.session_state.pop(f"wl_grid_{_sel_date}", None)
+        try:
+            upsert_inventory_work_item(
+                _sel_date,
+                s1=_cur_counts.get("1근", 0), s2=_cur_counts.get("2근", 0),
+                s3=_cur_counts.get("3근", 0), day=_cur_counts.get("주간", 0),
+                night=_cur_counts.get("야간", 0),
+            )
+            for _sn, _cnt in _cur_counts.items():
+                upsert_daily_inventory_remark(_date_str, _sn, _AUTO_KEY, str(_cnt))
+            _remarks_map = get_daily_inventory_remarks(_date_str)
+            # 작업일지 세션 캐시 무효화 → 다음 방문 시 DB 재로드
+            st.session_state.pop(f"wl_fetched_{_sel_date}", None)
+            st.session_state.pop(f"wl_grid_{_sel_date}", None)
+            _sync_parts = [f"{_sn} {_cnt}개" for _sn, _cnt in _cur_counts.items() if _cnt > 0]
+            _sync_status = "연동완료: " + (", ".join(_sync_parts) if _sync_parts else "0개")
+        except Exception as _se:
+            st.error(f"작업일지 자동 연동 오류: {_se}")
+    # 동기화 상태 표시 (항상)
+    _all_zero = all(v == 0 for v in _cur_counts.values())
+    if _sync_status:
+        st.caption(f"작업일지 자동 연동: {_sync_status}")
+    elif not _all_zero:
+        _parts = [f"{_sn} {_cur_counts[_sn]}개" for _sn in _cur_counts if _cur_counts[_sn] > 0]
+        st.caption(f"작업일지 연동 현황: {', '.join(_parts)} (변경 없음)")
 
     # ── 비고 저장 콜백 ──
     def _save_remark(_d, _s, _p, _key):
