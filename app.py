@@ -5785,18 +5785,25 @@ def page_daily_inventory_record():
 
     # ── 엑셀 다운로드 ──
     def _make_excel():
+        from openpyxl.worksheet.datavalidation import DataValidation as _DV
+
         _wb = _Workbook()
         _ws = _wb.active
         _ws.title = "일일재고기록"
+
+        # LOT 드롭다운용 숨김 시트
+        _lot_ws = _wb.create_sheet("_lots")
+        _lot_ws.sheet_state = "hidden"
+        _lot_col_idx = 1  # _lots 시트에서 현재 사용 중인 열
 
         _thin = _XBorder(
             left=_XSide(style="thin"), right=_XSide(style="thin"),
             top=_XSide(style="thin"), bottom=_XSide(style="thin"),
         )
-        _hdr_fill  = _XFill(start_color="2F3542", end_color="2F3542", fill_type="solid")
-        _sec_fill  = _XFill(start_color="D6DCE4", end_color="D6DCE4", fill_type="solid")
-        _ctr       = _XAlign(horizontal="center", vertical="center", wrap_text=True)
-        _lft       = _XAlign(horizontal="left",   vertical="center", wrap_text=True)
+        _hdr_fill = _XFill(start_color="2F3542", end_color="2F3542", fill_type="solid")
+        _sec_fill = _XFill(start_color="D6DCE4", end_color="D6DCE4", fill_type="solid")
+        _ctr      = _XAlign(horizontal="center", vertical="center", wrap_text=True)
+        _lft      = _XAlign(horizontal="left",   vertical="center", wrap_text=True)
 
         # 타이틀
         _ws.merge_cells("A1:E1")
@@ -5815,8 +5822,7 @@ def page_daily_inventory_record():
         for _sname, _sworker, _rows in _shift_groups:
             # 근 헤더행
             _ws.merge_cells(f"A{_cur_row}:E{_cur_row}")
-            _sc = _ws.cell(row=_cur_row, column=1,
-                           value=f"{_sname}  ({_sworker})")
+            _sc = _ws.cell(row=_cur_row, column=1, value=f"{_sname}  ({_sworker})")
             _sc.font = _XFont(name="맑은 고딕", bold=True, size=11)
             _sc.fill = _sec_fill
             _sc.alignment = _ctr
@@ -5844,14 +5850,35 @@ def page_daily_inventory_record():
                 _cur_row += 1
             else:
                 for _ri, _row in enumerate(_rows, 1):
-                    _lot_str = "\n".join(_row["lots"])
-                    for _ci, _val in enumerate([_ri, _row["품명"], _row["수량"], _lot_str, _row["비고"]], 1):
-                        _dc = _ws.cell(row=_cur_row, column=_ci, value=_val)
+                    _lots = _row["lots"]
+                    # No., 품명, 수량, 비고
+                    for _ci, _val in enumerate([_ri, _row["품명"], _row["수량"], _row["비고"]], 1):
+                        _actual_ci = _ci if _ci < 4 else 5  # 비고는 5열
+                        _dc = _ws.cell(row=_cur_row, column=_actual_ci, value=_val)
                         _dc.font = _XFont(name="맑은 고딕", size=10)
                         _dc.border = _thin
-                        _dc.alignment = _ctr if _ci in (1, 3) else _lft
-                    _line_cnt = max(1, len(_row["lots"]))
-                    _ws.row_dimensions[_cur_row].height = max(16, _line_cnt * 15)
+                        _dc.alignment = _ctr if _actual_ci in (1, 3) else _lft
+                    # LOT 열(4열)
+                    _lot_cell = _ws.cell(row=_cur_row, column=4)
+                    _lot_cell.font = _XFont(name="맑은 고딕", size=10)
+                    _lot_cell.border = _thin
+                    _lot_cell.alignment = _lft
+                    if len(_lots) <= 1:
+                        _lot_cell.value = _lots[0] if _lots else ""
+                    else:
+                        # 첫 번째 LOT를 기본값으로 표시
+                        _lot_cell.value = _lots[0]
+                        # _lots 숨김 시트에 LOT 목록 기록
+                        _col_letter = _gcl(_lot_col_idx)
+                        for _li, _lot in enumerate(_lots, 1):
+                            _lot_ws.cell(row=_li, column=_lot_col_idx, value=_lot)
+                        _ref_range = f"_lots!${_col_letter}$1:${_col_letter}${len(_lots)}"
+                        _dv = _DV(type="list", formula1=_ref_range, allow_blank=True,
+                                  showDropDown=False)
+                        _ws.add_data_validation(_dv)
+                        _dv.add(_lot_cell)
+                        _lot_col_idx += 1
+                    _ws.row_dimensions[_cur_row].height = 16
                     _cur_row += 1
 
             _cur_row += 1  # 구분 빈 행
