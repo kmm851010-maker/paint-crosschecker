@@ -5722,26 +5722,22 @@ def page_daily_inventory_record():
     # 기존 비고
     _remarks_map = get_daily_inventory_remarks(_date_str)
 
-    # 근별 품목 그룹 구성
+    # 근별 품목 그룹 구성 (ERP 라인입고 remark=신규 제외)
     _shift_groups = []   # [(shift_name, worker, [{품명, 수량, lots, 비고}])]
-    _manual_counts = {}  # {shift_name: 수동등록 수량합계} — ERP(remark=신규) 제외
     for _sname, _sstart, _send, _sworker in _shifts:
         _items = get_inventory_registered_in_range(_sstart, _send)
         _pmap: dict = {}
-        _manual_cnt = 0
         for _it in _items:
             if (_it.get("remark") or "") == "신규":
-                continue  # ERP 라인입고 제외
+                continue
             _prod = (_it.get("product") or "").strip() or "미상"
             _pmap.setdefault(_prod, []).append((_it.get("lot") or "").strip())
-            _manual_cnt += 1
         _rows = [
             {"품명": _p, "수량": len(_ls), "lots": sorted(_ls),
              "비고": _remarks_map.get((_sname, _p), "")}
             for _p, _ls in _pmap.items()
         ]
         _shift_groups.append((_sname, _sworker, _rows))
-        _manual_counts[_sname] = _manual_cnt
 
     # ── 비고 저장 콜백 ──
     def _save_remark(_d, _s, _p, _key):
