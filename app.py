@@ -408,7 +408,7 @@ _team = st.secrets.get("company", {}).get("team", "")
 st.sidebar.caption(f"{_dept}\n{_team} 업무도우미" if _dept else "KG스틸 업무도우미")
 st.sidebar.markdown("---")
 
-_VALID_PAGES = {"근태관리", "일일 작업 일지", "재고 현황", "입고 관리", "반품 관리", "직원 관리"}
+_VALID_PAGES = {"근태관리", "일일 작업 일지", "재고 현황", "입고 관리", "반품 관리", "직원 관리", "일일 재고기록"}
 if st.session_state.get("page") not in _VALID_PAGES:
     # 세션 만료·WebSocket 재연결 시 URL 파라미터에서 페이지 복원
     _page_from_url = st.query_params.get("page", "근태관리")
@@ -429,6 +429,7 @@ st.sidebar.markdown("**KG 재고관리**")
 _nav("입고 관리", "입고 관리")
 _nav("재고 현황", "재고 현황")
 _nav("반품 관리", "반품 관리")
+_nav("일일 재고기록", "일일 재고기록")
 if st.session_state.get("username") == "admin":
     st.sidebar.markdown("**시스템 관리**")
     _nav("직원 관리", "직원 관리")
@@ -628,7 +629,7 @@ def page_cross_check():
 
         if _inc_excel:
             st.download_button("입고예정 엑셀 다운로드", data=_inc_excel,
-                file_name="incoming_plan.xlsx",
+                file_name=f"{(datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime('%y%m%d')}입고예정품목.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
         _ed_key = f"inc_dlg_ed_{_pln_name}_{len(_inc_df)}"
@@ -700,14 +701,76 @@ def page_cross_check():
             return x if isinstance(x, str) else str(x)
         _full_df = _full_df.apply(lambda col: col.map(_ts))
 
+        # ── 재고 위치 컬럼 삽입 ──
+        _inv_location_map = {}  # {품목코드(정규화): "창고주위(3) / 0~3번자리(2)"}
+        try:
+            from utils.supabase_db import get_sector_inventory as _gsi
+            _inv_raw = _gsi()
+            _prod_sectors: dict = {}
+            for _sec, _drums in _inv_raw.items():
+                for _d in _drums:
+                    _p = str(_d.get("product", "")).strip().upper()
+                    if _p:
+                        _prod_sectors.setdefault(_p, {})
+                        _prod_sectors[_p][_sec] = _prod_sectors[_p].get(_sec, 0) + 1
+            _inv_location_map = {
+                _p: " / ".join(f"{_s}({_n})" for _s, _n in _sv.items())
+                for _p, _sv in _prod_sectors.items()
+            }
+        except Exception:
+            pass
+
+        # 색상코드 컬럼 탐지 (item code 패턴: 영문+숫자 조합)
+        import re as _re
+        _code_col_name = None
+        _code_kws = ["색상코드", "품목코드", "clrcd", "color", "코드", "품목"]
+        for _ch in _full_df.columns:
+            if any(_kw in str(_ch).lower() for _kw in _code_kws):
+                _code_col_name = _ch
+                break
+        if _code_col_name is None:
+            # fallback: 컬럼 값 중 7자리 이상 영숫자 비율이 높은 컬럼
+            for _ch in _full_df.columns:
+                _vals = _full_df[_ch].dropna().astype(str)
+                _match_cnt = _vals.apply(lambda v: bool(_re.match(r"^[A-Za-z][A-Za-z0-9]{5,}$", v.strip()))).sum()
+                if _match_cnt >= len(_vals) * 0.4 and len(_vals) > 0:
+                    _code_col_name = _ch
+                    break
+
+        # 재고 컬럼 우측에 위치 컬럼 삽입 (재고_1, 재고_2 등 모든 블록 포함)
+        _재고_cols = [c for c in _full_df.columns if _re.match(r'^재고(_\d+)?$', str(c).strip())]
+        if _재고_cols and _inv_location_map:
+            for _rc in reversed(_재고_cols):
+                _suffix = str(_rc)[2:]  # "" / "_1" / "_2" ...
+                _corr_code_col = f"색상코드{_suffix}"
+                if _corr_code_col not in _full_df.columns:
+                    _corr_code_col = _code_col_name  # fallback
+                _위치_col_name = f"위치{_suffix}"  # "위치" / "위치_1" / "위치_2" ...
+                _rc_idx = list(_full_df.columns).index(_rc)
+                _위치_vals = []
+                for _, _row in _full_df.iterrows():
+                    _stock = str(_row.get(_rc, "")).strip()
+                    try:
+                        _stock_n = int(_stock) if _stock else 0
+                    except Exception:
+                        _stock_n = 0
+                    if _stock_n > 0 and _corr_code_col:
+                        _code = str(_row.get(_corr_code_col, "")).strip().upper()
+                        _위치_vals.append(_inv_location_map.get(_code, ""))
+                    else:
+                        _위치_vals.append("")
+                _full_df.insert(_rc_idx + 1, _위치_col_name, _위치_vals)
+
         from modules.excel_converter import convert_to_excel
         _full_excel = convert_to_excel(list(_full_df.columns), _full_df.fillna("").values.tolist())
 
         # 상단 소형 버튼 행 (이모티콘 없음)
         _dc1, _dc2, _dc3 = st.columns([2, 2, 3])
         with _dc1:
+            import datetime as _dt_dl
+            _dl_date = (_dt_dl.datetime.utcnow() + _dt_dl.timedelta(hours=9)).strftime("%y%m%d")
             st.download_button("전체 엑셀 다운로드", data=_full_excel,
-                file_name="plan_full_table.xlsx",
+                file_name=f"{_dl_date}생산계획서변환.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True)
         with _dc2:
@@ -1024,20 +1087,63 @@ def page_cross_check():
                     st.caption("신규 옆 입고 칸에 ERP 실입고 수량이 자동 기입된 양식입니다. 🟥 미입고 · 🟩 일치 · 🟡 초과 · 🟠 일부입고")
                 with _dl_col:
                     from modules.excel_converter import convert_erp_filled_to_excel
-                    _erp_excel = convert_erp_filled_to_excel(_filled)
+                    import re as _re_erp
+                    # 재고 위치 맵 구성
+                    _erp_loc_map = {}
+                    try:
+                        from utils.supabase_db import get_sector_inventory as _gsi_erp
+                        _erp_inv_raw = _gsi_erp()
+                        _erp_prod_sec: dict = {}
+                        for _sec, _drums in _erp_inv_raw.items():
+                            for _d in _drums:
+                                _p = str(_d.get("product", "")).strip().upper()
+                                if _p:
+                                    _erp_prod_sec.setdefault(_p, {})
+                                    _erp_prod_sec[_p][_sec] = _erp_prod_sec[_p].get(_sec, 0) + 1
+                        _erp_loc_map = {
+                            _p: " / ".join(f"{_s}({_n})" for _s, _n in _sv.items())
+                            for _p, _sv in _erp_prod_sec.items()
+                        }
+                    except Exception:
+                        pass
+                    # 재고 컬럼 옆에 위치 컬럼 삽입 (엑셀용 복사본에만 적용)
+                    _filled_loc = _filled.copy()
+                    _orig_cols_l = list(_filled_loc.columns)
+                    _erp_재고_cols = [c for c in _orig_cols_l if _re_erp.match(r'^재고(_\d+)?$', str(c).strip())]
+                    if _erp_재고_cols and _erp_loc_map:
+                        for _erc in reversed(_erp_재고_cols):
+                            _esuffix = str(_erc)[2:]
+                            # 블록 구조: [코드, 제조사, 재고, 신규, 입고] → 코드는 재고보다 2칸 앞
+                            _erc_orig_idx = _orig_cols_l.index(_erc)
+                            _ecorr_col = _orig_cols_l[_erc_orig_idx - 2] if _erc_orig_idx >= 2 else None
+                            _erc_cur_idx = list(_filled_loc.columns).index(_erc)
+                            _e위치_vals = []
+                            for _, _erow in _filled_loc.iterrows():
+                                _est = str(_erow.get(_erc, "")).strip()
+                                try:
+                                    _est_n = int(_est) if _est else 0
+                                except Exception:
+                                    _est_n = 0
+                                if _est_n > 0 and _ecorr_col:
+                                    _ecode = str(_erow.get(_ecorr_col, "")).strip().upper()
+                                    _e위치_vals.append(_erp_loc_map.get(_ecode, ""))
+                                else:
+                                    _e위치_vals.append("")
+                            _filled_loc.insert(_erc_cur_idx + 1, f"위치{_esuffix}", _e위치_vals)
+                    _erp_excel = convert_erp_filled_to_excel(_filled_loc)
                     st.write("")
                     st.write("")
                     st.download_button(
                         label="ERP 입고반영 엑셀",
                         data=_erp_excel,
-                        file_name="plan_erp_result.xlsx",
+                        file_name=f"{(datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime('%y%m%d')}입고교차검증.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         type="primary",
                         use_container_width=True,
                     )
 
-                # 상태 컬럼 동적 계산 (신규/입고 비교)
-                _disp_filled = _filled.copy()
+                # 상태 컬럼 동적 계산 (신규/입고 비교) — 위치 컬럼 포함한 복사본 사용
+                _disp_filled = _filled_loc.copy()
                 _orig_cols = list(_filled.columns)
                 _insert_offset = 0
                 for _fi, _fh in enumerate(_orig_cols):
@@ -1063,6 +1169,8 @@ def page_cross_check():
                     _fcol_s = str(_fcol)
                     if _fcol_s.startswith("__st_"):
                         _col_cfg_filled[_fcol_s] = st.column_config.TextColumn("상태", disabled=True, width="small")
+                    elif _fcol_s == "위치" or _fcol_s.startswith("위치_"):
+                        _col_cfg_filled[_fcol_s] = st.column_config.TextColumn("위치", disabled=True, width="medium")
                     elif any(k in _fcol_s for k in ["재고", "신규", "입고"]):
                         _col_cfg_filled[_fcol_s] = st.column_config.TextColumn(_fcol_s)
                     else:
@@ -1078,7 +1186,8 @@ def page_cross_check():
                     height=len(_disp_filled) * 35 + 38,
                 )
                 _status_cols2 = [c for c in _edited_filled.columns if str(c).startswith("__st_")]
-                _clean_edited = _edited_filled.drop(columns=_status_cols2)
+                _위치_cols2 = [c for c in _edited_filled.columns if str(c) == "위치" or str(c).startswith("위치_")]
+                _clean_edited = _edited_filled.drop(columns=_status_cols2 + _위치_cols2)
                 _old_filled_ref = st.session_state.get("cc_filled_df")
                 _data_changed = (_old_filled_ref is None or
                                  not _clean_edited.equals(_old_filled_ref))
@@ -5549,6 +5658,247 @@ def page_inventory_return():
 
 
 # ══════════════════════════════════════
+# 일일 재고기록 페이지
+# ══════════════════════════════════════
+def page_daily_inventory_record():
+    import datetime as _dt
+    import pandas as _pd
+    from io import BytesIO as _BytesIO
+    from openpyxl import Workbook as _Workbook
+    from openpyxl.styles import Font as _XFont, Alignment as _XAlign, PatternFill as _XFill, Border as _XBorder, Side as _XSide
+    from openpyxl.utils import get_column_letter as _gcl
+    from utils.supabase_db import (
+        load_daily_detail,
+        get_inventory_registered_in_range,
+        get_daily_inventory_remarks,
+        upsert_daily_inventory_remark,
+    )
+
+    st.subheader("일일 재고기록")
+
+    # 현재 KST 기준 영업일 (06:30 이전이면 전날)
+    _now_kst = _dt.datetime.utcnow() + _dt.timedelta(hours=9)
+    _default_biz = _now_kst.date()
+    if _now_kst.hour < 6 or (_now_kst.hour == 6 and _now_kst.minute < 30):
+        _default_biz -= _dt.timedelta(days=1)
+
+    _dir_c1, _dir_c2 = st.columns([3, 1])
+    with _dir_c1:
+        _sel_date = st.date_input("날짜", _default_biz, key="dir_date",
+                                  min_value=_dt.date(2026, 1, 1),
+                                  max_value=_dt.date(2100, 12, 31))
+    with _dir_c2:
+        st.write("")
+        st.write("")
+        if st.button("🔄", key="dir_refresh", use_container_width=True):
+            st.rerun()
+
+    _date_str = _sel_date.strftime("%Y-%m-%d")
+    _next_date_str = (_sel_date + _dt.timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # 작업일지 shift_data 로드
+    _detail = load_daily_detail(_sel_date)
+    _shift_data = (_detail.get("shift") or {}) if _detail else {}
+
+    if not _shift_data:
+        st.info(f"{_date_str} 작업일지 근무 매칭 정보가 없습니다. 작업일지를 먼저 저장해주세요.")
+        return
+
+    _is_2p = _shift_data.get("is_2person", False)
+
+    # 근별 (이름, 시작KST, 종료KST, 근무자)
+    if _is_2p:
+        _shifts = [
+            ("주간", f"{_date_str} 06:30:00",     f"{_date_str} 18:30:00",     _shift_data.get("주간_근무자", "")),
+            ("야간", f"{_date_str} 18:30:00",     f"{_next_date_str} 06:30:00", _shift_data.get("야간_근무자", "")),
+        ]
+    else:
+        _shifts = [
+            ("1근", f"{_date_str} 06:30:00",     f"{_date_str} 14:30:00",     _shift_data.get("1근_근무자", "")),
+            ("2근", f"{_date_str} 14:30:00",     f"{_date_str} 22:30:00",     _shift_data.get("2근_근무자", "")),
+            ("3근", f"{_date_str} 22:30:00",     f"{_next_date_str} 06:30:00", _shift_data.get("3근_근무자", "")),
+        ]
+
+    # 기존 비고
+    _remarks_map = get_daily_inventory_remarks(_date_str)
+
+    # 근별 품목 그룹 구성
+    _shift_groups = []  # [(shift_name, worker, [{품명, 수량, lots, 비고}])]
+    for _sname, _sstart, _send, _sworker in _shifts:
+        _items = get_inventory_registered_in_range(_sstart, _send)
+        _pmap: dict = {}
+        for _it in _items:
+            _prod = (_it.get("product") or "").strip() or "미상"
+            _pmap.setdefault(_prod, []).append((_it.get("lot") or "").strip())
+        _rows = [
+            {"품명": _p, "수량": len(_ls), "lots": sorted(_ls),
+             "비고": _remarks_map.get((_sname, _p), "")}
+            for _p, _ls in _pmap.items()
+        ]
+        _shift_groups.append((_sname, _sworker, _rows))
+
+    # ── 비고 저장 콜백 ──
+    def _save_remark(_d, _s, _p, _key):
+        _val = st.session_state.get(_key, "")
+        _old = _remarks_map.get((_s, _p), "")
+        if _val != _old:
+            upsert_daily_inventory_remark(_d, _s, _p, _val)
+
+    # ── 화면 표시 ──
+    st.markdown("---")
+    for _sname, _sworker, _rows in _shift_groups:
+        _label = f"**{_sname}**  <span style='color:#666;font-size:0.9em'>({_sworker})</span>"
+        st.markdown(_label, unsafe_allow_html=True)
+
+        if not _rows:
+            st.caption("등록된 재고 없음")
+            st.write("")
+            continue
+
+        # 헤더
+        _hcols = st.columns([3, 1, 3, 3])
+        for _htxt, _hcol in zip(["품명", "수량", "LOT번호", "비고"], _hcols):
+            _hcol.markdown(f"<div style='font-weight:600;font-size:0.85em;color:#444;border-bottom:1px solid #ddd;padding-bottom:2px'>{_htxt}</div>",
+                           unsafe_allow_html=True)
+
+        for _ri, _row in enumerate(_rows):
+            _rc1, _rc2, _rc3, _rc4 = st.columns([3, 1, 3, 3])
+            with _rc1:
+                st.markdown(f"<div style='padding:4px 0'>{_row['품명']}</div>", unsafe_allow_html=True)
+            with _rc2:
+                st.markdown(f"<div style='padding:4px 0;text-align:center'>{_row['수량']}</div>", unsafe_allow_html=True)
+            with _rc3:
+                _lot_key = f"lot_{_date_str}_{_sname}_{_ri}"
+                if len(_row["lots"]) > 1:
+                    st.selectbox("LOT", _row["lots"], key=_lot_key, label_visibility="collapsed")
+                else:
+                    st.markdown(f"<div style='padding:4px 0;font-size:0.9em'>{_row['lots'][0] if _row['lots'] else '-'}</div>",
+                                unsafe_allow_html=True)
+            with _rc4:
+                _rem_key = f"rem_{_date_str}_{_sname}_{_ri}"
+                st.text_input("비고", value=_row["비고"], key=_rem_key,
+                              label_visibility="collapsed",
+                              on_change=_save_remark,
+                              args=(_date_str, _sname, _row["품명"], _rem_key))
+
+        st.write("")
+
+    # ── 엑셀 다운로드 ──
+    def _make_excel():
+        from openpyxl.worksheet.datavalidation import DataValidation as _DV
+
+        _wb = _Workbook()
+        _ws = _wb.active
+        _ws.title = "일일재고기록"
+
+        # LOT 드롭다운용 숨김 시트
+        _lot_ws = _wb.create_sheet("_lots")
+        _lot_ws.sheet_state = "hidden"
+        _lot_col_idx = 1  # _lots 시트에서 현재 사용 중인 열
+
+        _thin = _XBorder(
+            left=_XSide(style="thin"), right=_XSide(style="thin"),
+            top=_XSide(style="thin"), bottom=_XSide(style="thin"),
+        )
+        _hdr_fill = _XFill(start_color="2F3542", end_color="2F3542", fill_type="solid")
+        _sec_fill = _XFill(start_color="D6DCE4", end_color="D6DCE4", fill_type="solid")
+        _ctr      = _XAlign(horizontal="center", vertical="center", wrap_text=True)
+        _lft      = _XAlign(horizontal="left",   vertical="center", wrap_text=True)
+
+        # 타이틀
+        _ws.merge_cells("A1:E1")
+        _tc = _ws["A1"]
+        _tc.value = f"페인트 재고 기록지  {_date_str}"
+        _tc.font = _XFont(name="맑은 고딕", bold=True, size=13)
+        _tc.alignment = _ctr
+        _tc.border = _thin
+        _ws.row_dimensions[1].height = 22
+
+        # 컬럼 너비
+        for _ci, _w in zip("ABCDE", [4, 16, 6, 22, 18]):
+            _ws.column_dimensions[_gcl(_ci.encode()[0] - 64)].width = _w
+
+        _cur_row = 2
+        for _sname, _sworker, _rows in _shift_groups:
+            # 근 헤더행
+            _ws.merge_cells(f"A{_cur_row}:E{_cur_row}")
+            _sc = _ws.cell(row=_cur_row, column=1, value=f"{_sname}  ({_sworker})")
+            _sc.font = _XFont(name="맑은 고딕", bold=True, size=11)
+            _sc.fill = _sec_fill
+            _sc.alignment = _ctr
+            _sc.border = _thin
+            for _ci in range(1, 6):
+                _ws.cell(row=_cur_row, column=_ci).border = _thin
+            _cur_row += 1
+
+            # 컬럼 헤더
+            for _ci, _htxt in enumerate(["No.", "품명", "수량", "LOT번호", "비고"], 1):
+                _hc = _ws.cell(row=_cur_row, column=_ci, value=_htxt)
+                _hc.font = _XFont(name="맑은 고딕", bold=True, size=10, color="FFFFFF")
+                _hc.fill = _hdr_fill
+                _hc.alignment = _ctr
+                _hc.border = _thin
+            _cur_row += 1
+
+            if not _rows:
+                _ws.merge_cells(f"A{_cur_row}:E{_cur_row}")
+                _ec = _ws.cell(row=_cur_row, column=1, value="등록된 재고 없음")
+                _ec.alignment = _ctr
+                _ec.border = _thin
+                for _ci in range(1, 6):
+                    _ws.cell(row=_cur_row, column=_ci).border = _thin
+                _cur_row += 1
+            else:
+                for _ri, _row in enumerate(_rows, 1):
+                    _lots = _row["lots"]
+                    # No., 품명, 수량, 비고
+                    for _ci, _val in enumerate([_ri, _row["품명"], _row["수량"], _row["비고"]], 1):
+                        _actual_ci = _ci if _ci < 4 else 5  # 비고는 5열
+                        _dc = _ws.cell(row=_cur_row, column=_actual_ci, value=_val)
+                        _dc.font = _XFont(name="맑은 고딕", size=10)
+                        _dc.border = _thin
+                        _dc.alignment = _ctr if _actual_ci in (1, 3) else _lft
+                    # LOT 열(4열)
+                    _lot_cell = _ws.cell(row=_cur_row, column=4)
+                    _lot_cell.font = _XFont(name="맑은 고딕", size=10)
+                    _lot_cell.border = _thin
+                    _lot_cell.alignment = _lft
+                    if len(_lots) <= 1:
+                        _lot_cell.value = _lots[0] if _lots else ""
+                    else:
+                        # 첫 번째 LOT를 기본값으로 표시
+                        _lot_cell.value = _lots[0]
+                        # _lots 숨김 시트에 LOT 목록 기록
+                        _col_letter = _gcl(_lot_col_idx)
+                        for _li, _lot in enumerate(_lots, 1):
+                            _lot_ws.cell(row=_li, column=_lot_col_idx, value=_lot)
+                        _ref_range = f"_lots!${_col_letter}$1:${_col_letter}${len(_lots)}"
+                        _dv = _DV(type="list", formula1=_ref_range, allow_blank=True,
+                                  showDropDown=False)
+                        _ws.add_data_validation(_dv)
+                        _dv.add(_lot_cell)
+                        _lot_col_idx += 1
+                    _ws.row_dimensions[_cur_row].height = 16
+                    _cur_row += 1
+
+            _cur_row += 1  # 구분 빈 행
+
+        _buf = _BytesIO()
+        _wb.save(_buf)
+        return _buf.getvalue()
+
+    st.markdown("---")
+    _dl_date = _sel_date.strftime("%y%m%d")
+    st.download_button(
+        label="엑셀 다운로드",
+        data=_make_excel(),
+        file_name=f"{_dl_date}일일재고기록.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=False,
+    )
+
+
+# ══════════════════════════════════════
 # 직원 관리 (관리자 전용)
 # ══════════════════════════════════════
 def page_employee_admin():
@@ -5714,5 +6064,7 @@ elif page == "입고 관리":
     page_cross_check()
 elif page == "반품 관리":
     page_inventory_return()
+elif page == "일일 재고기록":
+    page_daily_inventory_record()
 elif page == "직원 관리":
     page_employee_admin()
