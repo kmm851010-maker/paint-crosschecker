@@ -5060,11 +5060,12 @@ def page_inventory():
                     _sector_list = sorted(sectors_raw.keys())
                     _cur_sidx = _sector_list.index(_edit_drum["sector"]) if _edit_drum["sector"] in _sector_list else 0
                     _new_sector = _ec4.selectbox("섹터", _sector_list, index=_cur_sidx, key="edit_sec_inp")
+                    _new_remark = st.text_input("비고", value=_edit_drum.get("remark", ""), key="edit_remark_inp")
                     _sy, _sn = st.columns(2)
                     if _sy.button("💾 저장", type="primary", key="inv_edit_save"):
                         try:
                             from utils.supabase_db import update_drum_fields as _udf
-                            _udf(_edit_lot, _new_lot.strip(), _new_product.strip(), _new_maker.strip(), _new_sector)
+                            _udf(_edit_lot, _new_lot.strip(), _new_product.strip(), _new_maker.strip(), _new_sector, new_remark=_new_remark.strip())
                             st.success("수정 완료!")
                             st.session_state.pop("inv_confirm", None)
                             st.session_state.pop("inv_edit_lot", None)

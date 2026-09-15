@@ -330,7 +330,7 @@ def get_sector_inventory() -> dict:
     return sectors
 
 
-def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: str, new_sector: str):
+def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: str, new_sector: str, new_remark: str = ""):
     """드럼 정보 수정."""
     now = _kst_now()
     res = _sb().table("inventory").select("lot,sector").eq("lot", old_lot).limit(1).execute()
@@ -344,7 +344,7 @@ def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: 
 
     _sb().table("inventory").update({
         "lot": new_lot, "product": new_product,
-        "maker": new_maker, "sector": new_sector, "updated_at": now,
+        "maker": new_maker, "sector": new_sector, "updated_at": now, "remark": new_remark,
     }).eq("lot", old_lot).execute()
 
     _sb().table("inventory_history").insert({
