@@ -5749,6 +5749,14 @@ def page_daily_inventory_record():
     # 수량이 마지막 자동 동기화 시점과 달라졌을 때만 업데이트 → 근무자 수동 수정 보존
     _AUTO_KEY = "__inv_auto_count__"
     _cur_counts = _manual_counts  # ERP(신규) 제외한 수동 등록 수량
+
+    # ── 디버그 정보 (임시) ──
+    with st.expander("🔍 연동 디버그 (임시)", expanded=True):
+        st.write("수동 등록 수량:", _cur_counts)
+        st.write("shift_data:", _shift_data)
+        st.write("is_2person:", _is_2p)
+        st.write("remarks_map keys:", list(_remarks_map.keys())[:10])
+
     _sync_needed = any(
         _cur_counts[_sn] != int(_remarks_map.get((_sn, _AUTO_KEY), -1) or -1)
         for _sn in _cur_counts
