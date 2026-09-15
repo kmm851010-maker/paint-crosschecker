@@ -5000,8 +5000,34 @@ def page_inventory():
         # 드럼별 체크박스 선택
         selected_lots = set()
 
+        # 컬럼 정렬 상태
+        if "inv_tbl_sort_col" not in st.session_state:
+            st.session_state["inv_tbl_sort_col"] = None
+            st.session_state["inv_tbl_sort_asc"] = True
+
+        def _sort_hdr(col_key, label, h_col, grp_key):
+            _cur_col = st.session_state.get("inv_tbl_sort_col")
+            _cur_asc = st.session_state.get("inv_tbl_sort_asc", True)
+            _ind = (" ▲" if _cur_asc else " ▼") if _cur_col == col_key else ""
+            if h_col.button(f"{label}{_ind}", key=f"hdr_{grp_key}_{col_key}",
+                            use_container_width=True, type="secondary"):
+                if _cur_col == col_key:
+                    st.session_state["inv_tbl_sort_asc"] = not _cur_asc
+                else:
+                    st.session_state["inv_tbl_sort_col"] = col_key
+                    st.session_state["inv_tbl_sort_asc"] = True
+                st.rerun()
+
+        def _apply_col_sort(gdf):
+            _col = st.session_state.get("inv_tbl_sort_col")
+            _asc = st.session_state.get("inv_tbl_sort_asc", True)
+            if _col and _col in gdf.columns:
+                return gdf.sort_values(_col, ascending=_asc, na_position="last")
+            return gdf
+
         def _render_group_detail(group_key, group_df):
             """전체 너비 드럼 목록 렌더링"""
+            group_df = _apply_col_sort(group_df)
             cnt = len(group_df)
             _grp_lots = group_df["lot"].tolist()
             _grp_all_sel = all(st.session_state.get(f"chk_{_l}", False) for _l in _grp_lots)
@@ -5012,10 +5038,13 @@ def page_inventory():
                 st.rerun()
             # 헤더 행 (스크롤 영역 밖 — 고정)
             h1, h2, h3, h4, h5, h6, h7 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8, 0.8])
-            h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
-            h4.markdown("**제조사**")
-            if sort_mode not in ("섹터별",): h5.markdown("**섹터**")
-            h6.markdown("**등록시간**"); h7.markdown("**비고**")
+            h1.markdown("**선택**")
+            _sort_hdr("product", "품명", h2, group_key)
+            _sort_hdr("lot", "LOT", h3, group_key)
+            _sort_hdr("maker", "제조사", h4, group_key)
+            if sort_mode not in ("섹터별",): _sort_hdr("sector", "섹터", h5, group_key)
+            _sort_hdr("registered", "등록시간", h6, group_key)
+            _sort_hdr("remark", "비고", h7, group_key)
             # 데이터 행 (자체 스크롤 컨테이너)
             _row_h = min(450, max(180, cnt * 44))
             with st.container(height=_row_h):
@@ -5089,16 +5118,20 @@ def page_inventory():
                 def _render_else_group(group_key=group_key, group_df=group_df, cnt=cnt,
                                        _grp_lots=_grp_lots, _grp_all_sel=_grp_all_sel,
                                        _grp_btn_label=_grp_btn_label):
+                    group_df = _apply_col_sort(group_df)
                     if st.button(_grp_btn_label, key=f"grpsel_{group_key}", type="secondary"):
                         for _l in _grp_lots:
                             st.session_state[f"chk_{_l}"] = not _grp_all_sel
                         st.rerun()
                     # 헤더 행 (고정)
                     h1, h2, h3, h4, h5, h6, h7 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8, 0.8])
-                    h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
-                    h4.markdown("**제조사**")
-                    if sort_mode not in ("섹터별",): h5.markdown("**섹터**")
-                    h6.markdown("**등록시간**"); h7.markdown("**비고**")
+                    h1.markdown("**선택**")
+                    _sort_hdr("product", "품명", h2, group_key)
+                    _sort_hdr("lot", "LOT", h3, group_key)
+                    _sort_hdr("maker", "제조사", h4, group_key)
+                    if sort_mode not in ("섹터별",): _sort_hdr("sector", "섹터", h5, group_key)
+                    _sort_hdr("registered", "등록시간", h6, group_key)
+                    _sort_hdr("remark", "비고", h7, group_key)
                     # 데이터 행 (자체 스크롤 컨테이너)
                     _row_h = min(450, max(180, cnt * 44))
                     with st.container(height=_row_h):
