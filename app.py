@@ -4900,7 +4900,7 @@ def page_inventory():
         if sort_mode == "등록시간순":
             _tc1, _tc2 = st.columns(2)
             with _tc1:
-                _inv_d_from = st.date_input("시작일", datetime.date.today() - datetime.timedelta(days=7), key="inv_d_from")
+                _inv_d_from = st.date_input("시작일", datetime.date.today() - datetime.timedelta(days=1), key="inv_d_from")
                 _inv_h_from = st.selectbox("시작 시각", _half_hours, index=0, key="inv_h_from")
             with _tc2:
                 _inv_d_to = st.date_input("종료일", datetime.date.today(), key="inv_d_to")
