@@ -5731,10 +5731,11 @@ def page_daily_inventory_record():
         _pmap: dict = {}
         _manual_cnt = 0
         for _it in _items:
+            if (_it.get("remark") or "") == "신규":
+                continue  # ERP 라인입고 제외
             _prod = (_it.get("product") or "").strip() or "미상"
             _pmap.setdefault(_prod, []).append((_it.get("lot") or "").strip())
-            if (_it.get("remark") or "") != "신규":
-                _manual_cnt += 1
+            _manual_cnt += 1
         _rows = [
             {"품명": _p, "수량": len(_ls), "lots": sorted(_ls),
              "비고": _remarks_map.get((_sname, _p), "")}
