@@ -1092,7 +1092,7 @@ def page_cross_check():
                     st.download_button(
                         label="ERP 입고반영 엑셀",
                         data=_erp_excel,
-                        file_name=f"{(_dt_mod.datetime.utcnow() + _dt_mod.timedelta(hours=9)).strftime('%y%m%d')}입고교차검증.xlsx",
+                        file_name=f"{(datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime('%y%m%d')}입고교차검증.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         type="primary",
                         use_container_width=True,
