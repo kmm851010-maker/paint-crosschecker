@@ -5060,7 +5060,8 @@ def page_inventory():
                     _sector_list = ["입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리", "8번자리", "9번자리", "반품자리", "창고주위"]
                     _cur_sidx = _sector_list.index(_edit_drum["sector"]) if _edit_drum["sector"] in _sector_list else 0
                     _new_sector = _ec4.selectbox("섹터", _sector_list, index=_cur_sidx, key="edit_sec_inp")
-                    _new_remark = st.text_input("비고", value=_edit_drum.get("remark", ""), key="edit_remark_inp")
+                    _cur_remark = _edit_drum.get("remark", "")
+                    _new_remark = st.text_input("비고", value="" if _cur_remark == "신규" else _cur_remark, key="edit_remark_inp")
                     _sy, _sn = st.columns(2)
                     if _sy.button("💾 저장", type="primary", key="inv_edit_save"):
                         try:
