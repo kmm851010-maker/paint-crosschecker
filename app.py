@@ -5672,6 +5672,7 @@ def page_daily_inventory_record():
         get_inventory_registered_in_range,
         get_daily_inventory_remarks,
         upsert_daily_inventory_remark,
+        upsert_inventory_work_item,
     )
 
     st.subheader("일일 재고기록")
@@ -5736,6 +5737,25 @@ def page_daily_inventory_record():
             for _p, _ls in _pmap.items()
         ]
         _shift_groups.append((_sname, _sworker, _rows))
+
+    # ── 작업일지 '재고 페인트 창고 입고' 자동 동기화 ──
+    # 수량이 마지막 자동 동기화 시점과 달라졌을 때만 업데이트 → 근무자 수동 수정 보존
+    _AUTO_KEY = "__inv_auto_count__"
+    _cur_counts = {_sn: sum(_r["수량"] for _r in _rws) for _sn, _, _rws in _shift_groups}
+    _sync_needed = any(
+        _cur_counts[_sn] != int(_remarks_map.get((_sn, _AUTO_KEY), -1) or -1)
+        for _sn in _cur_counts
+    )
+    if _sync_needed:
+        upsert_inventory_work_item(
+            _sel_date,
+            s1=_cur_counts.get("1근", 0), s2=_cur_counts.get("2근", 0),
+            s3=_cur_counts.get("3근", 0), day=_cur_counts.get("주간", 0),
+            night=_cur_counts.get("야간", 0),
+        )
+        for _sn, _cnt in _cur_counts.items():
+            upsert_daily_inventory_remark(_date_str, _sn, _AUTO_KEY, str(_cnt))
+        _remarks_map = get_daily_inventory_remarks(_date_str)  # 리로드
 
     # ── 비고 저장 콜백 ──
     def _save_remark(_d, _s, _p, _key):

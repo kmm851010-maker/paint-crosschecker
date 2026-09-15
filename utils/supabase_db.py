@@ -509,6 +509,23 @@ def upsert_daily_inventory_remark(date_str: str, shift: str, product: str, remar
     ).execute()
 
 
+def upsert_inventory_work_item(date: datetime.date, s1=0, s2=0, s3=0, day=0, night=0):
+    """'재고 페인트 창고 입고' 항목만 work_items에 upsert (다른 항목 영향 없음)."""
+    date_str = date.strftime("%Y-%m-%d")
+    total = (s1 or 0) + (s2 or 0) + (s3 or 0) + (day or 0) + (night or 0)
+    res = _sb().table("work_items").select("month_total") \
+        .eq("date", date_str).eq("name", "재고 페인트 창고 입고").limit(1).execute()
+    month_total = (res.data[0].get("month_total") or 0) if res.data else 0
+    _sb().table("work_items").delete() \
+        .eq("date", date_str).eq("name", "재고 페인트 창고 입고").execute()
+    _sb().table("work_items").insert({
+        "date": date_str, "name": "재고 페인트 창고 입고",
+        "s1": s1 or 0, "s2": s2 or 0, "s3": s3 or 0,
+        "day_work": day or 0, "night": night or 0,
+        "total": total, "month_total": month_total,
+    }).execute()
+
+
 def update_employee_email(employee_id: str, email: str) -> bool:
     """직원 이메일 저장."""
     _sb().table("app_users").update({"email": email}).eq("employee_id", employee_id).execute()
