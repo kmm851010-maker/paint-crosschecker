@@ -1107,14 +1107,15 @@ def page_cross_check():
                         pass
                     # 재고 컬럼 옆에 위치 컬럼 삽입 (엑셀용 복사본에만 적용)
                     _filled_loc = _filled.copy()
-                    _erp_재고_cols = [c for c in _filled_loc.columns if _re_erp.match(r'^재고(_\d+)?$', str(c).strip())]
+                    _orig_cols_l = list(_filled_loc.columns)
+                    _erp_재고_cols = [c for c in _orig_cols_l if _re_erp.match(r'^재고(_\d+)?$', str(c).strip())]
                     if _erp_재고_cols and _erp_loc_map:
                         for _erc in reversed(_erp_재고_cols):
                             _esuffix = str(_erc)[2:]
-                            _ecorr_col = f"색상코드{_esuffix}"
-                            if _ecorr_col not in _filled_loc.columns:
-                                _ecorr_col = next((c for c in _filled_loc.columns if "색상코드" in str(c)), None)
-                            _erc_idx = list(_filled_loc.columns).index(_erc)
+                            # 블록 구조: [코드, 제조사, 재고, 신규, 입고] → 코드는 재고보다 2칸 앞
+                            _erc_orig_idx = _orig_cols_l.index(_erc)
+                            _ecorr_col = _orig_cols_l[_erc_orig_idx - 2] if _erc_orig_idx >= 2 else None
+                            _erc_cur_idx = list(_filled_loc.columns).index(_erc)
                             _e위치_vals = []
                             for _, _erow in _filled_loc.iterrows():
                                 _est = str(_erow.get(_erc, "")).strip()
@@ -1127,7 +1128,7 @@ def page_cross_check():
                                     _e위치_vals.append(_erp_loc_map.get(_ecode, ""))
                                 else:
                                     _e위치_vals.append("")
-                            _filled_loc.insert(_erc_idx + 1, f"위치{_esuffix}", _e위치_vals)
+                            _filled_loc.insert(_erc_cur_idx + 1, f"위치{_esuffix}", _e위치_vals)
                     _erp_excel = convert_erp_filled_to_excel(_filled_loc)
                     st.write("")
                     st.write("")
