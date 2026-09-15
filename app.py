@@ -5750,16 +5750,21 @@ def page_daily_inventory_record():
     _AUTO_KEY = "__inv_auto_count__"
     _cur_counts = _manual_counts  # ERP(신규) 제외한 수동 등록 수량
 
-    # ── 디버그 정보 (임시) ──
-    with st.expander("🔍 연동 디버그 (임시)", expanded=True):
-        st.write("수동 등록 수량:", _cur_counts)
-        st.write("shift_data:", _shift_data)
-        st.write("is_2person:", _is_2p)
-        st.write("remarks_map keys:", list(_remarks_map.keys())[:10])
+    # 실제 work_items DB 행 조회 (행 미존재 시 강제 재동기)
+    try:
+        from utils.supabase_db import _sb as _sb_wi
+        _wi_check = _sb_wi().table("work_items").select("s1,s2,s3,day_work,night") \
+            .eq("date", _date_str).eq("name", "재고 페인트 창고 입고").limit(1).execute()
+        _wi_row = _wi_check.data[0] if _wi_check.data else None
+    except Exception:
+        _wi_row = None
 
-    _sync_needed = any(
-        _cur_counts[_sn] != int(_remarks_map.get((_sn, _AUTO_KEY), -1) or -1)
-        for _sn in _cur_counts
+    _sync_needed = (
+        _wi_row is None  # DB 행 없음 → 카운트 불변이어도 재동기
+        or any(
+            _cur_counts[_sn] != int(_remarks_map.get((_sn, _AUTO_KEY), -1) or -1)
+            for _sn in _cur_counts
+        )
     )
     _sync_status = ""
     if _sync_needed:
