@@ -322,7 +322,7 @@ def get_sector_inventory() -> dict:
             "lot": r["lot"],
             "product": r.get("product", ""),
             "maker": r.get("maker", ""),
-            "registered": r.get("registered_at", ""),
+            "registered": r.get("registered_at") or "",
             "updated": r.get("updated_at", ""),
             "returnStatus": r.get("return_status", ""),
             "scanDisabled": r.get("scan_disabled", ""),

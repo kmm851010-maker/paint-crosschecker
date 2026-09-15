@@ -4956,7 +4956,10 @@ def page_inventory():
             if _inv_dt_from and _inv_dt_to:
                 _from_ts = _pd.Timestamp(_inv_dt_from)
                 _to_ts = _pd.Timestamp(_inv_dt_to)
-                _mask_dt = (df_filtered["_reg_dt"] >= _from_ts) & (df_filtered["_reg_dt"] <= _to_ts)
+                _mask_dt = (
+                    df_filtered["_reg_dt"].isna() |
+                    ((df_filtered["_reg_dt"] >= _from_ts) & (df_filtered["_reg_dt"] <= _to_ts))
+                )
                 df_filtered = df_filtered[_mask_dt]
 
         # 그룹 키 + 정렬
