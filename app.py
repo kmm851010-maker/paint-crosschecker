@@ -4970,7 +4970,7 @@ def page_inventory():
             for group_key, group_df in _all_groups:
                 cnt = len(group_df)
                 with st.expander(f"**{group_key}** — {cnt}드럼", expanded=False):
-                    if sort_mode in ("제조사별",):
+                    if sort_mode in ("제조사별", "등록시간순", "LOT순"):
                         _grp_lots = group_df["lot"].tolist()
                         _grp_all_sel = all(st.session_state.get(f"chk_{_l}", False) for _l in _grp_lots)
                         _grp_btn_label = f"선택해제 ({cnt})" if _grp_all_sel else f"전체선택 ({cnt})"
