@@ -456,7 +456,7 @@ if st.sidebar.button("🚪 로그아웃", use_container_width=True):
 st.sidebar.markdown("---")
 st.sidebar.markdown("**모바일 앱**")
 st.sidebar.markdown(
-    '<a href="https://expo.dev/artifacts/eas/g4gEbngbtcwLaQtE298UhQoFqJqvwQg4pzSzrOk6zD4.apk" '
+    '<a href="https://expo.dev/accounts/sergekang/projects/kg-steel-paint-checker/builds/6d287fc7-d867-4d12-aa8b-e5a82f0df369" '
     'style="display:block;text-align:center;padding:10px;background:#F5A623;color:#1A1A2E;'
     'border-radius:8px;font-weight:700;text-decoration:none;">⬇️ KG OPS 설치</a>',
     unsafe_allow_html=True,
@@ -902,6 +902,13 @@ def page_cross_check():
                 disabled=not (erp_file and "cc_plan_df" in st.session_state),
                 key="btn_run_crosscheck",
             )
+            new_reg_button = st.button(
+                "신규 입고처리",
+                use_container_width=True,
+                disabled=not erp_file,
+                key="btn_new_register",
+                help="생산계획서 없이 ERP 명세서만으로 재고 등록",
+            )
 
         if run_button:
             if not api_key:
@@ -918,7 +925,83 @@ def page_cross_check():
             result_df = cross_check(plan_df, erp_df)
             st.session_state["cc_erp_df"] = erp_df
             st.session_state["cc_result_df"] = result_df
+            # 교차검증과 동시에 입고처리용 드럼 리스트 추출
+            from modules.erp_parser import extract_drums_list
+            st.session_state["cc_crosscheck_reg_drums"] = extract_drums_list(erp_bytes, erp_file.name)
             st.rerun()
+
+        if new_reg_button:
+            from modules.erp_parser import extract_drums_list
+            erp_bytes = erp_file.getvalue()
+            drums = extract_drums_list(erp_bytes, erp_file.name)
+            if not drums:
+                st.error("ERP 파일에서 드럼 데이터를 추출하지 못했습니다. 엑셀/CSV 형식인지 확인하세요.")
+            else:
+                st.session_state["cc_new_reg_drums"] = drums
+                st.rerun()
+
+    # ── 신규 입고처리 결과 ──
+    if "cc_new_reg_drums" in st.session_state:
+        from backend.utils.inventory_supabase import SECTORS
+        import requests as _req
+
+        _drums = st.session_state["cc_new_reg_drums"]
+        _no_lot = [d for d in _drums if not d["lot"]]
+        _has_lot = [d for d in _drums if d["lot"]]
+
+        st.markdown("---")
+        st.subheader("신규 입고처리")
+
+        if _no_lot:
+            st.warning(f"LOT번호 없는 드럼 {len(_no_lot)}개는 품목코드만 확인됨. LOT는 추후 스캔으로 등록 필요.")
+
+        # 드럼 목록 표시
+        import pandas as _pd
+        _disp_df = _pd.DataFrame(_drums)
+        _disp_df.columns = ["LOT번호", "품목코드", "제조사"]
+        _disp_df.index = range(1, len(_disp_df) + 1)
+        st.dataframe(_disp_df, use_container_width=True)
+        st.caption(f"총 {len(_drums)}개 드럼")
+
+        _reg_col, _cancel_col = st.columns([3, 1])
+        with _reg_col:
+            _sector_opts = [s for s in SECTORS if s not in ("라인입고", "반품완료")]
+            _sel_sector = st.selectbox("등록할 섹터", _sector_opts, index=_sector_opts.index("창고주위") if "창고주위" in _sector_opts else 0, key="new_reg_sector")
+        with _cancel_col:
+            st.write("")
+            st.write("")
+            if st.button("취소", use_container_width=True, key="btn_new_reg_cancel"):
+                del st.session_state["cc_new_reg_drums"]
+                st.rerun()
+
+        _lot_drums = [d for d in _drums if d["lot"]]
+        if not _lot_drums:
+            st.info("LOT번호가 있는 드럼이 없어 재고 등록이 불가합니다. 드럼을 직접 스캔해 등록하세요.")
+        else:
+            if st.button(
+                f"재고 등록 ({len(_lot_drums)}개)",
+                type="primary",
+                key="btn_new_reg_confirm",
+            ):
+                BACKEND = "https://kgcounter.up.railway.app"
+                try:
+                    _res = _req.post(
+                        f"{BACKEND}/api/inventory/register",
+                        json={"drums": _lot_drums, "sector": _sel_sector, "remark": "신규", "skip_existing": True},
+                        timeout=30,
+                    )
+                    _res.raise_for_status()
+                    _data = _res.json()
+                    _moved = _data.get("moved", len(_lot_drums))
+                    _skipped = _data.get("skipped", [])
+                    st.success(f"{_moved}개 드럼 [{_sel_sector}] 등록 완료!")
+                    if _skipped:
+                        _skip_lines = "\n".join(f"- {s['lot']} ({s['product']}) ← 현재 [{s['sector']}]" for s in _skipped)
+                        st.warning(f"이미 재고에 있어 건너뛴 드럼 {len(_skipped)}개:\n{_skip_lines}")
+                    del st.session_state["cc_new_reg_drums"]
+                    st.rerun()
+                except Exception as _e:
+                    st.error(f"재고 등록 실패: {_e}")
 
     # ── 교차검증 결과 (①② 컬럼 아래 전체 너비) ──
     if "cc_result_df" in st.session_state:
@@ -1058,6 +1141,53 @@ def page_cross_check():
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True,
                     )
+            # ── 교차검증 후 신규 입고처리 ──
+            if "cc_crosscheck_reg_drums" in st.session_state:
+                from backend.utils.inventory_supabase import SECTORS
+                import requests as _req2
+
+                _cc_drums = st.session_state["cc_crosscheck_reg_drums"]
+                _cc_lot_drums = [d for d in _cc_drums if d["lot"]]
+
+                st.markdown("---")
+                st.subheader("신규 입고처리")
+                if not _cc_lot_drums:
+                    st.info("ERP 파일에 LOT번호가 없어 재고 자동 등록이 불가합니다. 드럼을 직접 스캔해 등록하세요.")
+                else:
+                    st.caption(f"ERP에서 추출된 드럼 {len(_cc_lot_drums)}개를 재고에 등록합니다.")
+                    _cc_sector_opts = [s for s in SECTORS if s not in ("라인입고", "반품완료")]
+                    _cc_reg_col, _cc_btn_col = st.columns([3, 1])
+                    with _cc_reg_col:
+                        _cc_sel_sector = st.selectbox("등록할 섹터", _cc_sector_opts, index=_cc_sector_opts.index("창고주위") if "창고주위" in _cc_sector_opts else 0, key="cc_crosscheck_reg_sector")
+                    with _cc_btn_col:
+                        st.write("")
+                        st.write("")
+                        if st.button(
+                            f"재고 등록 ({len(_cc_lot_drums)}개)",
+                            type="primary",
+                            use_container_width=True,
+                            key="btn_cc_reg_confirm",
+                        ):
+                            BACKEND = "https://kgcounter.up.railway.app"
+                            try:
+                                _res2 = _req2.post(
+                                    f"{BACKEND}/api/inventory/register",
+                                    json={"drums": _cc_lot_drums, "sector": _cc_sel_sector, "remark": "신규", "skip_existing": True},
+                                    timeout=30,
+                                )
+                                _res2.raise_for_status()
+                                _data2 = _res2.json()
+                                _moved2 = _data2.get("moved", len(_cc_lot_drums))
+                                _skipped2 = _data2.get("skipped", [])
+                                st.success(f"{_moved2}개 드럼 [{_cc_sel_sector}] 등록 완료!")
+                                if _skipped2:
+                                    _skip_lines2 = "\n".join(f"- {s['lot']} ({s['product']}) ← 현재 [{s['sector']}]" for s in _skipped2)
+                                    st.warning(f"이미 재고에 있어 건너뛴 드럼 {len(_skipped2)}개:\n{_skip_lines2}")
+                                del st.session_state["cc_crosscheck_reg_drums"]
+                                st.rerun()
+                            except Exception as _e2:
+                                st.error(f"재고 등록 실패: {_e2}")
+
         else:
             st.info("신규 요청 수량이 있는 항목이 없습니다.")
 
@@ -4755,11 +4885,11 @@ def page_inventory():
                     st.session_state[f"chk_{_l}"] = not _grp_all_sel
                 st.rerun()
             # 헤더 행 (스크롤 영역 밖 — 고정)
-            h1, h2, h3, h4, h5, h6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+            h1, h2, h3, h4, h5, h6, h7 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8, 0.8])
             h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
             h4.markdown("**제조사**")
             if sort_mode not in ("섹터별",): h5.markdown("**섹터**")
-            h6.markdown("**등록시간**")
+            h6.markdown("**등록시간**"); h7.markdown("**비고**")
             # 데이터 행 (자체 스크롤 컨테이너)
             _row_h = min(450, max(180, cnt * 44))
             with st.container(height=_row_h):
@@ -4768,7 +4898,7 @@ def page_inventory():
                     sd = row.get("scanDisabled", "")
                     return_emoji = "🔴" if rs == "불량" else "🟡" if rs == "기술" else "🔵" if rs == "무상" else ""
                     scan_badge = " `스캔불가`" if sd == "Y" else ""
-                    c1, c2, c3, c4, c5, c6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+                    c1, c2, c3, c4, c5, c6, c7 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8, 0.8])
                     checked = c1.checkbox("", key=f"chk_{row['lot']}", label_visibility="collapsed")
                     if checked:
                         selected_lots.add(row["lot"])
@@ -4779,6 +4909,7 @@ def page_inventory():
                     if sort_mode not in ("섹터별",):
                         c5.text(row.get("sector", ""))
                     c6.text(row.get("registered", ""))
+                    c7.text(row.get("remark", ""))
 
         _all_groups = list(df_filtered.groupby(group_col, sort=False))
 
@@ -4835,11 +4966,11 @@ def page_inventory():
                                 st.session_state[f"chk_{_l}"] = not _grp_all_sel
                             st.rerun()
                     # 헤더 행 (고정)
-                    h1, h2, h3, h4, h5, h6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+                    h1, h2, h3, h4, h5, h6, h7 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8, 0.8])
                     h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
                     h4.markdown("**제조사**")
                     if sort_mode not in ("섹터별",): h5.markdown("**섹터**")
-                    h6.markdown("**등록시간**")
+                    h6.markdown("**등록시간**"); h7.markdown("**비고**")
                     # 데이터 행 (자체 스크롤 컨테이너)
                     _row_h = min(450, max(180, cnt * 44))
                     with st.container(height=_row_h):
@@ -4848,7 +4979,7 @@ def page_inventory():
                             sd = row.get("scanDisabled", "")
                             return_emoji = "🔴" if rs == "불량" else "🟡" if rs == "기술" else "🔵" if rs == "무상" else ""
                             scan_badge = " `스캔불가`" if sd == "Y" else ""
-                            c1, c2, c3, c4, c5, c6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+                            c1, c2, c3, c4, c5, c6, c7 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8, 0.8])
                             checked = c1.checkbox("", key=f"chk_{row['lot']}", label_visibility="collapsed")
                             if checked:
                                 selected_lots.add(row["lot"])
@@ -4859,6 +4990,7 @@ def page_inventory():
                             if sort_mode not in ("섹터별",):
                                 c5.text(row.get("sector", ""))
                             c6.text(row.get("registered", ""))
+                            c7.text(row.get("remark", ""))
 
         # 선택 항목 엑셀 다운로드
         if selected_lots:
@@ -4931,14 +5063,16 @@ def page_inventory():
                     _maker_list = ["고려(KCC)", "대한(노루)", "건설(제비)", "삼화", "애경", "동주(PPG)"]
                     _cur_mkr_idx = _maker_list.index(_edit_drum["maker"]) if _edit_drum["maker"] in _maker_list else 0
                     _new_maker = _ec3.selectbox("제조사", _maker_list, index=_cur_mkr_idx, key="edit_mkr_inp")
-                    _sector_list = sorted(sectors_raw.keys())
+                    _sector_list = ["입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리", "8번자리", "9번자리", "반품자리", "창고주위"]
                     _cur_sidx = _sector_list.index(_edit_drum["sector"]) if _edit_drum["sector"] in _sector_list else 0
                     _new_sector = _ec4.selectbox("섹터", _sector_list, index=_cur_sidx, key="edit_sec_inp")
+                    _cur_remark = _edit_drum.get("remark", "")
+                    _new_remark = st.text_input("비고", value="" if _cur_remark == "신규" else _cur_remark, key="edit_remark_inp")
                     _sy, _sn = st.columns(2)
                     if _sy.button("💾 저장", type="primary", key="inv_edit_save"):
                         try:
                             from utils.supabase_db import update_drum_fields as _udf
-                            _udf(_edit_lot, _new_lot.strip(), _new_product.strip(), _new_maker.strip(), _new_sector)
+                            _udf(_edit_lot, _new_lot.strip(), _new_product.strip(), _new_maker.strip(), _new_sector, new_remark=_new_remark.strip())
                             st.success("수정 완료!")
                             st.session_state.pop("inv_confirm", None)
                             st.session_state.pop("inv_edit_lot", None)

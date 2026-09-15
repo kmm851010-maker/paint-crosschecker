@@ -278,8 +278,8 @@ export default function InventoryScreen() {
   // torchModeRef를 torchMode와 동기화
   useEffect(() => { torchModeRef.current = torchMode; }, [torchMode]);
 
-  // editingRef를 editingItem과 동기화 (편집 중 OCR 일시 중단)
-  useEffect(() => { editingRef.current = editingItem !== null; }, [editingItem]);
+  // editingRef를 editingItem/manualBulk와 동기화 (모달 열림 중 OCR 일시 중단)
+  useEffect(() => { editingRef.current = editingItem !== null || manualBulk !== null; }, [editingItem, manualBulk]);
 
   // 수동 모드에서 볼륨 키 → OCR 트리거 (Android)
   const runOcrRef = useRef<() => void>(() => {});
@@ -439,7 +439,7 @@ export default function InventoryScreen() {
                 cooldownRef.current = false;
                 const drumItem: DrumItem = { lot: parsed.lot, product: fuzzy.match, maker: parsed.maker };
                 setBatch(prev => prev.some(d => d.lot === parsed.lot) ? prev : [...prev, drumItem]);
-                triggerFlash();
+                triggerFeedback();
                 Vibration.vibrate(80);
                 _setScanError(null);
               }},

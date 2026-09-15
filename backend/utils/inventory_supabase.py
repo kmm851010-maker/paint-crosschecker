@@ -63,30 +63,45 @@ def parse_barcode(raw_text: str):
     return {"lot": lot, "product": "", "maker": maker}
 
 
-def save_drums_to_sector(drums: list, sector: str):
-    """드럼 목록을 지정 섹터에 등록/이동 (배치 처리)."""
+def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existing: bool = False):
+    """드럼 목록을 지정 섹터에 등록/이동 (배치 처리).
+    skip_existing=True: 이미 재고에 있는 드럼은 건너뜀 (ERP 입고 전용).
+    """
     now = _kst_now()
     sb = _sb()
     drum_map = {d["lot"]: d for d in drums}
     lots = list(drum_map.keys())
 
-    # 1) 기존 재고 일괄 조회
-    existing_res = sb.table("inventory").select("lot,sector").in_("lot", lots).execute()
-    existing_map = {r["lot"]: r["sector"] for r in existing_res.data}
+    # 1) 기존 재고 일괄 조회 (remark 포함)
+    existing_res = sb.table("inventory").select("lot,sector,remark,product,maker").in_("lot", lots).execute()
+    existing_map = {r["lot"]: r for r in existing_res.data}
 
     already_same = []
-    to_update = []   # 기존 존재 + 섹터 다름
-    to_insert = []   # 신규
+    skipped = []          # skip_existing=True 시 기존 드럼 건너뜀 목록
+    to_update_clear = []  # 기존 존재 + 섹터 다름 + remark=="신규" → 초기화
+    to_update_keep  = []  # 기존 존재 + 섹터 다름 + remark!="신규" → 유지
+    to_insert = []
     history_rows = []
 
     for lot, drum in drum_map.items():
         scan_dis = "Y" if drum.get("scanDisabled") else ""
         if lot in existing_map:
-            prev_sector = existing_map[lot]
+            prev = existing_map[lot]
+            prev_sector = prev["sector"]
             if prev_sector == sector:
                 already_same.append(lot)
                 continue
-            to_update.append(lot)
+            if skip_existing:
+                skipped.append({
+                    "lot": lot,
+                    "product": prev.get("product", drum.get("product", "")),
+                    "sector": prev_sector,
+                })
+                continue
+            if prev.get("remark", "") == "신규":
+                to_update_clear.append(lot)
+            else:
+                to_update_keep.append(lot)
             history_rows.append({
                 "lot": lot, "product": drum["product"], "maker": drum["maker"],
                 "prev_sector": prev_sector, "new_sector": sector, "recorded_at": now,
@@ -95,7 +110,7 @@ def save_drums_to_sector(drums: list, sector: str):
             to_insert.append({
                 "lot": lot, "product": drum["product"], "maker": drum["maker"],
                 "sector": sector, "registered_at": now, "updated_at": now,
-                "return_status": "", "scan_disabled": scan_dis,
+                "return_status": "", "scan_disabled": scan_dis, "remark": remark,
             })
             history_rows.append({
                 "lot": lot, "product": drum["product"], "maker": drum["maker"],
@@ -103,10 +118,14 @@ def save_drums_to_sector(drums: list, sector: str):
             })
 
     # 2) 기존 드럼 일괄 업데이트
-    if to_update:
+    if to_update_clear:
+        sb.table("inventory").update({
+            "sector": sector, "registered_at": now, "updated_at": now, "remark": "",
+        }).in_("lot", to_update_clear).execute()
+    if to_update_keep:
         sb.table("inventory").update({
             "sector": sector, "registered_at": now, "updated_at": now,
-        }).in_("lot", to_update).execute()
+        }).in_("lot", to_update_keep).execute()
 
     # 3) 신규 드럼 일괄 삽입 (500개 청크)
     for i in range(0, len(to_insert), 500):
@@ -116,7 +135,9 @@ def save_drums_to_sector(drums: list, sector: str):
     for i in range(0, len(history_rows), 500):
         sb.table("inventory_history").insert(history_rows[i:i + 500]).execute()
 
-    return {"already_same": already_same, "moved": len(drums) - len(already_same)}
+    registered = len(to_insert)
+    moved = len(to_update_clear) + len(to_update_keep)
+    return {"already_same": already_same, "moved": registered + moved, "skipped": skipped}
 
 
 def checkout_drums(drums: list):
@@ -171,6 +192,7 @@ def get_sector_inventory() -> dict:
             "updated": r.get("updated_at", ""),
             "returnStatus": r.get("return_status", ""),
             "scanDisabled": r.get("scan_disabled", ""),
+            "remark": r.get("remark", ""),
         })
     return sectors
 
@@ -226,7 +248,7 @@ def set_return_status(drums: list, status: str):
     return True
 
 
-def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: str, new_sector: str):
+def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: str, new_sector: str, new_remark: str = ""):
     """드럼 정보 수정."""
     now = _kst_now()
     res = _sb().table("inventory").select("lot,sector").eq("lot", old_lot).limit(1).execute()
@@ -240,7 +262,7 @@ def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: 
 
     _sb().table("inventory").update({
         "lot": new_lot, "product": new_product,
-        "maker": new_maker, "sector": new_sector, "updated_at": now,
+        "maker": new_maker, "sector": new_sector, "registered_at": now, "updated_at": now, "remark": new_remark,
     }).eq("lot", old_lot).execute()
     _sb().table("inventory_history").insert({
         "lot": new_lot, "product": new_product, "maker": new_maker,
