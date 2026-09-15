@@ -5078,15 +5078,17 @@ def page_inventory():
         else:
             for group_key, group_df in _all_groups:
                 cnt = len(group_df)
-                with st.expander(f"**{group_key}** — {cnt}드럼", expanded=False):
-                    if sort_mode in ("제조사별", "등록시간순", "LOT순"):
-                        _grp_lots = group_df["lot"].tolist()
-                        _grp_all_sel = all(st.session_state.get(f"chk_{_l}", False) for _l in _grp_lots)
-                        _grp_btn_label = f"선택해제 ({cnt})" if _grp_all_sel else f"전체선택 ({cnt})"
-                        if st.button(_grp_btn_label, key=f"grpsel_{group_key}", type="secondary"):
-                            for _l in _grp_lots:
-                                st.session_state[f"chk_{_l}"] = not _grp_all_sel
-                            st.rerun()
+                _grp_lots = group_df["lot"].tolist()
+                _grp_all_sel = all(st.session_state.get(f"chk_{_l}", False) for _l in _grp_lots)
+                _grp_btn_label = f"선택해제 ({cnt})" if _grp_all_sel else f"전체선택 ({cnt})"
+
+                def _render_else_group(group_key=group_key, group_df=group_df, cnt=cnt,
+                                       _grp_lots=_grp_lots, _grp_all_sel=_grp_all_sel,
+                                       _grp_btn_label=_grp_btn_label):
+                    if st.button(_grp_btn_label, key=f"grpsel_{group_key}", type="secondary"):
+                        for _l in _grp_lots:
+                            st.session_state[f"chk_{_l}"] = not _grp_all_sel
+                        st.rerun()
                     # 헤더 행 (고정)
                     h1, h2, h3, h4, h5, h6, h7 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8, 0.8])
                     h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
@@ -5113,6 +5115,13 @@ def page_inventory():
                                 c5.text(row.get("sector", ""))
                             c6.markdown(_reg_display(row.get("registered", "")), unsafe_allow_html=True)
                             c7.text(row.get("remark", ""))
+
+                if sort_mode == "제조사별":
+                    with st.expander(f"**{group_key}** — {cnt}드럼", expanded=False):
+                        _render_else_group()
+                else:
+                    # 등록시간순/LOT순: 그룹 하나뿐이므로 expander 없이 바로 표시
+                    _render_else_group()
 
         # 선택 항목 엑셀 다운로드
         if selected_lots:
