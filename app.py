@@ -1141,8 +1141,8 @@ def page_cross_check():
                         use_container_width=True,
                     )
 
-                # 상태 컬럼 동적 계산 (신규/입고 비교)
-                _disp_filled = _filled.copy()
+                # 상태 컬럼 동적 계산 (신규/입고 비교) — 위치 컬럼 포함한 복사본 사용
+                _disp_filled = _filled_loc.copy()
                 _orig_cols = list(_filled.columns)
                 _insert_offset = 0
                 for _fi, _fh in enumerate(_orig_cols):
@@ -1168,6 +1168,8 @@ def page_cross_check():
                     _fcol_s = str(_fcol)
                     if _fcol_s.startswith("__st_"):
                         _col_cfg_filled[_fcol_s] = st.column_config.TextColumn("상태", disabled=True, width="small")
+                    elif _fcol_s == "위치" or _fcol_s.startswith("위치_"):
+                        _col_cfg_filled[_fcol_s] = st.column_config.TextColumn("위치", disabled=True, width="medium")
                     elif any(k in _fcol_s for k in ["재고", "신규", "입고"]):
                         _col_cfg_filled[_fcol_s] = st.column_config.TextColumn(_fcol_s)
                     else:
@@ -1183,7 +1185,8 @@ def page_cross_check():
                     height=len(_disp_filled) * 35 + 38,
                 )
                 _status_cols2 = [c for c in _edited_filled.columns if str(c).startswith("__st_")]
-                _clean_edited = _edited_filled.drop(columns=_status_cols2)
+                _위치_cols2 = [c for c in _edited_filled.columns if str(c) == "위치" or str(c).startswith("위치_")]
+                _clean_edited = _edited_filled.drop(columns=_status_cols2 + _위치_cols2)
                 _old_filled_ref = st.session_state.get("cc_filled_df")
                 _data_changed = (_old_filled_ref is None or
                                  not _clean_edited.equals(_old_filled_ref))
