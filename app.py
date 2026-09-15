@@ -4870,6 +4870,19 @@ def page_inventory():
         ]
         import datetime as _dt_mod
 
+        _now_kst = _dt_mod.datetime.utcnow() + _dt_mod.timedelta(hours=9)
+
+        def _reg_display(reg_str: str) -> str:
+            """등록시간 표시: 1시간 이내면 빨간색 HTML, 아니면 일반 텍스트"""
+            if not reg_str:
+                return ""
+            try:
+                _t = _dt_mod.datetime.fromisoformat(str(reg_str).replace("T", " ")[:19])
+                if (_now_kst - _t).total_seconds() <= 3600:
+                    return f'<span style="color:#e53935;font-weight:600">{reg_str[:16]}</span>'
+            except Exception:
+                pass
+            return str(reg_str)[:16]
 
         # 드럼별 체크박스 선택
         selected_lots = set()
@@ -4908,7 +4921,7 @@ def page_inventory():
                     c4.text(row.get("maker", ""))
                     if sort_mode not in ("섹터별",):
                         c5.text(row.get("sector", ""))
-                    c6.text(row.get("registered", ""))
+                    c6.markdown(_reg_display(row.get("registered", "")), unsafe_allow_html=True)
                     c7.text(row.get("remark", ""))
 
         _all_groups = list(df_filtered.groupby(group_col, sort=False))
@@ -4957,7 +4970,7 @@ def page_inventory():
             for group_key, group_df in _all_groups:
                 cnt = len(group_df)
                 with st.expander(f"**{group_key}** — {cnt}드럼", expanded=False):
-                    if sort_mode in ("제조사별",):
+                    if sort_mode in ("제조사별", "등록시간순", "LOT순"):
                         _grp_lots = group_df["lot"].tolist()
                         _grp_all_sel = all(st.session_state.get(f"chk_{_l}", False) for _l in _grp_lots)
                         _grp_btn_label = f"선택해제 ({cnt})" if _grp_all_sel else f"전체선택 ({cnt})"
@@ -4989,7 +5002,7 @@ def page_inventory():
                             c4.text(row.get("maker", ""))
                             if sort_mode not in ("섹터별",):
                                 c5.text(row.get("sector", ""))
-                            c6.text(row.get("registered", ""))
+                            c6.markdown(_reg_display(row.get("registered", "")), unsafe_allow_html=True)
                             c7.text(row.get("remark", ""))
 
         # 선택 항목 엑셀 다운로드
