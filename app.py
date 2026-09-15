@@ -736,10 +736,15 @@ def page_cross_check():
                     _code_col_name = _ch
                     break
 
-        # 재고 컬럼 우측에 위치 컬럼 삽입
-        _재고_cols = [c for c in _full_df.columns if str(c).strip() == "재고"]
-        if _재고_cols and _code_col_name and _inv_location_map:
+        # 재고 컬럼 우측에 위치 컬럼 삽입 (재고_1, 재고_2 등 모든 블록 포함)
+        _재고_cols = [c for c in _full_df.columns if _re.match(r'^재고(_\d+)?$', str(c).strip())]
+        if _재고_cols and _inv_location_map:
             for _rc in reversed(_재고_cols):
+                _suffix = str(_rc)[2:]  # "" / "_1" / "_2" ...
+                _corr_code_col = f"색상코드{_suffix}"
+                if _corr_code_col not in _full_df.columns:
+                    _corr_code_col = _code_col_name  # fallback
+                _위치_col_name = f"위치{_suffix}"  # "위치" / "위치_1" / "위치_2" ...
                 _rc_idx = list(_full_df.columns).index(_rc)
                 _위치_vals = []
                 for _, _row in _full_df.iterrows():
@@ -748,12 +753,12 @@ def page_cross_check():
                         _stock_n = int(_stock) if _stock else 0
                     except Exception:
                         _stock_n = 0
-                    if _stock_n > 0:
-                        _code = str(_row.get(_code_col_name, "")).strip().upper()
+                    if _stock_n > 0 and _corr_code_col:
+                        _code = str(_row.get(_corr_code_col, "")).strip().upper()
                         _위치_vals.append(_inv_location_map.get(_code, ""))
                     else:
                         _위치_vals.append("")
-                _full_df.insert(_rc_idx + 1, "위치", _위치_vals)
+                _full_df.insert(_rc_idx + 1, _위치_col_name, _위치_vals)
 
         from modules.excel_converter import convert_to_excel
         _full_excel = convert_to_excel(list(_full_df.columns), _full_df.fillna("").values.tolist())
