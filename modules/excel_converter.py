@@ -128,6 +128,20 @@ def convert_to_excel(headers: list, rows: list) -> bytes:
                 cell.value = "합계"
                 cell.alignment = CENTER
 
+    # 위치 컬럼 포함 행 높이 조정 (복수 위치 시 줄바꿈 공간 확보)
+    import re as _re_h
+    _위치_idxs = {i for i, h in enumerate(headers) if _re_h.match(r'^위치(_\d+)?$', str(h).strip())}
+    if _위치_idxs:
+        for row_idx, row_data in enumerate(rows, 2):
+            max_lines = 1
+            for ci in _위치_idxs:
+                if ci < len(row_data):
+                    val = str(row_data[ci]) if row_data[ci] else ""
+                    lines = val.count(" / ") + 1 if val else 1
+                    max_lines = max(max_lines, lines)
+            if max_lines > 1:
+                ws.row_dimensions[row_idx].height = max_lines * 16
+
     # 열 너비 자동 최적화
     for col_idx in range(1, num_cols + 1):
         max_len = len(str(headers[col_idx - 1])) if col_idx - 1 < len(headers) else 5
