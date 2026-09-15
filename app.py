@@ -966,7 +966,7 @@ def page_cross_check():
         _reg_col, _cancel_col = st.columns([3, 1])
         with _reg_col:
             _sector_opts = [s for s in SECTORS if s not in ("라인입고", "반품완료")]
-            _sel_sector = st.selectbox("등록할 섹터", _sector_opts, key="new_reg_sector")
+            _sel_sector = st.selectbox("등록할 섹터", _sector_opts, index=_sector_opts.index("창고주위") if "창고주위" in _sector_opts else 0, key="new_reg_sector")
         with _cancel_col:
             st.write("")
             st.write("")
@@ -987,7 +987,7 @@ def page_cross_check():
                 try:
                     _res = _req.post(
                         f"{BACKEND}/api/inventory/register",
-                        json={"drums": _lot_drums, "sector": _sel_sector},
+                        json={"drums": _lot_drums, "sector": _sel_sector, "remark": "신규"},
                         timeout=30,
                     )
                     _res.raise_for_status()
@@ -1155,7 +1155,7 @@ def page_cross_check():
                     _cc_sector_opts = [s for s in SECTORS if s not in ("라인입고", "반품완료")]
                     _cc_reg_col, _cc_btn_col = st.columns([3, 1])
                     with _cc_reg_col:
-                        _cc_sel_sector = st.selectbox("등록할 섹터", _cc_sector_opts, key="cc_crosscheck_reg_sector")
+                        _cc_sel_sector = st.selectbox("등록할 섹터", _cc_sector_opts, index=_cc_sector_opts.index("창고주위") if "창고주위" in _cc_sector_opts else 0, key="cc_crosscheck_reg_sector")
                     with _cc_btn_col:
                         st.write("")
                         st.write("")
@@ -1169,7 +1169,7 @@ def page_cross_check():
                             try:
                                 _res2 = _req2.post(
                                     f"{BACKEND}/api/inventory/register",
-                                    json={"drums": _cc_lot_drums, "sector": _cc_sel_sector},
+                                    json={"drums": _cc_lot_drums, "sector": _cc_sel_sector, "remark": "신규"},
                                     timeout=30,
                                 )
                                 _res2.raise_for_status()
@@ -4879,11 +4879,11 @@ def page_inventory():
                     st.session_state[f"chk_{_l}"] = not _grp_all_sel
                 st.rerun()
             # 헤더 행 (스크롤 영역 밖 — 고정)
-            h1, h2, h3, h4, h5, h6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+            h1, h2, h3, h4, h5, h6, h7 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8, 0.8])
             h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
             h4.markdown("**제조사**")
             if sort_mode not in ("섹터별",): h5.markdown("**섹터**")
-            h6.markdown("**등록시간**")
+            h6.markdown("**등록시간**"); h7.markdown("**비고**")
             # 데이터 행 (자체 스크롤 컨테이너)
             _row_h = min(450, max(180, cnt * 44))
             with st.container(height=_row_h):
@@ -4892,7 +4892,7 @@ def page_inventory():
                     sd = row.get("scanDisabled", "")
                     return_emoji = "🔴" if rs == "불량" else "🟡" if rs == "기술" else "🔵" if rs == "무상" else ""
                     scan_badge = " `스캔불가`" if sd == "Y" else ""
-                    c1, c2, c3, c4, c5, c6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+                    c1, c2, c3, c4, c5, c6, c7 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8, 0.8])
                     checked = c1.checkbox("", key=f"chk_{row['lot']}", label_visibility="collapsed")
                     if checked:
                         selected_lots.add(row["lot"])
@@ -4903,6 +4903,7 @@ def page_inventory():
                     if sort_mode not in ("섹터별",):
                         c5.text(row.get("sector", ""))
                     c6.text(row.get("registered", ""))
+                    c7.text(row.get("remark", ""))
 
         _all_groups = list(df_filtered.groupby(group_col, sort=False))
 
@@ -4959,11 +4960,11 @@ def page_inventory():
                                 st.session_state[f"chk_{_l}"] = not _grp_all_sel
                             st.rerun()
                     # 헤더 행 (고정)
-                    h1, h2, h3, h4, h5, h6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+                    h1, h2, h3, h4, h5, h6, h7 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8, 0.8])
                     h1.markdown("**선택**"); h2.markdown("**품명**"); h3.markdown("**LOT**")
                     h4.markdown("**제조사**")
                     if sort_mode not in ("섹터별",): h5.markdown("**섹터**")
-                    h6.markdown("**등록시간**")
+                    h6.markdown("**등록시간**"); h7.markdown("**비고**")
                     # 데이터 행 (자체 스크롤 컨테이너)
                     _row_h = min(450, max(180, cnt * 44))
                     with st.container(height=_row_h):
@@ -4972,7 +4973,7 @@ def page_inventory():
                             sd = row.get("scanDisabled", "")
                             return_emoji = "🔴" if rs == "불량" else "🟡" if rs == "기술" else "🔵" if rs == "무상" else ""
                             scan_badge = " `스캔불가`" if sd == "Y" else ""
-                            c1, c2, c3, c4, c5, c6 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8])
+                            c1, c2, c3, c4, c5, c6, c7 = st.columns([0.5, 1.5, 2, 1.5, 1.5, 1.8, 0.8])
                             checked = c1.checkbox("", key=f"chk_{row['lot']}", label_visibility="collapsed")
                             if checked:
                                 selected_lots.add(row["lot"])
@@ -4983,6 +4984,7 @@ def page_inventory():
                             if sort_mode not in ("섹터별",):
                                 c5.text(row.get("sector", ""))
                             c6.text(row.get("registered", ""))
+                            c7.text(row.get("remark", ""))
 
         # 선택 항목 엑셀 다운로드
         if selected_lots:

@@ -63,7 +63,7 @@ def parse_barcode(raw_text: str):
     return {"lot": lot, "product": "", "maker": maker}
 
 
-def save_drums_to_sector(drums: list, sector: str):
+def save_drums_to_sector(drums: list, sector: str, remark: str = ""):
     """드럼 목록을 지정 섹터에 등록/이동 (배치 처리)."""
     now = _kst_now()
     sb = _sb()
@@ -95,7 +95,7 @@ def save_drums_to_sector(drums: list, sector: str):
             to_insert.append({
                 "lot": lot, "product": drum["product"], "maker": drum["maker"],
                 "sector": sector, "registered_at": now, "updated_at": now,
-                "return_status": "", "scan_disabled": scan_dis,
+                "return_status": "", "scan_disabled": scan_dis, "remark": remark,
             })
             history_rows.append({
                 "lot": lot, "product": drum["product"], "maker": drum["maker"],
@@ -171,6 +171,7 @@ def get_sector_inventory() -> dict:
             "updated": r.get("updated_at", ""),
             "returnStatus": r.get("return_status", ""),
             "scanDisabled": r.get("scan_disabled", ""),
+            "remark": r.get("remark", ""),
         })
     return sectors
 
@@ -240,7 +241,7 @@ def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: 
 
     _sb().table("inventory").update({
         "lot": new_lot, "product": new_product,
-        "maker": new_maker, "sector": new_sector, "updated_at": now,
+        "maker": new_maker, "sector": new_sector, "updated_at": now, "remark": "",
     }).eq("lot", old_lot).execute()
     _sb().table("inventory_history").insert({
         "lot": new_lot, "product": new_product, "maker": new_maker,
