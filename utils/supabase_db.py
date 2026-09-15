@@ -326,6 +326,7 @@ def get_sector_inventory() -> dict:
             "updated": r.get("updated_at", ""),
             "returnStatus": r.get("return_status", ""),
             "scanDisabled": r.get("scan_disabled", ""),
+            "remark": r.get("remark", ""),
         })
     return sectors
 
