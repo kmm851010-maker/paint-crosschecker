@@ -4870,6 +4870,19 @@ def page_inventory():
         ]
         import datetime as _dt_mod
 
+        _now_kst = _dt_mod.datetime.utcnow() + _dt_mod.timedelta(hours=9)
+
+        def _reg_display(reg_str: str) -> str:
+            """등록시간 표시: 1시간 이내면 빨간색 HTML, 아니면 일반 텍스트"""
+            if not reg_str:
+                return ""
+            try:
+                _t = _dt_mod.datetime.fromisoformat(str(reg_str).replace("T", " ")[:19])
+                if (_now_kst - _t).total_seconds() <= 3600:
+                    return f'<span style="color:#e53935;font-weight:600">{reg_str[:16]}</span>'
+            except Exception:
+                pass
+            return str(reg_str)[:16]
 
         # 드럼별 체크박스 선택
         selected_lots = set()
@@ -4908,7 +4921,7 @@ def page_inventory():
                     c4.text(row.get("maker", ""))
                     if sort_mode not in ("섹터별",):
                         c5.text(row.get("sector", ""))
-                    c6.text(row.get("registered", ""))
+                    c6.markdown(_reg_display(row.get("registered", "")), unsafe_allow_html=True)
                     c7.text(row.get("remark", ""))
 
         _all_groups = list(df_filtered.groupby(group_col, sort=False))
