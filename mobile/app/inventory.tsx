@@ -30,7 +30,7 @@ import { VolumeManager } from "react-native-volume-manager";
 import { APPROVED_PRODUCTS } from "../src/constants/approvedProducts";
 
 const ASYNC_KEY_APPROVED = "user_approved_products_v1";
-import { registerDrums, getSectorInventory, setDrumReturnStatus, type DrumItem } from "../src/services/api";
+import { registerDrums, getSectorInventory, setDrumReturnStatus, getProductWhitelist, type DrumItem } from "../src/services/api";
 
 // ── 제조사 코드 ──
 const MAKER_MAP: Record<string, string> = {
@@ -262,8 +262,9 @@ export default function InventoryScreen() {
   const editingRef = useRef(false); // 편집 모달 열림 여부 (runOcr 내 클로저용)
   const alertActiveRef = useRef(false); // Alert 팝업 표시 중 여부 (runOcr 내 클로저용)
   const localApprovedRef = useRef<Set<string>>(new Set()); // 사용자 승인 신규 품목 (AsyncStorage 연동)
+  const serverWhitelistRef = useRef<Set<string>>(new Set()); // 서버 ERP 화이트리스트
 
-  // 앱 시작 시 사용자 승인 품목 로드
+  // 앱 시작 시 사용자 승인 품목 + 서버 화이트리스트 로드
   useEffect(() => {
     AsyncStorage.getItem(ASYNC_KEY_APPROVED).then(val => {
       if (val) {
@@ -272,6 +273,9 @@ export default function InventoryScreen() {
           arr.forEach(p => localApprovedRef.current.add(p));
         } catch {}
       }
+    });
+    getProductWhitelist().then(products => {
+      products.forEach(p => serverWhitelistRef.current.add(p));
     });
   }, []);
 
@@ -420,7 +424,8 @@ export default function InventoryScreen() {
         // LOT은 인식됐으나 품명 인식 실패 → 퍼지 매칭 시도 후 수동 입력
         const allText = result.blocks?.map((b: any) => b.text).join("\n") ?? "";
         const candidates = extractProductCandidates(allText);
-        const fuzzy = fuzzyMatchProduct(candidates, localApprovedRef.current);
+        const mergedApproved = new Set([...localApprovedRef.current, ...serverWhitelistRef.current]);
+        const fuzzy = fuzzyMatchProduct(candidates, mergedApproved);
         if (fuzzy) {
           _setScanError({ type: "noProduct", detail: `품명 불명확 — "${fuzzy.match}" 확인 필요` });
           cooldownRef.current = true;
@@ -454,7 +459,7 @@ export default function InventoryScreen() {
       } else if (Object.entries(sectorDataRef.current).find(([, drums]) => (drums as any[]).some(d => d.lot === parsed.lot))) {
         const sector = (Object.entries(sectorDataRef.current).find(([, drums]) => (drums as any[]).some(d => d.lot === parsed.lot)) ?? ["미확인"])[0];
         _setScanError({ type: "duplicate", detail: `이미 위치가 저장된 제품입니다 — ${sector}: ${parsed.lot}` });
-      } else if (!APPROVED_PRODUCTS.has(parsed.product) && !localApprovedRef.current.has(parsed.product)) {
+      } else if (!APPROVED_PRODUCTS.has(parsed.product) && !localApprovedRef.current.has(parsed.product) && !serverWhitelistRef.current.has(parsed.product)) {
         // 미등록 품목 — 사용자 확인 후 저장
         _setScanError(null);
         cooldownRef.current = true;

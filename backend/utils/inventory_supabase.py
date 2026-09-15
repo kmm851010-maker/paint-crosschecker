@@ -135,6 +135,12 @@ def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existi
     for i in range(0, len(history_rows), 500):
         sb.table("inventory_history").insert(history_rows[i:i + 500]).execute()
 
+    # 5) ERP 입고(remark=="신규") 시 품명 화이트리스트 자동 등록
+    if remark == "신규":
+        all_products = {d["product"] for d in drums if d.get("product")}
+        if all_products:
+            upsert_product_whitelist(list(all_products))
+
     registered = len(to_insert)
     moved = len(to_update_clear) + len(to_update_keep)
     return {"already_same": already_same, "moved": registered + moved, "skipped": skipped}
@@ -269,3 +275,21 @@ def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: 
         "prev_sector": old_sector, "new_sector": new_sector, "recorded_at": now,
     }).execute()
     return True
+
+
+# ── 품명 화이트리스트 ──
+
+def upsert_product_whitelist(products: list):
+    """품명 코드를 화이트리스트에 upsert (중복 무시)."""
+    now = _kst_now()
+    rows = [{"product": p, "added_at": now} for p in products if p]
+    if not rows:
+        return
+    # on_conflict: product 컬럼에 UNIQUE 제약 필요
+    _sb().table("product_whitelist").upsert(rows, on_conflict="product").execute()
+
+
+def get_product_whitelist() -> list:
+    """화이트리스트 품명 목록 반환."""
+    res = _sb().table("product_whitelist").select("product").execute()
+    return [r["product"] for r in res.data if r.get("product")]

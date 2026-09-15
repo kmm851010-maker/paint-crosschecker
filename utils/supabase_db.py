@@ -478,7 +478,7 @@ def get_inventory_registered_in_range(start_kst: str, end_kst: str) -> list:
     """KST 시간 범위 내 등록된 재고 항목 반환. (registered_at KST 기준)"""
     try:
         res = _sb().table("inventory") \
-            .select("lot,product,maker,registered_at") \
+            .select("lot,product,maker,registered_at,remark") \
             .gte("registered_at", start_kst) \
             .lt("registered_at", end_kst) \
             .order("registered_at") \
@@ -507,6 +507,7 @@ def upsert_daily_inventory_remark(date_str: str, shift: str, product: str, remar
          "remark": remark, "updated_at": _kst_now()},
         on_conflict="record_date,shift,product",
     ).execute()
+
 
 
 def update_employee_email(employee_id: str, email: str) -> bool:

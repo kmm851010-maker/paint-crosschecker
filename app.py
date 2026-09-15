@@ -5722,12 +5722,14 @@ def page_daily_inventory_record():
     # 기존 비고
     _remarks_map = get_daily_inventory_remarks(_date_str)
 
-    # 근별 품목 그룹 구성
-    _shift_groups = []  # [(shift_name, worker, [{품명, 수량, lots, 비고}])]
+    # 근별 품목 그룹 구성 (ERP 라인입고 remark=신규 제외)
+    _shift_groups = []   # [(shift_name, worker, [{품명, 수량, lots, 비고}])]
     for _sname, _sstart, _send, _sworker in _shifts:
         _items = get_inventory_registered_in_range(_sstart, _send)
         _pmap: dict = {}
         for _it in _items:
+            if (_it.get("remark") or "") == "신규":
+                continue
             _prod = (_it.get("product") or "").strip() or "미상"
             _pmap.setdefault(_prod, []).append((_it.get("lot") or "").strip())
         _rows = [

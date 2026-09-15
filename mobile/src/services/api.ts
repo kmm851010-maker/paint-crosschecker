@@ -182,6 +182,17 @@ export async function registerDrums(drums: DrumItem[], sector: string): Promise<
   return { already_same: data.already_same ?? [], moved: data.moved ?? drums.length };
 }
 
+export async function getProductWhitelist(): Promise<string[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/inventory/product-whitelist`);
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.products ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export async function getSectorInventory(): Promise<SectorInventory> {
   const response = await fetch(`${API_BASE_URL}/api/inventory/sectors`);
   if (!response.ok) throw new Error("재고 조회 실패");
