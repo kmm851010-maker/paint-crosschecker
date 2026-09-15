@@ -1857,6 +1857,12 @@ def page_work_log():
     _grid_key = f"wl_grid_{selected_date}"
     _fetched_key = f"wl_fetched_{selected_date}"
 
+    # 일일재고기록 자동 연동 후 강제 DB 재로드 플래그
+    _force_wl_reload = st.session_state.pop(f"wl_sync_done_{selected_date}", False)
+    if _force_wl_reload:
+        st.session_state.pop(_grid_key, None)
+        st.session_state.pop(_fetched_key, None)
+
     if _grid_key not in st.session_state:
         if _fetched_key not in st.session_state:
             try:
@@ -5778,9 +5784,10 @@ def page_daily_inventory_record():
             for _sn, _cnt in _cur_counts.items():
                 upsert_daily_inventory_remark(_date_str, _sn, _AUTO_KEY, str(_cnt))
             _remarks_map = get_daily_inventory_remarks(_date_str)
-            # 작업일지 세션 캐시 무효화 → 다음 방문 시 DB 재로드
+            # 작업일지 세션 캐시 무효화 → 다음 방문 시 DB 강제 재로드
             st.session_state.pop(f"wl_fetched_{_sel_date}", None)
             st.session_state.pop(f"wl_grid_{_sel_date}", None)
+            st.session_state[f"wl_sync_done_{_sel_date}"] = True
             _sync_parts = [f"{_sn} {_cnt}개" for _sn, _cnt in _cur_counts.items() if _cnt > 0]
             _sync_status = "연동완료: " + (", ".join(_sync_parts) if _sync_parts else "0개")
         except Exception as _se:
