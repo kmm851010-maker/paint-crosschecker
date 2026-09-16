@@ -129,8 +129,8 @@ export default function WorklogPage() {
           "야간_조": r["야간_조"] || auto["야간_조"] || "",
           leave_person: lp,
           leave_type: lt,
-          "1근_비고": r["1근_비고"] || defaultNote,
-          "2근_비고": r["2근_비고"] || defaultNote,
+          "1근_비고": defaultNote || r["1근_비고"],
+          "2근_비고": defaultNote || r["2근_비고"],
         } as ShiftInfo;
       }
       setShiftData(usedShift);
