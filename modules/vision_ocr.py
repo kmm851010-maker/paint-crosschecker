@@ -543,7 +543,11 @@ def _extract_lots_from_excel(file_bytes: bytes, filename: str) -> list:
     elif is_ole or ext == "xls":
         df = pd.read_excel(BytesIO(file_bytes), engine="xlrd", dtype=str)
     else:
-        df = pd.read_excel(BytesIO(file_bytes), engine="openpyxl", dtype=str)
+        try:
+            df = pd.read_excel(BytesIO(file_bytes), engine="openpyxl", dtype=str)
+        except Exception:
+            # xlsx 확장자지만 실제 XLS 포맷인 경우 xlrd로 폴백
+            df = pd.read_excel(BytesIO(file_bytes), engine="xlrd", dtype=str)
 
     df = df.fillna("")
 
