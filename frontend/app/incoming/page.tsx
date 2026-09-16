@@ -178,11 +178,12 @@ function IncomingListDialog({
                   <td className="py-1.5 px-3 text-xs text-gray-600">{item.제조사}</td>
                   <td className="py-1.5 px-3">
                     <input
-                      type="number"
-                      min={0}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={preQty[i] ?? ""}
                       placeholder="0"
-                      onChange={e => setPreQty(prev => ({ ...prev, [i]: e.target.value }))}
+                      onChange={e => setPreQty(prev => ({ ...prev, [i]: e.target.value.replace(/[^0-9]/g, "") }))}
                       onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
                       className="w-16 border border-gray-300 rounded px-2 py-0.5 text-xs text-center"
                     />
@@ -515,11 +516,7 @@ export default function IncomingPage() {
     () => results.filter(r => r.상태?.includes("확인필요")),
     [results]
   );
-  const mainResults = useMemo(
-    () => results.filter(r => !r.상태?.includes("확인필요")),
-    [results]
-  );
-  const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완료");
+const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완료");
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -699,190 +696,6 @@ export default function IncomingPage() {
           </div>
         )}
 
-        {/* ── 교차검증 결과 ── */}
-        {summary && results.length > 0 && (
-          <div className="space-y-6">
-            {/* 요약 배지 */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-gray-800">교차검증 결과</h3>
-                <Button variant="secondary" size="sm" onClick={handleExportExcel} loading={excelLoading}>
-                  <Download size={14} /> 교차검증 엑셀
-                </Button>
-              </div>
-              <div className="grid grid-cols-4 md:grid-cols-6 gap-3 mb-4">
-                {[
-                  { label: "전체", value: summary.total_items, color: "bg-gray-100 text-gray-700" },
-                  { label: "🟩 일치", value: summary.match_count, color: "bg-green-100 text-green-800" },
-                  { label: "🟡 초과", value: summary.excess_count, color: "bg-yellow-100 text-yellow-800" },
-                  { label: "🟠 부족", value: summary.short_count, color: "bg-orange-100 text-orange-800" },
-                  { label: "🟥 미입고", value: summary.missing_count, color: "bg-red-100 text-red-800" },
-                  { label: "⚠️ 확인필요", value: summary.reverse_count, color: "bg-orange-50 text-orange-700" },
-                ].map(s => (
-                  <div key={s.label} className={cn("rounded-lg px-3 py-2 text-center", s.color)}>
-                    <div className="text-xs font-medium">{s.label}</div>
-                    <div className="text-xl font-bold">{s.value}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="text-xs text-gray-500 flex gap-4">
-                <span>총 계획: <strong>{summary.total_plan}</strong>개</span>
-                <span>총 입고: <strong>{summary.total_actual}</strong>개</span>
-              </div>
-            </div>
-
-            {/* 확인필요 목록 */}
-            {reverseResults.length > 0 && (
-              <div className="bg-orange-50 rounded-xl border border-orange-200 p-5">
-                <h3 className="font-semibold text-orange-800 mb-2">⚠️ 확인필요 {reverseResults.length}건</h3>
-                <p className="text-xs text-orange-600 mb-3">생산계획서에 없지만 ERP에 입고 기록이 있는 품목입니다.</p>
-                <div className="overflow-x-auto rounded border border-orange-200">
-                  <table className="w-full text-sm">
-                    <thead className="bg-orange-100">
-                      <tr>
-                        <th className="py-2 px-3 w-8"><input type="checkbox"
-                          onChange={e => {
-                            if (e.target.checked) setReverseChecked(new Set(reverseResults.map((_, i) => i)));
-                            else setReverseChecked(new Set());
-                          }}
-                        /></th>
-                        {["색상코드", "제조사", "입고수량", "상태"].map(h => (
-                          <th key={h} className="py-2 px-3 text-left text-xs font-semibold text-orange-700">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {reverseResults.map((r, i) => (
-                        <tr key={i} className="border-t border-orange-100">
-                          <td className="py-1.5 px-3 text-center">
-                            <input type="checkbox" checked={reverseChecked.has(i)}
-                              onChange={e => {
-                                setReverseChecked(prev => {
-                                  const next = new Set(prev);
-                                  e.target.checked ? next.add(i) : next.delete(i);
-                                  return next;
-                                });
-                              }}
-                            />
-                          </td>
-                          <td className="py-1.5 px-3 font-mono text-xs font-medium">{r.색상코드}</td>
-                          <td className="py-1.5 px-3 text-xs text-gray-600">{r.제조사}</td>
-                          <td className="py-1.5 px-3 text-xs text-center">{r.입고수량}</td>
-                          <td className="py-1.5 px-3">
-                            <span className={cn("text-xs px-2 py-0.5 rounded font-medium", statusColor(r.상태))}>
-                              {statusEmoji(r.상태)} {r.상태}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {reverseChecked.size > 0 && (
-                  <div className="mt-2 flex justify-end">
-                    <Button variant="secondary" size="sm" onClick={() => {
-                      const toRemoveCodes = [...reverseChecked].map(i => reverseResults[i].색상코드);
-                      setResults(prev => prev.filter(r => !toRemoveCodes.includes(r.색상코드)));
-                      setReverseChecked(new Set());
-                    }}>
-                      선택 항목 제거 ({reverseChecked.size})
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 메인 결과 테이블 */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="font-semibold text-gray-800 mb-3">입고 현황 ({mainResults.length}건)</h3>
-              <div className="overflow-x-auto max-h-[480px] overflow-y-auto rounded border border-gray-200">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 sticky top-0">
-                    <tr>
-                      {["#", "색상코드", "제조사", "계획수량", "입고수량", "차이", "상태"].map(h => (
-                        <th key={h} className="py-2 px-3 text-left text-xs font-semibold text-gray-500">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {mainResults.map((r, i) => (
-                      <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
-                        <td className="py-1.5 px-3 text-xs text-gray-400">{i + 1}</td>
-                        <td className="py-1.5 px-3 font-mono text-xs font-medium">{r.색상코드}</td>
-                        <td className="py-1.5 px-3 text-xs text-gray-600">{r.제조사}</td>
-                        <td className="py-1.5 px-3 text-xs text-center">{r.계획수량}</td>
-                        <td className="py-1.5 px-3 text-xs text-center font-medium">{r.입고수량}</td>
-                        <td className="py-1.5 px-3 text-xs text-center">
-                          <span className={cn(
-                            "font-medium",
-                            Number(r.차이) > 0 ? "text-yellow-600" :
-                            Number(r.차이) < 0 ? "text-red-600" : "text-green-600"
-                          )}>
-                            {Number(r.차이) > 0 ? `+${r.차이}` : r.차이}
-                          </span>
-                        </td>
-                        <td className="py-1.5 px-3">
-                          <span className={cn("text-xs px-2 py-0.5 rounded font-medium", statusColor(r.상태))}>
-                            {statusEmoji(r.상태)} {r.상태}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* 교차검증 후 신규 입고처리 */}
-            {erpFileB64 && (
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h3 className="font-semibold text-gray-800 mb-2">신규 입고처리</h3>
-                <p className="text-sm text-gray-500 mb-3">ERP 파일에서 드럼을 추출하여 재고에 등록합니다.</p>
-                {newRegDrums.length === 0 ? (
-                  <Button variant="secondary" onClick={handleNewRegExtract}>
-                    드럼 목록 추출
-                  </Button>
-                ) : (
-                  <div>
-                    <p className="text-sm text-gray-600 mb-3">{newRegDrums.length}개 드럼 추출됨</p>
-                    <div className="overflow-x-auto max-h-40 overflow-y-auto rounded border border-gray-100 mb-4">
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50 sticky top-0">
-                          <tr>
-                            {["LOT번호", "품명", "제조사"].map(h => (
-                              <th key={h} className="py-2 px-3 text-left text-xs font-semibold text-gray-500">{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {newRegDrums.map(d => (
-                            <tr key={d.lot} className="border-t border-gray-100">
-                              <td className="py-1.5 px-3 font-mono text-xs">{d.lot}</td>
-                              <td className="py-1.5 px-3 text-sm">{d.product}</td>
-                              <td className="py-1.5 px-3 text-xs text-gray-600">{d.maker}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="flex items-end gap-3">
-                      <div className="flex-1">
-                        <label className="text-xs text-gray-600 mb-1 block">등록할 섹터</label>
-                        <select value={newRegSector} onChange={e => setNewRegSector(e.target.value)} className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm">
-                          {sectorOpts.map(s => <option key={s}>{s}</option>)}
-                        </select>
-                      </div>
-                      <Button onClick={handleNewRegister} loading={newRegLoading}>
-                        재고 등록 ({newRegDrums.length}개)
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
         {/* ── ERP 입고반영 결과 ── */}
         {(erpFillLoading || erpFillData) && (
           <div className="mt-6 bg-white rounded-xl border border-gray-200 p-5">
@@ -963,6 +776,115 @@ export default function IncomingPage() {
                 </div>
               );
             })()}
+          </div>
+        )}
+
+        {/* ── 확인필요 (ERP에만 있는 항목) ── */}
+        {reverseResults.length > 0 && (
+          <div className="mt-6 bg-orange-50 rounded-xl border border-orange-200 p-5">
+            <h3 className="font-semibold text-orange-800 mb-2">⚠️ 확인필요 {reverseResults.length}건</h3>
+            <p className="text-xs text-orange-600 mb-3">생산계획서에 없지만 ERP에 입고 기록이 있는 품목입니다.</p>
+            <div className="overflow-x-auto rounded border border-orange-200">
+              <table className="w-full text-sm">
+                <thead className="bg-orange-100">
+                  <tr>
+                    <th className="py-2 px-3 w-8"><input type="checkbox"
+                      onChange={e => {
+                        if (e.target.checked) setReverseChecked(new Set(reverseResults.map((_, i) => i)));
+                        else setReverseChecked(new Set());
+                      }}
+                    /></th>
+                    {["색상코드", "제조사", "입고수량", "상태"].map(h => (
+                      <th key={h} className="py-2 px-3 text-left text-xs font-semibold text-orange-700">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {reverseResults.map((r, i) => (
+                    <tr key={i} className="border-t border-orange-100">
+                      <td className="py-1.5 px-3 text-center">
+                        <input type="checkbox" checked={reverseChecked.has(i)}
+                          onChange={e => {
+                            setReverseChecked(prev => {
+                              const next = new Set(prev);
+                              e.target.checked ? next.add(i) : next.delete(i);
+                              return next;
+                            });
+                          }}
+                        />
+                      </td>
+                      <td className="py-1.5 px-3 font-mono text-xs font-medium">{r.색상코드}</td>
+                      <td className="py-1.5 px-3 text-xs text-gray-600">{r.제조사}</td>
+                      <td className="py-1.5 px-3 text-xs text-center">{r.입고수량}</td>
+                      <td className="py-1.5 px-3">
+                        <span className={cn("text-xs px-2 py-0.5 rounded font-medium", statusColor(r.상태))}>
+                          {statusEmoji(r.상태)} {r.상태}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {reverseChecked.size > 0 && (
+              <div className="mt-2 flex justify-end">
+                <Button variant="secondary" size="sm" onClick={() => {
+                  const toRemoveCodes = [...reverseChecked].map(i => reverseResults[i].색상코드);
+                  setResults(prev => prev.filter(r => !toRemoveCodes.includes(r.색상코드)));
+                  setReverseChecked(new Set());
+                }}>
+                  선택 항목 제거 ({reverseChecked.size})
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── 신규 입고처리 ── */}
+        {erpFileB64 && results.length > 0 && (
+          <div className="mt-6 bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-semibold text-gray-800 mb-2">신규 입고처리</h3>
+            <p className="text-sm text-gray-500 mb-3">ERP 파일에서 드럼을 추출하여 재고에 등록합니다.</p>
+            {newRegDrums.length === 0 ? (
+              <Button variant="secondary" onClick={handleNewRegExtract}>
+                드럼 목록 추출
+              </Button>
+            ) : (
+              <div>
+                <p className="text-sm text-gray-600 mb-3">{newRegDrums.length}개 드럼 추출됨</p>
+                <div className="overflow-x-auto max-h-40 overflow-y-auto rounded border border-gray-100 mb-4">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        {["LOT번호", "품명", "제조사"].map(h => (
+                          <th key={h} className="py-2 px-3 text-left text-xs font-semibold text-gray-500">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {newRegDrums.map(d => (
+                        <tr key={d.lot} className="border-t border-gray-100">
+                          <td className="py-1.5 px-3 font-mono text-xs">{d.lot}</td>
+                          <td className="py-1.5 px-3 text-sm">{d.product}</td>
+                          <td className="py-1.5 px-3 text-xs text-gray-600">{d.maker}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex items-end gap-3">
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-600 mb-1 block">등록할 섹터</label>
+                    <select value={newRegSector} onChange={e => setNewRegSector(e.target.value)} className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm">
+                      {sectorOpts.map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <Button onClick={handleNewRegister} loading={newRegLoading}>
+                    재고 등록 ({newRegDrums.length}개)
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
