@@ -522,6 +522,33 @@ LOT번호: 영문 대문자 1글자 + 숫자 8자리 = 총 9자리 (예: G123456
 extract_lot_list 도구를 사용하여 모든 항목을 반환하세요."""
 
 
+def _extract_lots_from_raw_text(file_bytes: bytes) -> list:
+    """파일 바이트에서 LOT 패턴을 직접 정규식 스캔 (포맷 불명 파일 폴백)."""
+    import re
+    maker_codes = {"G", "D", "K", "S", "Y", "P"}
+    lot_pat = re.compile(r"[A-Z][A-Z0-9]{7,11}")
+    result = []
+    seen = set()
+    for enc in ["utf-8", "cp949", "euc-kr", "latin-1", "utf-16"]:
+        try:
+            text = file_bytes.decode(enc, errors="replace")
+            for m in lot_pat.finditer(text):
+                lot = m.group()
+                if lot[0] not in maker_codes:
+                    continue
+                if len(lot) == 10:
+                    lot = lot[:-1]
+                if lot in seen:
+                    continue
+                seen.add(lot)
+                result.append({"lot": lot, "product": ""})
+            if result:
+                return result
+        except Exception:
+            continue
+    return result
+
+
 def _extract_lots_from_excel(file_bytes: bytes, filename: str) -> list:
     """엑셀/CSV에서 LOT번호+품명 추출 (Vision AI 없이 직접 파싱)."""
     import re
@@ -546,8 +573,12 @@ def _extract_lots_from_excel(file_bytes: bytes, filename: str) -> list:
         try:
             df = pd.read_excel(BytesIO(file_bytes), engine="openpyxl", dtype=str)
         except Exception:
-            # xlsx 확장자지만 실제 XLS 포맷인 경우 xlrd로 폴백
-            df = pd.read_excel(BytesIO(file_bytes), engine="xlrd", dtype=str)
+            try:
+                # xlsx 확장자지만 실제 XLS 포맷인 경우 xlrd로 폴백
+                df = pd.read_excel(BytesIO(file_bytes), engine="xlrd", dtype=str)
+            except Exception:
+                # 엑셀 파싱 완전 실패 → 텍스트에서 LOT 패턴 직접 스캔
+                return _extract_lots_from_raw_text(file_bytes)
 
     df = df.fillna("")
 
