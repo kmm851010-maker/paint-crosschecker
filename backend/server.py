@@ -964,6 +964,7 @@ def _build_worklog_sheet(ws, selected_date, shift_data: dict, work_items: list, 
         ws["A7"].fill = fill_purple
         ws["A7"].alignment = align_c
         ws["A7"].border = thin
+        rows_1 = []  # 전원 명휴: 인원 행 없음
     elif shift_data.get("is_2person"):
         rows_1 = [
             ("주간", shift_data.get("주간_조", shift_data.get("1근_조","")), "06:30 – 18:30",
