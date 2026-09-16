@@ -149,22 +149,14 @@ export default function DailyInventoryPage() {
                                 )}
                               </td>
                               <td className="px-3 py-2">
-                                <div className="flex gap-1">
-                                  <input
-                                    value={remark}
-                                    onChange={(e) => setRemarks((prev) => ({ ...prev, [rmKey]: e.target.value }))}
-                                    onBlur={() => handleRemarkSave(group.shift, row.product, remark)}
-                                    placeholder="비고 입력"
-                                    className="flex-1 border border-gray-200 rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#4B2D8E] min-w-[100px]"
-                                  />
-                                  <button
-                                    onClick={() => handleRemarkSave(group.shift, row.product, remark)}
-                                    disabled={saving === rmKey}
-                                    className="text-xs text-white bg-[#4B2D8E] rounded px-2 py-0.5 disabled:opacity-50 shrink-0"
-                                  >
-                                    {saving === rmKey ? "..." : "저장"}
-                                  </button>
-                                </div>
+                                <input
+                                  value={remark}
+                                  onChange={(e) => setRemarks((prev) => ({ ...prev, [rmKey]: e.target.value }))}
+                                  onBlur={() => handleRemarkSave(group.shift, row.product, remark)}
+                                  onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
+                                  placeholder="비고 입력 후 Enter"
+                                  className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#4B2D8E] min-w-[100px]"
+                                />
                               </td>
                             </tr>
                           );

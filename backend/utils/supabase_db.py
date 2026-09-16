@@ -310,6 +310,7 @@ def get_inventory_registered_in_range(start_kst: str, end_kst: str) -> list:
         .gte("registered_at", start_kst) \
         .lt("registered_at", end_kst) \
         .order("registered_at") \
+        .limit(10000) \
         .execute()
     return res.data or []
 
