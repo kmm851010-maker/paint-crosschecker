@@ -3,7 +3,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { clearAuth, getAuth, isAdmin } from "@/lib/auth";
-import { useState } from "react";
 
 const NAV_GROUPS = [
   {
@@ -29,12 +28,14 @@ const ADMIN_GROUP = {
   items: [{ href: "/employees", label: "직원 관리" }],
 };
 
+const MOBILE_URL =
+  "https://expo.dev/accounts/sergekang/projects/kg-steel-paint-checker/builds/6d287fc7-d867-4d12-aa8b-e5a82f0df369";
+
 export default function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
-  const user = getAuth();
-  const admin = isAdmin();
-  const [collapsed, setCollapsed] = useState(false);
+  const router   = useRouter();
+  const user     = getAuth();
+  const admin    = isAdmin();
 
   function logout() {
     clearAuth();
@@ -45,83 +46,60 @@ export default function Sidebar() {
 
   return (
     <aside
-      className="flex flex-col h-full shrink-0 transition-all duration-200"
+      className="flex flex-col h-full shrink-0 overflow-y-auto"
       style={{
-        width: collapsed ? 52 : 210,
-        background: "linear-gradient(180deg, #4B2D8E 0%, #3A2270 100%)",
+        width: 210,
+        background: "#F0EDF5",
+        borderRight: "1px solid #D8CEED",
       }}
     >
       {/* 로고 + 캡션 */}
       <div
-        className="flex flex-col items-center pt-5 pb-4 px-3 border-b border-white/10 cursor-pointer"
-        onClick={() => setCollapsed(!collapsed)}
-        title={collapsed ? "메뉴 펼치기" : "메뉴 접기"}
+        className="flex flex-col items-center py-4 px-3"
+        style={{ borderBottom: "1px solid #D8CEED" }}
       >
-        {!collapsed ? (
-          <>
-            <Image
-              src="/kg.jpg"
-              alt="KG스틸"
-              width={100}
-              height={100}
-              className="rounded-xl object-contain"
-              style={{ background: "#fff", padding: 2 }}
-              priority
-            />
-            <p className="text-white font-bold text-sm mt-2 text-center leading-tight">
-              KG스틸 업무도우미
-            </p>
-            <p className="text-center mt-0.5" style={{ color: "#D4C5F0", fontSize: 11 }}>
-              당진생산지원팀
-            </p>
-          </>
-        ) : (
-          <Image
-            src="/kg.jpg"
-            alt="KG"
-            width={34}
-            height={34}
-            className="rounded-lg object-contain"
-            style={{ background: "#fff", padding: 2 }}
-          />
-        )}
+        <Image
+          src="/kg.jpg"
+          alt="KG스틸"
+          width={130}
+          height={130}
+          className="rounded-xl object-contain"
+          style={{ background: "#fff", padding: 3 }}
+          priority
+        />
+        <p
+          className="text-sm font-bold text-center mt-2 leading-tight"
+          style={{ color: "#1A1A2E" }}
+        >
+          KG스틸 업무도우미
+        </p>
       </div>
 
       {/* 메뉴 그룹 */}
-      <nav className="flex-1 overflow-y-auto py-3 space-y-1">
+      <nav className="flex-1 py-3 px-2 space-y-0.5">
         {groups.map((group) => (
-          <div key={group.label}>
-            {!collapsed && (
-              <p
-                className="px-3 pt-2 pb-1 text-xs font-bold tracking-wide"
-                style={{ color: "#D4C5F0" }}
-              >
-                {group.label}
-              </p>
-            )}
+          <div key={group.label} className="mb-1">
+            <p
+              className="px-2 pt-2 pb-1 text-xs font-bold"
+              style={{ color: "#1A1A2E" }}
+            >
+              {group.label}
+            </p>
             {group.items.map(({ href, label }) => {
               const active = pathname.startsWith(href);
               return (
                 <Link
                   key={href}
                   href={href}
-                  title={label}
-                  className="flex items-center mx-2 my-0.5 rounded-lg text-sm font-medium transition-all"
+                  className="flex items-center w-full rounded-lg text-sm font-medium mb-0.5 transition-all"
                   style={{
-                    padding: collapsed ? "8px 10px" : "8px 12px",
-                    background: active
-                      ? "linear-gradient(135deg, #F5A623 0%, #E8951A 100%)"
-                      : "rgba(255,255,255,0.07)",
-                    color: active ? "#1A1A2E" : "rgba(255,255,255,0.85)",
-                    border: active ? "none" : "1px solid rgba(255,255,255,0.12)",
-                    justifyContent: collapsed ? "center" : "flex-start",
+                    padding: "8px 12px",
+                    background: active ? "#4B2D8E" : "#ffffff",
+                    color: active ? "#ffffff" : "#1A1A2E",
+                    border: active ? "none" : "1px solid #D8CEED",
                   }}
                 >
-                  {collapsed ? (
-                    <span className="text-base leading-none">{label[0]}</span>
-                  ) : (
-                    label
-                  )}
+                  {label}
                 </Link>
               );
             })}
@@ -129,29 +107,43 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* 유저 정보 + 로그아웃 */}
-      <div className="border-t border-white/10 px-3 py-3 space-y-2">
-        {!collapsed && user && (
-          <p className="text-xs leading-tight" style={{ color: "#D4C5F0" }}>
-            {admin
-              ? `👑 관리자: ${user.name}`
-              : `👤 ${user.name}`}
+      {/* 유저 정보 + 로그아웃 + 모바일 앱 */}
+      <div style={{ borderTop: "1px solid #D8CEED" }} className="px-3 py-3 space-y-2">
+        {user && (
+          <p className="text-xs leading-snug" style={{ color: "#1A1A2E" }}>
+            {admin ? `👑 관리자: ${user.name}` : `👤 ${user.name}`}
           </p>
         )}
         <button
           onClick={logout}
-          title="로그아웃"
-          className="w-full rounded-lg text-sm font-medium transition-all"
+          className="w-full rounded-lg text-sm font-medium text-left transition-all"
           style={{
-            padding: collapsed ? "7px 0" : "7px 12px",
-            background: "rgba(255,255,255,0.07)",
-            color: "rgba(255,255,255,0.75)",
-            border: "1px solid rgba(255,255,255,0.12)",
-            textAlign: collapsed ? "center" : "left",
+            padding: "7px 12px",
+            background: "#ffffff",
+            color: "#1A1A2E",
+            border: "1px solid #D8CEED",
           }}
         >
-          {collapsed ? "↩" : "🔓  로그아웃"}
+          🚪 로그아웃
         </button>
+
+        <p className="text-xs font-bold pt-1" style={{ color: "#1A1A2E" }}>
+          모바일 앱
+        </p>
+        <a
+          href={MOBILE_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block text-center rounded-lg text-sm font-bold"
+          style={{
+            padding: "9px",
+            background: "#F5A623",
+            color: "#1A1A2E",
+            textDecoration: "none",
+          }}
+        >
+          ⬇️ KG OPS 설치
+        </a>
       </div>
     </aside>
   );
