@@ -10,8 +10,12 @@ const notoSans = Noto_Sans_KR({
 });
 
 export const metadata: Metadata = {
-  title: "KG Work Assistant",
-  description: "KG 업무 보조 시스템",
+  title: "KG스틸 업무도우미",
+  description: "KG스틸 당진생산지원팀 전용 시스템",
+  icons: {
+    icon: "/favicon.png",
+    apple: "/favicon.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
