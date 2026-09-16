@@ -49,8 +49,9 @@ export default function Sidebar() {
       className="flex flex-col h-full shrink-0 overflow-y-auto"
       style={{
         width: 210,
-        background: "#F0EDF5",
-        borderRight: "1px solid #D8CEED",
+        background: "#EDE0FF",
+        borderRight: "1px solid #C9B8EE",
+
       }}
     >
       {/* 로고 + 캡션 */}
