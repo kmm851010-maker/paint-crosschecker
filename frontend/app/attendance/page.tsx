@@ -32,13 +32,14 @@ function dateStr(y: number, m: number, d: number) {
 }
 
 interface Slot { label: string; color: string; }
-interface CalCell { type: "dim" | "curr"; day: number; isToday?: boolean; dow?: number; slots?: Slot[]; }
+interface CalCell { type: "dim" | "curr"; day: number; isToday?: boolean; dow?: number; slots?: Slot[]; allLeave?: string; }
 
 function buildCells(year: number, month: number, members: Record<string, string>, leaves: LeaveItem[], today: string): CalCell[] {
   const total = daysInMonth(year, month);
   const fwd = firstDow(year, month);
   const prevDays = new Date(year, month, 0).getDate();
   const cells: CalCell[] = [];
+  const allMemberNames = Object.values(members);
 
   for (let i = 0; i < fwd; i++) cells.push({ type: "dim", day: prevDays - fwd + 1 + i });
 
@@ -52,18 +53,25 @@ function buildCells(year: number, month: number, members: Record<string, string>
     let slot2: Slot = { label: s2, color: "#2E7D32" };
     let slot3: Slot = { label: s3, color: "#C62828" };
 
+    // 이날 휴가인 멤버 이름 수집 (break 없이 전부 처리)
+    const onLeaveNames = new Set<string>();
+    let leaveType = "";
     for (const lv of leaves) {
       if (lv.start <= ds && ds <= lv.end) {
         const nm = lv.name;
+        onLeaveNames.add(nm);
+        if (!leaveType) leaveType = lv.type;
         if (nm === members[s1]) slot1 = { label: s1 + "휴", color: "#F57F17" };
         else if (nm === members[s2]) slot2 = { label: s2 + "휴", color: "#F57F17" };
         else if (nm === members[s3]) slot3 = { label: s3 + "휴", color: "#F57F17" };
-        break;
       }
     }
 
     const slots = [slot1, slot2, slot3].filter(s => !s.label.endsWith("휴"));
-    cells.push({ type: "curr", day: d, isToday: ds === today, dow, slots });
+
+    // 전원 휴가 여부: 등록된 모든 멤버가 이날 휴가
+    const allOnLeave = allMemberNames.length > 0 && allMemberNames.every(n => onLeaveNames.has(n));
+    cells.push({ type: "curr", day: d, isToday: ds === today, dow, slots, allLeave: allOnLeave ? leaveType : undefined });
   }
 
   const rem = (7 - (cells.length % 7)) % 7;
@@ -587,13 +595,21 @@ export default function AttendancePage() {
                             {holName}
                           </div>
                         )}
-                        <div style={{ display: "flex", justifyContent: "center", gap: 3, flexWrap: "wrap", marginTop: 2 }}>
-                          {(cell.slots ?? []).map((slot, si) => (
-                            <span key={si} style={{ color: slot.color, fontSize: 13, fontWeight: 700, lineHeight: 1.4 }}>
-                              {slot.label}
+                        {cell.allLeave ? (
+                          <div style={{ marginTop: 4 }}>
+                            <span style={{ background: "#7C3AED", color: "#fff", borderRadius: 4, padding: "2px 6px", fontSize: 11, fontWeight: 700 }}>
+                              {cell.allLeave}
                             </span>
-                          ))}
-                        </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", justifyContent: "center", gap: 3, flexWrap: "wrap", marginTop: 2 }}>
+                            {(cell.slots ?? []).map((slot, si) => (
+                              <span key={si} style={{ color: slot.color, fontSize: 13, fontWeight: 700, lineHeight: 1.4 }}>
+                                {slot.label}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -678,7 +694,7 @@ export default function AttendancePage() {
                   ) : (
                     <>
                       <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 6px" }}>{lvFilterYear}년 {lvFilterMonth}월 — {filtered.length}건</p>
-                      <div style={{ maxHeight: 240, overflowY: "auto" }}>
+                      <div style={{ maxHeight: 400, overflowY: "auto" }}>
                         {filtered.map((lv, i) => (
                           <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, background: "#f9fafb", borderRadius: 8, padding: "7px 10px", marginBottom: 4 }}>
                             <span style={{ fontWeight: 600, color: "#1f2937", minWidth: 44 }}>{lv.name}</span>
