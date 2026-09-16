@@ -15,97 +15,148 @@ const CYCLE_20: [string, string, string, string][] = [
   ["A","B","C","D"],["A","B","D","C"],["A","B","D","C"],
   ["A","C","D","B"],["A","C","D","B"],
 ];
-const BASE_MS = Date.UTC(2026, 2, 1); // 2026-03-01 UTC
+const BASE_MS = Date.UTC(2026, 2, 1);
+
+// 슬롯 색상 (조 문자 색상)
+const SLOT_CLR: Record<string, string> = {
+  s1: "#1565C0", s2: "#2E7D32", s3: "#C62828", leave: "#F57F17",
+};
+
+const LEAVE_TYPES = [
+  "정기휴가","연차","특별휴가","명휴","생일휴가","공가","공상휴업","산재",
+  "휴직","대휴","교육","결근","조퇴","외출","청원휴가","공휴",
+];
 
 function diffDays(y: number, m: number, d: number) {
   return Math.floor((Date.UTC(y, m, d) - BASE_MS) / 86400000);
 }
-
-function getShift(y: number, m: number, d: number) {
-  const idx = ((diffDays(y, m, d) % 20) + 20) % 20;
-  const [s1, s2, s3, off] = CYCLE_20[idx];
-  const prevIdx = ((diffDays(y, m, d) - 1 + 20 * 100) % 20);
-  const prevOff = CYCLE_20[prevIdx][3];
-  return { s1, s2, s3, off, offType: prevOff === off ? "주휴휴무" : "교대휴무" };
-}
-
+function daysInMonth(y: number, m: number) { return new Date(y, m + 1, 0).getDate(); }
+function firstDow(y: number, m: number) { return new Date(y, m, 1).getDay(); }
 function dateStr(y: number, m: number, d: number) {
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
-// month: 0-indexed
-function daysInMonth(y: number, m: number) { return new Date(y, m + 1, 0).getDate(); }
-function firstDow(y: number, m: number) { return new Date(y, m, 1).getDay(); } // 0=Sun
-
-const SHIFT_COLORS: Record<string, { bg: string; text: string }> = {
-  "1근":  { bg: "#1565C0", text: "#fff" },
-  "2근":  { bg: "#2E7D32", text: "#fff" },
-  "3근":  { bg: "#C62828", text: "#fff" },
-  "휴무": { bg: "#9E9E9E", text: "#fff" },
-  "주간": { bg: "#E65100", text: "#fff" },
-  "야간": { bg: "#37474F", text: "#fff" },
-  "휴가": { bg: "#F57F17", text: "#fff" },
-  "대근": { bg: "#6A1B9A", text: "#fff" },
-};
-
-const LEAVE_TYPES = ["연차", "반차(오전)", "반차(오후)", "병가", "공가", "무급휴가", "대근"];
-
-interface CellInfo {
-  day: number; shift: string; is2p: boolean; leaveType?: string; isToday: boolean; isDim?: boolean;
+interface Slot { label: string; color: string; }
+interface CalCell {
+  type: "dim" | "curr";
+  day: number;
+  isToday?: boolean;
+  isWeekend?: boolean; // 0=Sun 6=Sat
+  dow?: number;
+  holName?: string;
+  slots?: Slot[];
+  dateStr?: string;
 }
 
-function computeCell(
-  y: number, m: number, d: number,
+function buildCells(
+  year: number, month: number,
   members: Record<string, string>,
   leaves: LeaveItem[],
-  selectedName: string,
-  todayStr: string,
-): CellInfo {
-  const ds = dateStr(y, m, d);
-  const sh = getShift(y, m, d);
-  const memberTeam = Object.entries(members).find(([, name]) => name === selectedName)?.[0];
+  today: string,
+): CalCell[] {
+  const total = daysInMonth(year, month);
+  const fwd = firstDow(year, month);
+  const prevDays = new Date(year, month, 0).getDate();
+  const cells: CalCell[] = [];
 
-  // check leaves
-  for (const lv of leaves) {
-    if (lv.start <= ds && ds <= lv.end) {
-      if (lv.name === selectedName) {
-        return { day: d, shift: "휴가", is2p: true, leaveType: lv.type, isToday: ds === todayStr };
+  // 이전 달 dim 셀
+  for (let i = 0; i < fwd; i++) {
+    cells.push({ type: "dim", day: prevDays - fwd + 1 + i });
+  }
+
+  for (let d = 1; d <= total; d++) {
+    const ds = dateStr(year, month, d);
+    const dow = new Date(year, month, d).getDay();
+    const idx = ((diffDays(year, month, d) % 20) + 20) % 20;
+    const [s1, s2, s3] = CYCLE_20[idx];
+
+    let slot1: Slot = { label: s1, color: SLOT_CLR.s1 };
+    let slot2: Slot = { label: s2, color: SLOT_CLR.s2 };
+    let slot3: Slot = { label: s3, color: SLOT_CLR.s3 };
+
+    for (const lv of leaves) {
+      if (lv.start <= ds && ds <= lv.end) {
+        const nm = lv.name;
+        if (nm === members[s1]) slot1 = { label: s1 + "휴", color: SLOT_CLR.leave };
+        else if (nm === members[s2]) slot2 = { label: s2 + "휴", color: SLOT_CLR.leave };
+        else if (nm === members[s3]) slot3 = { label: s3 + "휴", color: SLOT_CLR.leave };
+        break;
       }
-      // someone else is on leave → this person may be 대근
-      const absentTeam = Object.entries(members).find(([, name]) => name === lv.name)?.[0];
-      if (absentTeam) {
-        const remainTeams = [sh.s1, sh.s2, sh.s3].filter(t => t !== absentTeam);
-        if (memberTeam && remainTeams.includes(memberTeam)) {
-          return { day: d, shift: "대근", is2p: true, isToday: ds === todayStr };
+    }
+
+    // 휴가 슬롯 제거 (Streamlit과 동일: endsWith("휴") 필터링)
+    const slots = [slot1, slot2, slot3].filter(s => !s.label.endsWith("휴"));
+
+    cells.push({ type: "curr", day: d, isToday: ds === today, dow, slots, dateStr: ds });
+  }
+
+  const rem = (7 - (cells.length % 7)) % 7;
+  for (let i = 1; i <= rem; i++) cells.push({ type: "dim", day: i });
+
+  return cells;
+}
+
+function computePersonShift(
+  year: number, month: number,
+  members: Record<string, string>,
+  leaves: LeaveItem[],
+  name: string,
+): { shift: string; ds: string; leaveType?: string }[] {
+  const total = daysInMonth(year, month);
+  const result = [];
+  const memberTeam = Object.entries(members).find(([, v]) => v === name)?.[0];
+
+  for (let d = 1; d <= total; d++) {
+    const ds = dateStr(year, month, d);
+    const idx = ((diffDays(year, month, d) % 20) + 20) % 20;
+    const [s1, s2, s3] = CYCLE_20[idx];
+
+    let shift = "휴무";
+    if (memberTeam === s1) shift = "1근";
+    else if (memberTeam === s2) shift = "2근";
+    else if (memberTeam === s3) shift = "3근";
+
+    let leaveType: string | undefined;
+    for (const lv of leaves) {
+      if (lv.start <= ds && ds <= lv.end) {
+        if (lv.name === name) { shift = "휴가"; leaveType = lv.type; break; }
+        // 다른 사람이 휴가 → 내가 근무중이면 대근
+        const absentTeam = Object.entries(members).find(([, v]) => v === lv.name)?.[0];
+        if (absentTeam && memberTeam && [s1, s2, s3].includes(memberTeam) && absentTeam !== memberTeam) {
+          if ([s1, s2, s3].includes(absentTeam)) { shift = "대근"; break; }
         }
       }
     }
+    result.push({ shift, ds, leaveType });
   }
-
-  let shift = "휴무";
-  if (memberTeam === sh.s1) shift = "1근";
-  else if (memberTeam === sh.s2) shift = "2근";
-  else if (memberTeam === sh.s3) shift = "3근";
-  return { day: d, shift, is2p: false, isToday: ds === todayStr };
+  return result;
 }
 
 export default function AttendancePage() {
   const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth()); // 0-indexed
+  const kstNow = new Date(Date.now() + 9 * 3600000);
+  const todayStr = `${kstNow.getUTCFullYear()}-${String(kstNow.getUTCMonth() + 1).padStart(2, "0")}-${String(kstNow.getUTCDate()).padStart(2, "0")}`;
+
+  const [year, setYear] = useState(kstNow.getUTCFullYear());
+  const [month, setMonth] = useState(kstNow.getUTCMonth());
 
   const [members, setMembers] = useState<Record<string, string>>({});
   const [leaves, setLeaves] = useState<LeaveItem[]>([]);
-  const [selectedName, setSelectedName] = useState("");
+  const [selName, setSelName] = useState("");
   const [admin] = useState(isAdmin);
-  const [showLeaveForm, setShowLeaveForm] = useState(false);
 
-  // leave form
+  // 휴가 등록 폼
+  const [showLvForm, setShowLvForm] = useState(false);
   const [lvName, setLvName] = useState("");
   const [lvType, setLvType] = useState(LEAVE_TYPES[0]);
   const [lvStart, setLvStart] = useState("");
   const [lvEnd, setLvEnd] = useState("");
   const [lvSaving, setLvSaving] = useState(false);
+
+  // 대근/휴가 expander 상태
+  const [expSub, setExpSub] = useState(false);
+  const [expLv, setExpLv] = useState(false);
+  const [expYrLv, setExpYrLv] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -113,11 +164,11 @@ export default function AttendancePage() {
       setMembers(m);
       setLeaves(l);
       const names = Object.values(m);
-      if (names.length && !selectedName) setSelectedName(names[0]);
+      if (names.length) setSelName(n => n || names[0]);
     } catch { toast.error("데이터 로드 실패"); }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
-  useEffect(() => { loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadData(); }, [loadData]);
 
   async function handleAddLeave(e: React.FormEvent) {
     e.preventDefault();
@@ -128,8 +179,8 @@ export default function AttendancePage() {
     try {
       await saveLeaves(next);
       setLeaves(next);
-      toast.success("휴가/대근 등록 완료");
-      setLvName(""); setLvStart(""); setLvEnd(""); setShowLeaveForm(false);
+      toast.success("등록 완료");
+      setLvName(""); setLvStart(""); setLvEnd(""); setShowLvForm(false);
     } catch { toast.error("등록 실패"); }
     finally { setLvSaving(false); }
   }
@@ -146,256 +197,379 @@ export default function AttendancePage() {
   function nextMonth() {
     if (month === 11) { setYear(y => y + 1); setMonth(0); } else setMonth(m => m + 1);
   }
-  function goToday() { setYear(now.getFullYear()); setMonth(now.getMonth()); }
+  function goToday() {
+    setYear(kstNow.getUTCFullYear());
+    setMonth(kstNow.getUTCMonth());
+  }
 
-  const todayStr = dateStr(now.getFullYear(), now.getMonth(), now.getDate());
   const allNames = Object.values(members);
-  const days = daysInMonth(year, month);
-  const fwd  = firstDow(year, month);
+  const cells = buildCells(year, month, members, leaves, todayStr);
+  const personDays = selName ? computePersonShift(year, month, members, leaves, selName) : [];
 
-  // build calendar cells
-  const cells: CellInfo[] = [];
-  for (let d = 1; d <= days; d++) {
-    cells.push(computeCell(year, month, d, members, leaves, selectedName, todayStr));
+  // 선택 근무자 통계
+  const statCounts = { 근무일수: 0, "1근": 0, "2근": 0, "3근": 0, 대근: 0, 휴무: 0, 휴가: 0 };
+  const subDetail: { ds: string; leaveType: string }[] = [];
+  const lvDetail: { ds: string; type: string }[] = [];
+  for (const { shift, ds, leaveType } of personDays) {
+    if (shift === "휴무") statCounts.휴무++;
+    else if (shift === "휴가") { statCounts.휴가++; lvDetail.push({ ds, type: leaveType ?? "" }); }
+    else if (shift === "대근") { statCounts.대근++; statCounts.근무일수++; subDetail.push({ ds, leaveType: leaveType ?? "" }); }
+    else { statCounts.근무일수++; statCounts[shift as "1근" | "2근" | "3근"]++; }
   }
 
-  // monthly stats for selected member
-  const stats = { "근무일수": 0, "1근": 0, "2근": 0, "3근": 0, "대근": 0, "휴무": 0, "휴가": 0 };
-  for (const c of cells) {
-    if (c.shift === "휴무") stats["휴무"]++;
-    else if (c.shift === "휴가") stats["휴가"]++;
-    else if (c.shift === "대근") { stats["대근"]++; stats["근무일수"]++; }
-    else { stats["근무일수"]++; stats[c.shift as "1근" | "2근" | "3근"]++; }
-  }
+  // 연간 휴가 (이번 연도 전체)
+  const yrLeaves = leaves.filter(lv => {
+    if (lv.name !== selName) return false;
+    return lv.start.startsWith(String(year)) || lv.end.startsWith(String(year));
+  });
 
-  // today's shift
-  const todayShift = getShift(now.getFullYear(), now.getMonth(), now.getDate());
-  const todayLeave = leaves.find(lv => lv.start <= todayStr && todayStr <= lv.end);
+  const selTeam = Object.entries(members).find(([, v]) => v === selName)?.[0];
+
+  // 오늘 근무 현황 (전체 달력용)
+  const todayIdx = ((diffDays(
+    kstNow.getUTCFullYear(), kstNow.getUTCMonth(), kstNow.getUTCDate()
+  ) % 20) + 20) % 20;
+  const [t1, t2, t3, tOff] = CYCLE_20[todayIdx];
+
+  const weeks: CalCell[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
   return (
     <AppShell>
-      <div className="max-w-6xl mx-auto pb-8 space-y-4">
+      <div style={{ maxWidth: 1440, margin: "0 auto", paddingBottom: 32 }}>
 
         {/* ── 헤더 행 ── */}
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="kg-page-title">근태관리</h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+          <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>근태관리</h2>
           <button
-            onClick={() => setShowLeaveForm(!showLeaveForm)}
-            className="kg-btn-secondary text-sm"
+            onClick={() => setShowLvForm(!showLvForm)}
+            style={{
+              background: "#fff", color: "#4B2D8E", border: "2px solid #4B2D8E",
+              borderRadius: 8, padding: "5px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+            }}
           >
             휴가/연장 신청서
           </button>
-          <button onClick={() => loadData()} className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-600">
+          <button
+            onClick={() => loadData()}
+            style={{
+              background: "#fff", border: "1px solid #d1d5db",
+              borderRadius: 8, padding: "5px 10px", fontSize: 13, cursor: "pointer",
+            }}
+          >
             🔄
           </button>
         </div>
 
-        {/* ── 휴가/대근 등록 폼 (펼침) ── */}
-        {showLeaveForm && (
-          <div className="kg-card">
-            <p className="font-bold text-sm mb-3" style={{ color: "var(--kg-purple)" }}>휴가/대근 등록</p>
-            <form onSubmit={handleAddLeave} className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {[
-                { label: "이름", content: (
-                  <select value={lvName} onChange={e => setLvName(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4B2D8E]">
-                    <option value="">선택</option>
-                    {allNames.map(n => <option key={n}>{n}</option>)}
-                  </select>
-                )},
-                { label: "구분", content: (
-                  <select value={lvType} onChange={e => setLvType(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4B2D8E]">
-                    {LEAVE_TYPES.map(t => <option key={t}>{t}</option>)}
-                  </select>
-                )},
-                { label: "시작일", content: (
-                  <input type="date" value={lvStart} onChange={e => setLvStart(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4B2D8E]" />
-                )},
-                { label: "종료일", content: (
-                  <input type="date" value={lvEnd} onChange={e => setLvEnd(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4B2D8E]" />
-                )},
-              ].map(({ label, content }) => (
-                <div key={label} className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-gray-500">{label}</label>
-                  {content}
-                </div>
-              ))}
-              <div className="col-span-2 sm:col-span-4 flex gap-2">
-                <button type="submit" disabled={lvSaving} className="kg-btn-primary flex-1">
+        {/* ── 휴가 등록 폼 ── */}
+        {showLvForm && (
+          <div style={{
+            background: "#fff", border: "1px solid #e8e0f0", borderRadius: 12,
+            padding: 16, marginBottom: 14, boxShadow: "0 2px 8px rgba(75,45,142,0.08)",
+          }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: "#4B2D8E", marginBottom: 10 }}>
+              휴가/대근 등록
+            </p>
+            <form onSubmit={handleAddLeave}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 10 }}>
+                {[
+                  { label: "대상자", el: (
+                    <select value={lvName} onChange={e => setLvName(e.target.value)}
+                      style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 13 }}>
+                      <option value="">선택</option>
+                      {allNames.map(n => <option key={n}>{n}</option>)}
+                    </select>
+                  )},
+                  { label: "구분", el: (
+                    <select value={lvType} onChange={e => setLvType(e.target.value)}
+                      style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 13 }}>
+                      {LEAVE_TYPES.map(t => <option key={t}>{t}</option>)}
+                    </select>
+                  )},
+                  { label: "시작일", el: (
+                    <input type="date" value={lvStart} onChange={e => setLvStart(e.target.value)}
+                      style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 13 }} />
+                  )},
+                  { label: "종료일", el: (
+                    <input type="date" value={lvEnd} onChange={e => setLvEnd(e.target.value)}
+                      style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 13 }} />
+                  )},
+                ].map(({ label, el }) => (
+                  <div key={label}>
+                    <label style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, display: "block", marginBottom: 4 }}>{label}</label>
+                    {el}
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="submit" disabled={lvSaving}
+                  style={{ flex: 1, background: "linear-gradient(135deg,#4B2D8E,#6B3FA0)", color: "#fff", border: "none", borderRadius: 8, padding: "7px 0", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
                   {lvSaving ? "등록 중..." : "등록"}
                 </button>
-                <button type="button" onClick={() => setShowLeaveForm(false)} className="kg-btn-secondary flex-1">취소</button>
+                <button type="button" onClick={() => setShowLvForm(false)}
+                  style={{ flex: 1, background: "#fff", color: "#4B2D8E", border: "2px solid #4B2D8E", borderRadius: 8, padding: "7px 0", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                  취소
+                </button>
               </div>
             </form>
           </div>
         )}
 
-        {/* ── 2컬럼 레이아웃: 좌=통계 / 우=달력 ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* ── 2컬럼 레이아웃 ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "start" }}>
 
           {/* ── 좌: 근무 통계 ── */}
-          <div className="kg-card flex flex-col gap-3">
-            {/* 제목 + 직원 선택 */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <span style={{ fontSize: 18, fontWeight: 700, color: "#7B2FBE", whiteSpace: "nowrap" }}>
-                {year}년 {month + 1}월 근무 통계
-              </span>
-              {allNames.length > 0 && (
-                <select value={selectedName} onChange={e => setSelectedName(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#4B2D8E]">
+          <div style={{
+            background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb",
+            boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "14px 14px 18px", minHeight: 300,
+          }}>
+            {/* 제목 */}
+            <span style={{ fontSize: 18, fontWeight: 700, color: "#7B2FBE", whiteSpace: "nowrap" }}>
+              {year}년 {month + 1}월 근무 통계
+            </span>
+
+            {/* 근무자 선택 */}
+            {allNames.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <select
+                  value={selName}
+                  onChange={e => setSelName(e.target.value)}
+                  style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 10px", fontSize: 13, width: "100%" }}
+                >
                   {allNames.map(n => {
                     const team = Object.entries(members).find(([, v]) => v === n)?.[0];
                     return <option key={n} value={n}>{n} ({team ?? "?"}조)</option>;
                   })}
                 </select>
+              </div>
+            )}
+
+            {/* 선택 근무자 요약 */}
+            {selName && (
+              <h4 style={{ fontSize: 15, fontWeight: 700, color: "#1f2937", marginTop: 12, marginBottom: 8 }}>
+                {selName} ({selTeam ?? "?"}조) — {year}년 {month + 1}월
+              </h4>
+            )}
+
+            {/* 대근 내역 */}
+            <div style={{ marginBottom: 6 }}>
+              {subDetail.length === 0 ? (
+                <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>대근 없음</p>
+              ) : (
+                <div>
+                  <button
+                    onClick={() => setExpSub(!expSub)}
+                    style={{ background: "none", border: "none", fontSize: 13, fontWeight: 600, color: "#4B2D8E", cursor: "pointer", padding: 0 }}
+                  >
+                    {expSub ? "▼" : "▶"} 대근 내역 ({statCounts.대근}회)
+                  </button>
+                  {expSub && (
+                    <div style={{ paddingLeft: 14, marginTop: 4 }}>
+                      {subDetail.map(({ ds }) => (
+                        <p key={ds} style={{ fontSize: 12, color: "#374151", margin: "2px 0" }}>{ds} 대근</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
-            {/* 메트릭 그리드 */}
-            <div className="grid grid-cols-4 gap-2">
+            {/* 이번 달 휴가 내역 */}
+            <div style={{ marginBottom: 6 }}>
+              {lvDetail.length === 0 ? (
+                <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>이번달 휴가 없음</p>
+              ) : (
+                <div>
+                  <button
+                    onClick={() => setExpLv(!expLv)}
+                    style={{ background: "none", border: "none", fontSize: 13, fontWeight: 600, color: "#4B2D8E", cursor: "pointer", padding: 0 }}
+                  >
+                    {expLv ? "▼" : "▶"} {month + 1}월 휴가 내역 ({statCounts.휴가}일)
+                  </button>
+                  {expLv && (
+                    <div style={{ paddingLeft: 14, marginTop: 4 }}>
+                      {lvDetail.map(({ ds, type }) => (
+                        <p key={ds} style={{ fontSize: 12, color: "#374151", margin: "2px 0" }}>{ds}: {type}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 연간 휴가 */}
+            {yrLeaves.length > 0 && (
+              <div style={{ marginBottom: 6 }}>
+                <button
+                  onClick={() => setExpYrLv(!expYrLv)}
+                  style={{ background: "none", border: "none", fontSize: 13, fontWeight: 600, color: "#4B2D8E", cursor: "pointer", padding: 0 }}
+                >
+                  {expYrLv ? "▼" : "▶"} {year}년 전체 휴가 ({yrLeaves.length}건)
+                </button>
+                {expYrLv && (
+                  <div style={{ paddingLeft: 14, marginTop: 4 }}>
+                    {yrLeaves.map((lv, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                        <span style={{ fontSize: 12, color: "#374151" }}>{lv.start} ~ {lv.end}: {lv.type}</span>
+                        {admin && (
+                          <button onClick={() => handleDeleteLeave(lv)}
+                            style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 14, fontWeight: 700, padding: "0 2px" }}>
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <hr style={{ border: "none", borderTop: "1px solid #e5e7eb", margin: "12px 0" }} />
+
+            {/* 오늘 근무 현황 */}
+            <p style={{ fontSize: 12, fontWeight: 700, color: "#4B2D8E", margin: "0 0 6px" }}>오늘 근무 현황</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
               {[
-                { label: "근무일수", value: stats["근무일수"] },
-                { label: "1근",      value: stats["1근"] },
-                { label: "2근",      value: stats["2근"] },
-                { label: "3근",      value: stats["3근"] },
-                { label: "대근",     value: stats["대근"] },
-                { label: "휴무",     value: stats["휴무"] },
-                { label: "휴가",     value: stats["휴가"] },
-              ].map(({ label, value }) => (
-                <div key={label} className="kg-metric">
-                  <div className="kg-metric-label">{label}</div>
-                  <div className="kg-metric-value">{value}</div>
+                { label: "1근", color: "#1565C0", name: members[t1] ?? t1 },
+                { label: "2근", color: "#2E7D32", name: members[t2] ?? t2 },
+                { label: "3근", color: "#C62828", name: members[t3] ?? t3 },
+                { label: "휴무", color: "#9E9E9E", name: members[tOff] ?? tOff },
+              ].map(({ label, color, name }) => (
+                <div key={label} style={{
+                  display: "flex", alignItems: "center", gap: 6, fontSize: 12,
+                  background: "#f9fafb", borderRadius: 8, padding: "6px 10px",
+                }}>
+                  <span style={{
+                    background: color, color: "#fff", borderRadius: 4,
+                    padding: "1px 6px", fontSize: 10, fontWeight: 700,
+                  }}>{label}</span>
+                  <span style={{ color: "#374151", fontWeight: 500 }}>{name}</span>
                 </div>
               ))}
             </div>
 
-            <hr className="kg-divider" />
-
-            {/* 오늘 근무 현황 */}
-            <div>
-              <p className="text-xs font-bold mb-2" style={{ color: "var(--kg-purple)" }}>오늘 근무 현황</p>
-              {todayLeave ? (
-                <div className="kg-warning text-xs">
-                  2인 근무 — <b>{todayLeave.name}</b> {todayLeave.type}
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-1.5 text-xs">
-                  {[
-                    { label: "1근", name: members[todayShift.s1] ?? todayShift.s1 },
-                    { label: "2근", name: members[todayShift.s2] ?? todayShift.s2 },
-                    { label: "3근", name: members[todayShift.s3] ?? todayShift.s3 },
-                    { label: "휴무", name: `${members[todayShift.off] ?? todayShift.off} (${todayShift.offType})` },
-                  ].map(({ label, name }) => (
-                    <div key={label} className="flex items-center gap-1.5 bg-gray-50 rounded-lg px-2 py-1.5">
-                      <span className="w-8 text-center text-white text-[10px] font-bold rounded py-0.5"
-                        style={{ background: SHIFT_COLORS[label]?.bg ?? "#9E9E9E" }}>{label}</span>
-                      <span className="text-gray-700 font-medium">{name}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <hr className="kg-divider" />
-
-            {/* 등록된 휴가/대근 */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-bold" style={{ color: "var(--kg-purple)" }}>등록된 휴가/대근</p>
-              </div>
-              {leaves.length === 0 ? (
-                <p className="text-xs text-gray-400">등록된 내역이 없습니다.</p>
-              ) : (
-                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+            {/* 등록된 휴가/대근 목록 */}
+            {leaves.length > 0 && (
+              <>
+                <hr style={{ border: "none", borderTop: "1px solid #e5e7eb", margin: "12px 0" }} />
+                <p style={{ fontSize: 12, fontWeight: 700, color: "#4B2D8E", margin: "0 0 6px" }}>등록된 휴가/대근</p>
+                <div style={{ maxHeight: 140, overflowY: "auto" }}>
                   {leaves.map((lv, i) => (
-                    <div key={i} className="flex items-center gap-2 text-xs bg-gray-50 rounded-lg px-3 py-1.5">
-                      <span className="font-semibold text-gray-800 min-w-[40px]">{lv.name}</span>
-                      <span className="px-1.5 py-0.5 rounded text-white text-[10px] font-bold"
-                        style={{ background: "#F57F17" }}>{lv.type}</span>
-                      <span className="text-gray-500 flex-1">
-                        {lv.start}{lv.start !== lv.end ? ` ~ ${lv.end}` : ""}
-                      </span>
+                    <div key={i} style={{
+                      display: "flex", alignItems: "center", gap: 6, fontSize: 12,
+                      background: "#f9fafb", borderRadius: 8, padding: "5px 10px", marginBottom: 4,
+                    }}>
+                      <span style={{ fontWeight: 600, color: "#1f2937", minWidth: 40 }}>{lv.name}</span>
+                      <span style={{ background: "#F57F17", color: "#fff", borderRadius: 4, padding: "1px 5px", fontSize: 10, fontWeight: 700 }}>{lv.type}</span>
+                      <span style={{ color: "#6b7280", flex: 1 }}>{lv.start}{lv.start !== lv.end ? ` ~ ${lv.end}` : ""}</span>
                       {admin && (
                         <button onClick={() => handleDeleteLeave(lv)}
-                          className="text-red-400 hover:text-red-600 font-bold text-sm leading-none">×</button>
+                          style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 15, fontWeight: 700, padding: "0 2px" }}>
+                          ×
+                        </button>
                       )}
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
+              </>
+            )}
           </div>
 
           {/* ── 우: 달력 ── */}
-          <div className="kg-card">
-            {/* 월 네비게이션 */}
-            <div className="flex items-center gap-2 mb-3">
+          <div style={{
+            background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb",
+            boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "14px 14px 18px",
+          }}>
+            {/* 네비게이션 */}
+            <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 8 }}>
               <button onClick={prevMonth}
-                className="w-8 h-8 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 text-base font-bold">❮</button>
-              <button onClick={nextMonth}
-                className="w-8 h-8 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 text-base font-bold">❯</button>
-              <span className="flex-1 text-center font-bold text-gray-800">
+                style={{ width: 32, height: 32, border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>
+                ❮
+              </button>
+              <button
+                style={{ flex: 1, border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", cursor: "pointer", fontSize: 15, fontWeight: 700, padding: "4px 0" }}>
                 {year}년 {month + 1}월
-              </span>
+              </button>
+              <button onClick={nextMonth}
+                style={{ width: 32, height: 32, border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>
+                ❯
+              </button>
+              <div style={{ width: 32 }} />
               <button onClick={goToday}
-                className="text-xs border border-gray-300 rounded-lg px-3 py-1 hover:bg-gray-50 text-gray-600">오늘</button>
+                style={{ border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", cursor: "pointer", fontSize: 13, padding: "4px 12px" }}>
+                오늘
+              </button>
             </div>
 
             {/* 요일 헤더 */}
-            <div className="grid grid-cols-7 mb-1 rounded-t-lg overflow-hidden"
-              style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderBottom: "2px solid #d1d5db" }}>
+            <div style={{
+              display: "flex", background: "#f9fafb",
+              borderRadius: "8px 8px 0 0", border: "1px solid #e5e7eb", borderBottom: "2px solid #d1d5db",
+            }}>
               {["일","월","화","수","목","금","토"].map((d, i) => (
-                <div key={d} className="text-center py-2 text-xs font-bold"
-                  style={{ color: i === 0 ? "#E53935" : i === 6 ? "#1565C0" : "#424242" }}>{d}</div>
-              ))}
-            </div>
-
-            {/* 날짜 셀 */}
-            <div className="grid grid-cols-7 gap-px" style={{ background: "#e5e7eb" }}>
-              {/* 이전 달 빈 셀 */}
-              {Array.from({ length: fwd }).map((_, i) => (
-                <div key={`e${i}`} className="bg-gray-50 min-h-[52px] p-1">
-                  <span className="text-xs text-gray-300">
-                    {new Date(year, month, 0).getDate() - fwd + 1 + i}
-                  </span>
+                <div key={d} style={{
+                  flex: 1, textAlign: "center", padding: "9px 2px 8px",
+                  fontSize: 13, fontWeight: 700,
+                  color: i === 0 ? "#E53935" : i === 6 ? "#1565C0" : "#424242",
+                }}>
+                  {d}
                 </div>
               ))}
-              {/* 실제 날짜 */}
-              {cells.map((cell) => {
-                const dow = new Date(year, month, cell.day).getDay();
-                const sc = SHIFT_COLORS[cell.shift] ?? { bg: "#9E9E9E", text: "#fff" };
-                return (
-                  <div key={cell.day}
-                    className="bg-white min-h-[52px] p-1 flex flex-col items-center"
-                    style={cell.isToday ? { background: "#f3f0ff", outline: "2px solid #4B2D8E", outlineOffset: -2 } : {}}>
-                    <span className="text-xs font-semibold"
-                      style={{ color: dow === 0 ? "#E53935" : dow === 6 ? "#1565C0" : "#333" }}>
-                      {cell.day}
-                    </span>
-                    <span className="mt-0.5 px-1 py-0.5 rounded text-[10px] font-bold w-full text-center"
-                      style={{ background: sc.bg, color: sc.text }}>
-                      {cell.shift}
-                    </span>
-                    {cell.leaveType && (
-                      <span className="mt-0.5 text-[9px] text-amber-600 truncate w-full text-center leading-none">
-                        {cell.leaveType}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
             </div>
 
-            {/* 범례 */}
-            <div className="flex flex-wrap gap-2 mt-3">
-              {Object.entries(SHIFT_COLORS).map(([k, v]) => (
-                <span key={k} className="flex items-center gap-1 text-xs text-gray-600">
-                  <span className="w-3 h-3 rounded-sm inline-block" style={{ background: v.bg }} />
-                  {k}
-                </span>
+            {/* 달력 주별 렌더링 */}
+            <div style={{ borderLeft: "1px solid #e5e7eb" }}>
+              {weeks.map((week, wi) => (
+                <div key={wi} style={{ display: "flex", background: "#fff", borderLeft: "none" }}>
+                  {week.map((cell, ci) => {
+                    if (cell.type === "dim") {
+                      return (
+                        <div key={ci} style={{
+                          flex: 1, minHeight: 90, padding: "5px 6px",
+                          background: "#f9fafb", borderRight: "1px solid #e5e7eb", borderBottom: "1px solid #e5e7eb",
+                        }}>
+                          <div style={{ fontSize: 16, fontWeight: 600, color: "#d1d5db" }}>{cell.day}</div>
+                        </div>
+                      );
+                    }
+                    const dow = cell.dow ?? 0;
+                    const isWeekend = dow === 0 || dow === 6;
+                    const dateColor = dow === 0 ? "#E53935" : dow === 6 ? "#1565C0" : "#1f2937";
+                    const bg = cell.isToday ? "#EFF6FF" : "#fff";
+
+                    return (
+                      <div key={ci} style={{
+                        flex: 1, minHeight: 115, padding: "4px 2px 3px",
+                        background: bg, borderRight: "1px solid #e5e7eb", borderBottom: "1px solid #e5e7eb",
+                        textAlign: "center",
+                      }}>
+                        {/* 날짜 숫자 */}
+                        <div style={{ lineHeight: 1, marginTop: 2, marginBottom: 2 }}>
+                          {cell.isToday ? (
+                            <span style={{
+                              display: "inline-flex", alignItems: "center", justifyContent: "center",
+                              background: "#1f2937", color: "#fff", borderRadius: "50%",
+                              width: 36, height: 36, fontSize: 18, fontWeight: 900,
+                            }}>{cell.day}</span>
+                          ) : (
+                            <span style={{ fontSize: 32, color: dateColor, fontWeight: 800, lineHeight: 1 }}>{cell.day}</span>
+                          )}
+                        </div>
+
+                        {/* 근무 슬롯 (조 문자) */}
+                        <div style={{ display: "flex", justifyContent: "center", gap: 3, flexWrap: "wrap", marginTop: 2 }}>
+                          {(cell.slots ?? []).map((slot, si) => (
+                            <span key={si} style={{
+                              color: slot.color, fontSize: 13, fontWeight: 700, lineHeight: 1.4,
+                            }}>
+                              {slot.label}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               ))}
             </div>
           </div>
