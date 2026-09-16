@@ -5018,7 +5018,7 @@ def page_inventory():
                 return ""
             try:
                 _t = _dt_mod.datetime.fromisoformat(str(reg_str).replace("T", " ")[:19])
-                if (_now_kst - _t).total_seconds() <= 3600:
+                if (_now_kst - _t).total_seconds() <= 28800:
                     return f'<span style="color:#e53935;font-weight:600">{reg_str[:16]}</span>'
             except Exception:
                 pass
