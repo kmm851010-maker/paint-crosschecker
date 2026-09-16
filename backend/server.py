@@ -1136,7 +1136,10 @@ async def export_worklog_excel(year: int, month: int, day: int = 0):
     buf = io.BytesIO()
     wb.save(buf)
     encoded = base64.b64encode(buf.getvalue()).decode()
-    return {"success": True, "data": encoded, "count": added}
+    import os
+    team = os.environ.get("TEAM_NAME", "")
+    filename = f"{year}{month:02d}{team}_작업일지.xlsx"
+    return {"success": True, "data": encoded, "count": added, "filename": filename}
 
 
 # ═══════════════════════════════════════════════════════════════════

@@ -257,7 +257,7 @@ export default function WorklogPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${y}년${m}월_작업일지.xlsx`;
+      a.download = res.filename ?? `${y}년${m}월_작업일지.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success(`${y}년 ${m}월 작업일지 다운로드 완료 (${res.count}일)`);
