@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import {
   parsePlan, crossCheckMulti, exportExcelMulti,
   generateIncomingExcel, registerDrums, planConversion, erpFill,
-  DrumItem, SECTORS,
+  DrumItem, SECTORS, MAKERS,
 } from "@/lib/api";
 import { fileToBase64, downloadBase64 } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -844,7 +844,7 @@ const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완�
                         />
                       </td>
                       <td className="py-1.5 px-3 font-mono text-xs font-medium">{r.색상코드}</td>
-                      <td className="py-1.5 px-3 text-xs text-gray-600">{r.제조사 || "-"}</td>
+                      <td className="py-1.5 px-3 text-xs text-gray-600">{r.제조사 || MAKERS[r.색상코드?.[0] ?? ""] || "-"}</td>
                       <td className="py-1.5 px-3 text-xs text-center">{r.입고수량}</td>
                       <td className="py-1.5 px-3">
                         <span className={cn("text-xs px-2 py-0.5 rounded font-medium", statusColor(r.상태))}>
