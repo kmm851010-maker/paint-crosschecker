@@ -233,7 +233,6 @@ export default function AttendancePage() {
   const [selName, setSelName] = useState("");
   const [admin] = useState(isAdmin);
   const currentUser = getAuth();
-  const isRegularUser = !admin;
 
   // 모달 상태
   const [showLvDlg, setShowLvDlg] = useState(false);
@@ -272,8 +271,8 @@ export default function AttendancePage() {
       if (names.length) {
         setSelName(prev => {
           if (prev) return prev;
-          // 일반 직원: 자기 이름으로 고정
-          if (currentUser && currentUser.role !== "admin") {
+          // 본인 이름이 멤버 목록에 있으면 자동 고정
+          if (currentUser) {
             const myName = names.find(n => n === currentUser.name);
             if (myName) return myName;
           }
@@ -403,7 +402,7 @@ export default function AttendancePage() {
             {/* 근무자 선택 */}
             {allNames.length > 0 && (
               <div style={{ marginTop: 10 }}>
-                {isRegularUser ? (
+                {currentUser && allNames.includes(currentUser.name) ? (
                   <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 10px", fontSize: 13, background: "#f9fafb", color: "#374151", fontWeight: 600 }}>
                     {selName}{selTeam ? ` (${selTeam}조)` : ""}
                   </div>

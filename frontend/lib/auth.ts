@@ -26,5 +26,5 @@ export function clearAuth() {
 
 export function isAdmin(): boolean {
   const u = getAuth();
-  return u?.role === "admin" || u?.employee_id === "admin";
+  return u?.employee_id === "admin";
 }
