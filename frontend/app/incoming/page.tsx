@@ -288,7 +288,7 @@ function ConversionDialog({
           )}
           {result && (
             <span className="text-xs text-gray-400 ml-auto">
-              변환 결과 ({rows.length}행 × {headers.length}열)
+              변환 결과 ({displayRows.length}행 × {headers.length}열)
             </span>
           )}
         </div>
