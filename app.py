@@ -4759,7 +4759,7 @@ def page_inventory():
             st.rerun()
 
     _half_hours = [f"{h:02d}:{m:02d}" for h in range(24) for m in (0, 30)]
-    _is_admin_inv = st.session_state.get("user_role", "admin") == "admin"
+    _is_admin_inv = st.session_state.get("username") == "admin"
     _tab_names = ["섹터별 현황", "날짜별 이력"] + (["대량 등록"] if _is_admin_inv else [])
     _tabs_inv = st.tabs(_tab_names)
     _tab_sector = _tabs_inv[0]
