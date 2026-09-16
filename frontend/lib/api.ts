@@ -183,6 +183,11 @@ export async function saveWorklog(payload: {
   return data;
 }
 
+export async function exportWorklogExcel(year: number, month: number): Promise<{ data: string; count: number }> {
+  const { data } = await api.get("/api/worklog/export", { params: { year, month }, timeout: 60000 });
+  return data;
+}
+
 // ── Leaves ──
 export async function getLeaves() {
   const { data } = await api.get("/api/leaves");

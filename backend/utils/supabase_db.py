@@ -223,6 +223,27 @@ def load_daily_detail_month(year: int, month: int) -> dict:
     return {r["date"]: r["data"] for r in (res.data or [])}
 
 
+def load_work_items_month(year: int, month: int) -> dict:
+    """특정 연월의 work_items 전체를 {date_str: [items]} 형태로 반환."""
+    import calendar as _cal
+    last_day = _cal.monthrange(year, month)[1]
+    start = f"{year}-{month:02d}-01"
+    end = f"{year}-{month:02d}-{last_day:02d}"
+    res = _sb().table("work_items").select("*").gte("date", start).lte("date", end).execute()
+    result: dict = {}
+    for r in (res.data or []):
+        d = r["date"]
+        if d not in result:
+            result[d] = []
+        result[d].append({
+            "name": r["name"],
+            "s1": r["s1"] or 0, "s2": r["s2"] or 0, "s3": r["s3"] or 0,
+            "day": r["day_work"] or 0, "night": r["night"] or 0,
+            "total": r["total"] or 0, "month_total": r["month_total"] or 0,
+        })
+    return result
+
+
 def load_daily_detail(date_str: str) -> dict | None:
     res = _sb().table("daily_detail").select("data").eq("date", date_str).limit(1).execute()
     return res.data[0]["data"] if res.data else None

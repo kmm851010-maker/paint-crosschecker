@@ -539,6 +539,220 @@ async def save_worklog(req: SaveWorklogRequest):
     return {"success": True}
 
 
+_WORKLOG_ITEM_NAMES = [
+    "페인트 하차 수량", "페인트 공급 수량", "재고 페인트 창고 입고",
+    "AGV 입/출고 작업 수량",
+    "신나 하차 수량", "신나 공급 수량", "크롬 공급 수량",
+    "공드럼 운반 수량", "페보루 운반 수량", "페신너 운반 및 상차",
+    "반품 , 불량 페인트 수량", "코터롤 운반 횟수", "필름 하차, 장소 이동 횟수",
+]
+
+
+def _build_worklog_sheet(ws, selected_date, shift_data: dict, work_items: list, safety_items: list, note_text: str):
+    """워크시트에 일일 작업일지를 채운다 (10컬럼 A-J). Streamlit _fill_work_log_sheet 동일 포맷."""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    font_title = Font(name="맑은 고딕", size=18, bold=True, underline="single")
+    font_date  = Font(name="맑은 고딕", size=11, bold=True)
+    font_sec   = Font(name="맑은 고딕", size=11, bold=True)
+    font_hdr   = Font(name="맑은 고딕", size=9, bold=True)
+    font_body  = Font(name="맑은 고딕", size=9)
+    font_bold  = Font(name="맑은 고딕", size=9, bold=True)
+    fill_gray  = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+    _t = Side(style="thin", color="000000")
+    thin = Border(left=_t, right=_t, top=_t, bottom=_t)
+    align_c  = Alignment(horizontal="center", vertical="center")
+    align_cw = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    for col, w in zip("ABCDEFGHIJ", [9, 5, 13, 9, 9, 9, 9, 9, 9, 10]):
+        ws.column_dimensions[col].width = w
+
+    # 제목
+    ws.row_dimensions[2].height = 32
+    ws.merge_cells("A2:J2")
+    import os
+    team = os.environ.get("TEAM_NAME", "")
+    ws["A2"] = f"{team} 일일 업무 보고" if team else "일일 업무 보고"
+    ws["A2"].font, ws["A2"].alignment = font_title, align_c
+
+    # 날짜
+    ws.merge_cells("H4:J4")
+    ws["H4"] = selected_date.strftime("%Y년 %m월 %d일")
+    ws["H4"].font = font_date
+    ws["H4"].alignment = Alignment(horizontal="right", vertical="center")
+
+    # 1. 인원 현황
+    ws["A5"] = "1. 인원 현황"
+    ws["A5"].font = font_sec
+    for pos, txt in [("A6","구분"),("B6","조"),("C6","근무시간"),("D6","근무자"),("E6","휴무자"),("F6","연장근무")]:
+        ws[pos] = txt
+        ws[pos].font, ws[pos].fill, ws[pos].alignment, ws[pos].border = font_hdr, fill_gray, align_c, thin
+    ws.merge_cells("G6:J6")
+    ws["G6"] = "비고"
+    ws["G6"].font, ws["G6"].fill, ws["G6"].alignment, ws["G6"].border = font_hdr, fill_gray, align_c, thin
+    for c in "HIJ":
+        ws[f"{c}6"].fill, ws[f"{c}6"].border = fill_gray, thin
+
+    if shift_data.get("is_2person"):
+        rows_1 = [
+            ("주간", shift_data.get("주간_조", shift_data.get("1근_조","")), "06:30 – 18:30",
+             shift_data.get("주간_근무자", shift_data.get("1근_근무자","")), "", shift_data.get("1근_연장",""), shift_data.get("1근_비고","")),
+            ("야간", shift_data.get("야간_조", shift_data.get("2근_조","")), "18:30 – 06:30",
+             shift_data.get("야간_근무자", shift_data.get("2근_근무자","")), "", shift_data.get("2근_연장",""), shift_data.get("2근_비고","")),
+            ("휴무", "", "", "", shift_data.get("3근_근무자",""), "", shift_data.get("3근_비고","")),
+            ("휴무", shift_data.get("휴무_조",""), "", "", shift_data.get("휴무_근무자",""), "", shift_data.get("휴무_구분",""))
+        ]
+    else:
+        rows_1 = [
+            ("1근", shift_data.get("1근_조",""), "06:30 – 14:30", shift_data.get("1근_근무자",""), "", shift_data.get("1근_연장",""), shift_data.get("1근_비고","")),
+            ("2근", shift_data.get("2근_조",""), "14:30 – 22:30", shift_data.get("2근_근무자",""), "", shift_data.get("2근_연장",""), shift_data.get("2근_비고","")),
+            ("3근", shift_data.get("3근_조",""), "22:30 – 06:30", shift_data.get("3근_근무자",""), "", shift_data.get("3근_연장",""), shift_data.get("3근_비고","")),
+            ("휴무", shift_data.get("휴무_조",""), "", "", shift_data.get("휴무_근무자",""), "", shift_data.get("휴무_구분",""))
+        ]
+    for ri, r in enumerate(rows_1, start=7):
+        ws.row_dimensions[ri].height = 28
+        for ci, val in zip("ABCDEF", r[:6]):
+            if ci == "F" and val == 0:
+                val = ""
+            ws[f"{ci}{ri}"] = val
+            ws[f"{ci}{ri}"].font  = font_body
+            ws[f"{ci}{ri}"].border = thin
+            ws[f"{ci}{ri}"].alignment = align_cw if ci == "C" else align_c
+        ws.merge_cells(f"G{ri}:J{ri}")
+        ws[f"G{ri}"] = r[6]
+        for c in "GHIJ":
+            ws[f"{c}{ri}"].font, ws[f"{c}{ri}"].border = font_body, thin
+        ws[f"G{ri}"].alignment = align_c
+
+    # 2. 업무 현황
+    ws["A12"] = "2. 업무 현황"
+    ws["A12"].font = font_sec
+    ws.merge_cells("A13:C13")
+    ws["A13"] = "작업 내용"
+    ws["A13"].font, ws["A13"].fill, ws["A13"].alignment, ws["A13"].border = font_hdr, fill_gray, align_c, thin
+    for c in "BC":
+        ws[f"{c}13"].fill, ws[f"{c}13"].border = fill_gray, thin
+    for col_l, hdr in zip("DEFGHIJ", ["1근","2근","3근","주간","야간","합계","월합계"]):
+        ws[f"{col_l}13"] = hdr
+        ws[f"{col_l}13"].font, ws[f"{col_l}13"].fill, ws[f"{col_l}13"].alignment, ws[f"{col_l}13"].border = font_hdr, fill_gray, align_c, thin
+
+    # work_items: 이름 → dict 변환
+    item_map = {it["name"]: it for it in (work_items or [])}
+    for wi, name in enumerate(_WORKLOG_ITEM_NAMES, start=14):
+        it = item_map.get(name, {})
+        ws.row_dimensions[wi].height = 20
+        ws.merge_cells(f"A{wi}:C{wi}")
+        ws[f"A{wi}"] = name
+        ws[f"A{wi}"].font, ws[f"A{wi}"].alignment, ws[f"A{wi}"].border = font_bold, align_c, thin
+        for c in "BC":
+            ws[f"{c}{wi}"].border = thin
+        ws[f"D{wi}"] = it.get("s1") or ""
+        ws[f"E{wi}"] = it.get("s2") or ""
+        ws[f"F{wi}"] = it.get("s3") or ""
+        ws[f"G{wi}"] = it.get("day") or ""
+        ws[f"H{wi}"] = it.get("night") or ""
+        for c in "DEFGH":
+            ws[f"{c}{wi}"].font, ws[f"{c}{wi}"].alignment, ws[f"{c}{wi}"].border = font_body, align_c, thin
+        ws[f"I{wi}"] = f"=SUM(D{wi}:H{wi})"
+        ws[f"I{wi}"].font, ws[f"I{wi}"].alignment, ws[f"I{wi}"].border = font_bold, align_c, thin
+        ws[f"J{wi}"] = it.get("month_total") or 0
+        ws[f"J{wi}"].font, ws[f"J{wi}"].alignment, ws[f"J{wi}"].border = font_body, align_c, thin
+
+    # 3. 안전 관리 사항
+    ws["A27"] = "3. 안전 관리 사항"
+    ws["A27"].font = font_sec
+    ws.merge_cells("A28:E28")
+    for c in "ABCDE":
+        ws[f"{c}28"].fill, ws[f"{c}28"].border = fill_gray, thin
+    for pos, txt in [("F28","1근"),("G28","2근"),("H28","3근"),("I28","주간"),("J28","야간")]:
+        ws[pos] = txt
+        ws[pos].font, ws[pos].fill, ws[pos].alignment, ws[pos].border = font_hdr, fill_gray, align_c, thin
+
+    align_safety = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    for si, s_row in enumerate(safety_items or [], start=29):
+        ws.row_dimensions[si].height = 34
+        ws.merge_cells(f"A{si}:E{si}")
+        ws[f"A{si}"] = s_row.get("text", "")
+        ws[f"A{si}"].font, ws[f"A{si}"].alignment, ws[f"A{si}"].border = font_bold, align_safety, thin
+        for c in "BCDE":
+            ws[f"{c}{si}"].border = thin
+        for pc, key in [("F","s1"),("G","s2"),("H","s3"),("I","day"),("J","night")]:
+            cell = ws[f"{pc}{si}"]
+            cell.value = "☑" if s_row.get(key) else "□"
+            cell.font = Font(name="맑은 고딕", size=10)
+            cell.alignment, cell.border = align_c, thin
+
+    # 4. 특이 사항
+    ws["A36"] = "4. 특이 사항"
+    ws["A36"].font = font_sec
+    ws.merge_cells("A37:J41")
+    ws["A37"] = note_text or ""
+    ws["A37"].font = font_body
+    ws["A37"].alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
+    for r in range(37, 42):
+        for c_idx in range(1, 11):
+            cl = get_column_letter(c_idx)
+            ws[f"{cl}{r}"].border = Border(
+                top=_t if r == 37 else Side(),
+                bottom=_t if r == 41 else Side(),
+                left=_t if c_idx == 1 else Side(),
+                right=_t if c_idx == 10 else Side()
+            )
+
+
+@app.get("/api/worklog/export")
+async def export_worklog_excel(year: int, month: int):
+    """월간 작업일지 Excel 생성. base64 인코딩으로 반환."""
+    import io
+    import base64
+    import calendar as _cal
+    import datetime as _dt
+    import openpyxl
+    from utils.supabase_db import (
+        load_daily_detail_month, load_work_items_month,
+        get_members_dict, get_shift_info, apply_leaves, load_leaves,
+    )
+
+    detail_by_date = load_daily_detail_month(year, month)
+    work_by_date = load_work_items_month(year, month)
+    members = get_members_dict()
+    leave_list = load_leaves()
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+
+    last_day = _cal.monthrange(year, month)[1]
+    added = 0
+    for day in range(1, last_day + 1):
+        date_obj = _dt.date(year, month, day)
+        date_str = date_obj.strftime("%Y-%m-%d")
+        detail = detail_by_date.get(date_str) or {}
+        shift = detail.get("shift") or {}
+        if not shift:
+            shift = get_shift_info(date_obj, members)
+            shift = apply_leaves(shift, date_obj, leave_list)
+        ws_new = wb.create_sheet(title=f"{month}월{day}일")
+        _build_worklog_sheet(
+            ws_new, date_obj,
+            shift,
+            work_by_date.get(date_str, []),
+            detail.get("safety") or [],
+            detail.get("note") or "",
+        )
+        added += 1
+
+    if added == 0:
+        ws_empty = wb.create_sheet(title="데이터없음")
+        ws_empty["A1"] = "저장된 작업일지가 없습니다."
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    encoded = base64.b64encode(buf.getvalue()).decode()
+    return {"success": True, "data": encoded, "count": added}
+
+
 # ═══════════════════════════════════════════════════════════════════
 # 휴가/대근
 # ═══════════════════════════════════════════════════════════════════
