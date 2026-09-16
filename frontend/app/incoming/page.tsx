@@ -371,8 +371,11 @@ export default function IncomingPage() {
       setPlanTableData(data.table_data ?? null);
       setPlanFileB64s(encoded);
       toast.success(`생산계획서 분석 완료 (${data.items?.length ?? 0}개 품목)`);
-    } catch (e) {
-      toast.error(`생산계획서 분석 실패: ${e instanceof Error ? e.message : "오류"}`);
+    } catch (e: unknown) {
+      const ax = e as { response?: { status: number; data?: { detail?: string } }; message?: string };
+      const detail = ax?.response?.data?.detail ?? ax?.message ?? "오류";
+      const status = ax?.response?.status ? ` (HTTP ${ax.response.status})` : "";
+      toast.error(`생산계획서 분석 실패: ${detail}${status}`, { duration: 8000 });
     } finally {
       setPlanLoading(false);
     }
