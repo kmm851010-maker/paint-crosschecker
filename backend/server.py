@@ -69,11 +69,25 @@ class LoginRequest(BaseModel):
 
 @app.post("/api/login")
 async def login(req: LoginRequest):
+    # 1) Supabase app_users 테이블 인증 시도
+    try:
+        from utils.supabase_db import authenticate_app_user
+        user = authenticate_app_user(req.employee_id, req.password)
+        if user:
+            token = hashlib.sha256(f"{req.employee_id}:{req.password}".encode()).hexdigest()[:32]
+            return {
+                "success": True, "token": token,
+                "name": user["name"], "employee_id": req.employee_id,
+                "role": user.get("role", "user"),
+            }
+    except Exception:
+        pass
+    # 2) 하드코딩 계정 폴백 (admin 등)
     account = STAFF_ACCOUNTS.get(req.employee_id)
     if not account or account["password"] != req.password:
         raise HTTPException(status_code=401, detail="사번 또는 비밀번호가 올바르지 않습니다.")
     token = hashlib.sha256(f"{req.employee_id}:{account['password']}".encode()).hexdigest()[:32]
-    return {"success": True, "token": token, "name": account["name"], "employee_id": req.employee_id}
+    return {"success": True, "token": token, "name": account["name"], "employee_id": req.employee_id, "role": "admin"}
 
 
 @app.get("/health")

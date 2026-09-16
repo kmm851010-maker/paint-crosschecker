@@ -82,6 +82,24 @@ def reset_app_user_password(employee_id: str, new_password: str) -> bool:
     return True
 
 
+def authenticate_app_user(employee_id: str, password: str) -> dict | None:
+    """사번+비밀번호로 인증. 성공 시 user dict 반환, 실패 시 None."""
+    rows = _sb().table("app_users") \
+        .select("employee_id,name,role,department,team") \
+        .eq("employee_id", employee_id) \
+        .limit(1).execute().data
+    if not rows:
+        return None
+    # password_hash 별도 조회 (select에서 제외 후 verify)
+    pw_rows = _sb().table("app_users") \
+        .select("password_hash") \
+        .eq("employee_id", employee_id) \
+        .limit(1).execute().data
+    if not pw_rows or not _verify_pw(password, pw_rows[0].get("password_hash", "")):
+        return None
+    return rows[0]
+
+
 def get_members_dict(department: str = "칼라반지게차") -> dict:
     """조(team) → 이름 딕셔너리. team 컬럼이 있는 직원만 포함."""
     rows = _sb().table("app_users").select("team,name") \
