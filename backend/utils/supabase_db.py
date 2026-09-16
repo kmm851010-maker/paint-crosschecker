@@ -213,6 +213,16 @@ def get_monthly_totals(date_str: str) -> dict:
     return monthly
 
 
+def load_daily_detail_month(year: int, month: int) -> dict:
+    """특정 연월의 daily_detail 전체를 {date_str: data} 형태로 반환."""
+    import calendar as _cal
+    last_day = _cal.monthrange(year, month)[1]
+    start = f"{year}-{month:02d}-01"
+    end = f"{year}-{month:02d}-{last_day:02d}"
+    res = _sb().table("daily_detail").select("date,data").gte("date", start).lte("date", end).execute()
+    return {r["date"]: r["data"] for r in (res.data or [])}
+
+
 def load_daily_detail(date_str: str) -> dict | None:
     res = _sb().table("daily_detail").select("data").eq("date", date_str).limit(1).execute()
     return res.data[0]["data"] if res.data else None
