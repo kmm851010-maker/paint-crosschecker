@@ -1103,15 +1103,16 @@ async def export_worklog_excel(year: int, month: int, day: int = 0):
 
     last_day = _cal.monthrange(year, month)[1]
     added = 0
-    for day in range(1, last_day + 1):
-        date_obj = _dt.date(year, month, day)
+    for d in range(1, last_day + 1):
+        date_obj = _dt.date(year, month, d)
         date_str = date_obj.strftime("%Y-%m-%d")
         detail = detail_by_date.get(date_str) or {}
         shift = detail.get("shift") or {}
         if not shift:
             shift = get_shift_info(date_obj, members)
-            shift = apply_leaves(shift, date_obj, leave_list)
-        ws_new = wb.create_sheet(title=f"{month}월{day}일")
+        # saved_shift 여부와 무관하게 항상 최신 휴가 정보 적용 (leave_person 등 동기화)
+        shift = apply_leaves(shift, date_obj, leave_list)
+        ws_new = wb.create_sheet(title=f"{month}월{d}일")
         _build_worklog_sheet(
             ws_new, date_obj,
             shift,
