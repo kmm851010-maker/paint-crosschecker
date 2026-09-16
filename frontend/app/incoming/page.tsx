@@ -184,6 +184,7 @@ function IncomingListDialog({
                       min={0}
                       value={preQty[i] ?? 0}
                       onChange={e => setPreQty(prev => ({ ...prev, [i]: parseInt(e.target.value) || 0 }))}
+                      onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
                       className="w-16 border border-gray-300 rounded px-2 py-0.5 text-xs text-center"
                     />
                   </td>
@@ -214,6 +215,7 @@ function ConversionDialog({
 }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ headers: string[]; rows: string[][]; excel_base64: string } | null>(null);
+  const [editRows, setEditRows] = useState<string[][] | null>(null);
   const [showIncoming, setShowIncoming] = useState(false);
 
   async function load() {
@@ -221,6 +223,7 @@ function ConversionDialog({
     try {
       const res = await planConversion(tableData, planItems);
       setResult(res);
+      setEditRows(res.rows.map(r => [...r]));
     } catch {
       toast.error("변환결과 로드 실패");
     } finally {
@@ -233,7 +236,26 @@ function ConversionDialog({
   useEffect(() => { load(); }, []);
 
   const headers = result?.headers ?? [];
-  const rows = result?.rows ?? [];
+  const displayRows = editRows ?? result?.rows ?? [];
+
+  // 편집 가능 컬럼: 신규 또는 입고 포함 (기입고/위치 제외)
+  const editableCols = useMemo(() => {
+    return new Set(
+      headers
+        .map((h, i) => ({ h, i }))
+        .filter(({ h }) => (h.includes("신규") || h.includes("입고")) && !h.includes("기입고") && !h.includes("위치"))
+        .map(({ i }) => i)
+    );
+  }, [headers]);
+
+  function handleCellChange(ri: number, ci: number, val: string) {
+    setEditRows(prev => {
+      if (!prev) return prev;
+      const next = prev.map(r => [...r]);
+      next[ri][ci] = val;
+      return next;
+    });
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
@@ -288,18 +310,28 @@ function ConversionDialog({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, ri) => (
+                {displayRows.map((row, ri) => (
                   <tr key={ri} className="hover:bg-blue-50">
                     {row.map((cell, ci) => (
                       <td
                         key={ci}
                         className={cn(
-                          "py-1 px-3 text-xs border border-gray-100 whitespace-nowrap",
+                          "py-0.5 px-1 text-xs border border-gray-100 whitespace-nowrap",
                           headers[ci]?.includes("위치") && cell ? "text-blue-600 font-medium" : "",
-                          headers[ci]?.includes("입고") && !headers[ci]?.includes("기입고") ? "bg-yellow-50" : "",
+                          editableCols.has(ci) ? "bg-yellow-50" : "",
                         )}
                       >
-                        {String(cell ?? "")}
+                        {editableCols.has(ci) ? (
+                          <input
+                            type="text"
+                            value={String(cell ?? "")}
+                            onChange={e => handleCellChange(ri, ci, e.target.value)}
+                            onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                            className="w-14 text-xs text-center bg-transparent outline-none border-b border-gray-300 focus:border-blue-500 py-0.5"
+                          />
+                        ) : (
+                          <span className="px-2">{String(cell ?? "")}</span>
+                        )}
                       </td>
                     ))}
                   </tr>
