@@ -150,6 +150,37 @@ export default function WorklogPage() {
     });
   }
 
+  function handleCellKeyDown(e: React.KeyboardEvent, ri: number, si: number) {
+    const key = SHIFT_KEYS[si];
+    const name = ITEM_NAMES[ri];
+    if (e.key === "Enter") {
+      e.preventDefault();
+      evalAndUpdate(name, key);
+      const next = document.getElementById(`cell-${ri + 1}-${si}`);
+      if (next) next.focus();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const next = document.getElementById(`cell-${ri + 1}-${si}`);
+      if (next) next.focus();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const next = document.getElementById(`cell-${ri - 1}-${si}`);
+      if (next) next.focus();
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      let nextCol = si + 1;
+      while (nextCol < ALL_SHIFTS.length && disabledShifts.has(ALL_SHIFTS[nextCol])) nextCol++;
+      const next = document.getElementById(`cell-${ri}-${nextCol}`);
+      if (next) next.focus();
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      let prevCol = si - 1;
+      while (prevCol >= 0 && disabledShifts.has(ALL_SHIFTS[prevCol])) prevCol--;
+      const next = document.getElementById(`cell-${ri}-${prevCol}`);
+      if (next) next.focus();
+    }
+  }
+
   function updateShiftField(field: string, value: string) {
     setShiftData(prev => prev ? { ...prev, [field]: value } : prev);
   }
@@ -317,14 +348,16 @@ export default function WorklogPage() {
                     {/* 휴무 */}
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>휴무</div>
+                      <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>휴무자</label>
                       <input value={shiftData?.["휴무_근무자"] ?? ""} onChange={e => updateShiftField("휴무_근무자", e.target.value)}
                         style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "5px 8px", fontSize: 13, boxSizing: "border-box", marginBottom: 4 }} />
                       <div style={{ fontSize: 12, color: "#6b7280" }}>{shiftData?.["휴무_구분"] ?? ""}</div>
-                      {shiftData?.leave_person && (
+                      {(shiftAuto?.leave_person || shiftData?.leave_person) && (
                         <>
-                          <input value={shiftData.leave_person} readOnly
-                            style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "5px 8px", fontSize: 13, boxSizing: "border-box", marginTop: 6, background: "#f9fafb" }} />
-                          <div style={{ fontSize: 12, color: "#6b7280" }}>{shiftData.leave_type}</div>
+                          <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2, marginTop: 6 }}>휴가자</label>
+                          <input value={shiftData?.leave_person ?? shiftAuto?.leave_person ?? ""} onChange={e => updateShiftField("leave_person", e.target.value)}
+                            style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "5px 8px", fontSize: 13, boxSizing: "border-box" }} />
+                          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>{shiftData?.leave_type ?? shiftAuto?.leave_type ?? ""}</div>
                         </>
                       )}
                     </div>
@@ -388,11 +421,13 @@ export default function WorklogPage() {
                             return (
                               <td key={sh} style={TD}>
                                 <input
+                                  id={disabled ? undefined : `cell-${ri}-${si}`}
                                   type="text"
                                   value={disabled ? "" : (cells[name]?.[key] === "0" ? "" : cells[name]?.[key] ?? "")}
                                   disabled={disabled}
                                   onChange={e => updateCell(name, key, e.target.value)}
                                   onBlur={() => evalAndUpdate(name, key)}
+                                  onKeyDown={disabled ? undefined : e => handleCellKeyDown(e, ri, si)}
                                   placeholder={disabled ? "—" : "0"}
                                   style={{
                                     width: 54, textAlign: "center", border: "1px solid",
