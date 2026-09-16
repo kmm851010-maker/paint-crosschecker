@@ -227,6 +227,11 @@ export interface MonthStatsResult {
   scols: string[];
 }
 
+export async function getHolidays(year: number): Promise<Record<string, string>> {
+  const { data } = await api.get("/api/attendance/holidays", { params: { year } });
+  return data.holidays as Record<string, string>;
+}
+
 export async function getAttendanceMonthStats(year: number, month: number, name: string): Promise<MonthStatsResult> {
   const { data } = await api.get("/api/attendance/month-stats", { params: { year, month, name } });
   return data;

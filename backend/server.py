@@ -665,6 +665,27 @@ async def upsert_remark(req: UpsertRemarkRequest):
 
 
 # ═══════════════════════════════════════════════════════════════════
+# 근태관리 — 공휴일 조회
+# ═══════════════════════════════════════════════════════════════════
+
+_KG_COMPANY_DAYS = {(9, 1): "창립기념일"}  # 회사 기념일 (월, 일)
+
+
+@app.get("/api/attendance/holidays")
+async def get_holidays(year: int):
+    """한국 법정공휴일 + KG 회사 기념일 반환 (연도 기준)"""
+    try:
+        import holidays as _hol
+        kr = _hol.SouthKorea(years=[year - 1, year, year + 1])
+        result = {d.strftime("%Y-%m-%d"): name for d, name in kr.items() if d.year == year}
+    except Exception:
+        result = {}
+    for (m, d), name in _KG_COMPANY_DAYS.items():
+        result[f"{year}-{m:02d}-{d:02d}"] = name
+    return {"holidays": result}
+
+
+# ═══════════════════════════════════════════════════════════════════
 # 근태관리 — 급여시간표 / 교대주기별 연장
 # ═══════════════════════════════════════════════════════════════════
 

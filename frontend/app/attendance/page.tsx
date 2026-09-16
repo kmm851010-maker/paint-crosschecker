@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
-import { getLeaves, saveLeaves, getMembers, getAttendanceMonthStats, type LeaveItem, type MonthStatsResult } from "@/lib/api";
+import { getLeaves, saveLeaves, getMembers, getAttendanceMonthStats, getHolidays, type LeaveItem, type MonthStatsResult } from "@/lib/api";
 import { isAdmin } from "@/lib/auth";
 import toast from "react-hot-toast";
 
@@ -242,6 +242,13 @@ export default function AttendancePage() {
   const [statsData, setStatsData] = useState<MonthStatsResult | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
 
+  // 공휴일 맵 {YYYY-MM-DD: 공휴일명}
+  const [holidays, setHolidays] = useState<Record<string, string>>({});
+
+  // 등록된 일정 조회 필터
+  const [lvFilterYear, setLvFilterYear] = useState(kstNow.getUTCFullYear());
+  const [lvFilterMonth, setLvFilterMonth] = useState(kstNow.getUTCMonth() + 1);
+
   // 휴가 등록 폼
   const [lvName, setLvName] = useState("");
   const [lvType, setLvType] = useState(LEAVE_TYPES[0]);
@@ -265,6 +272,10 @@ export default function AttendancePage() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    getHolidays(year).then(setHolidays).catch(() => {});
+  }, [year]);
 
   async function fetchStats(nm: string) {
     if (!nm) return;
@@ -537,7 +548,10 @@ export default function AttendancePage() {
                       );
                     }
                     const dow = cell.dow ?? 0;
-                    const dateColor = dow === 0 ? "#E53935" : dow === 6 ? "#1565C0" : "#1f2937";
+                    const ds = dateStr(year, month, cell.day);
+                    const holName = holidays[ds] ?? "";
+                    const isHol = !!holName;
+                    const dateColor = (dow === 0 || isHol) ? "#E53935" : dow === 6 ? "#1565C0" : "#1f2937";
                     const bg = cell.isToday ? "#EFF6FF" : "#fff";
 
                     return (
@@ -551,6 +565,11 @@ export default function AttendancePage() {
                             <span style={{ fontSize: 32, color: dateColor, fontWeight: 800, lineHeight: 1 }}>{cell.day}</span>
                           )}
                         </div>
+                        {holName && (
+                          <div style={{ fontSize: 10, fontWeight: 600, color: "#EF4444", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, marginBottom: 2, paddingX: "2px" }}>
+                            {holName}
+                          </div>
+                        )}
                         <div style={{ display: "flex", justifyContent: "center", gap: 3, flexWrap: "wrap", marginTop: 2 }}>
                           {(cell.slots ?? []).map((slot, si) => (
                             <span key={si} style={{ color: slot.color, fontSize: 13, fontWeight: 700, lineHeight: 1.4 }}>
@@ -606,33 +625,63 @@ export default function AttendancePage() {
               </button>
             </form>
 
-            {/* 등록된 휴가 목록 - 현재 조회 월만 */}
-            <p style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", marginBottom: 8 }}>
-              {year}년 {month + 1}월 휴가/대근 목록
-            </p>
+            {/* 등록된 일정 조회 */}
+            <p style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", marginBottom: 8 }}>등록된 일정 조회</p>
             {(() => {
-              const mo = String(month + 1).padStart(2, "0");
-              const monthStart = `${year}-${mo}-01`;
-              const monthEnd = `${year}-${mo}-${String(daysInMonth(year, month)).padStart(2, "0")}`;
-              const filtered = leaves.filter(lv => lv.start <= monthEnd && lv.end >= monthStart);
-              return filtered.length === 0 ? (
-                <p style={{ fontSize: 13, color: "#6b7280" }}>이 달 등록된 내역이 없습니다.</p>
-              ) : (
-              <div style={{ maxHeight: 260, overflowY: "auto" }}>
-                {filtered.map((lv, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, background: "#f9fafb", borderRadius: 8, padding: "7px 10px", marginBottom: 4 }}>
-                    <span style={{ fontWeight: 600, color: "#1f2937", minWidth: 44 }}>{lv.name}</span>
-                    <span style={{ background: "#F57F17", color: "#fff", borderRadius: 4, padding: "2px 6px", fontSize: 11, fontWeight: 700 }}>{lv.type}</span>
-                    <span style={{ color: "#6b7280", flex: 1 }}>{lv.start}{lv.start !== lv.end ? ` ~ ${lv.end}` : ""}</span>
-                    {admin && (
-                      <button onClick={() => handleDeleteLeave(lv)}
-                        style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 16, fontWeight: 700, padding: "0 2px" }}>
-                        ×
-                      </button>
-                    )}
+              const allYears = [...new Set([
+                ...leaves.map(lv => new Date(lv.start).getFullYear()),
+                kstNow.getUTCFullYear(),
+              ])].sort((a, b) => b - a);
+
+              const selStart = `${lvFilterYear}-${String(lvFilterMonth).padStart(2, "0")}-01`;
+              const lastDay = daysInMonth(lvFilterYear, lvFilterMonth - 1);
+              const selEnd = `${lvFilterYear}-${String(lvFilterMonth).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+              const filtered = leaves.filter(lv => lv.start <= selEnd && lv.end >= selStart);
+
+              return (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                    <div>
+                      <label style={{ fontSize: 11, color: "#6b7280", fontWeight: 600, display: "block", marginBottom: 3 }}>연도</label>
+                      <select value={lvFilterYear} onChange={e => setLvFilterYear(Number(e.target.value))}
+                        style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 6, padding: "5px 8px", fontSize: 13 }}>
+                        {allYears.map(y => <option key={y} value={y}>{y}년</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, color: "#6b7280", fontWeight: 600, display: "block", marginBottom: 3 }}>월</label>
+                      <select value={lvFilterMonth} onChange={e => setLvFilterMonth(Number(e.target.value))}
+                        style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 6, padding: "5px 8px", fontSize: 13 }}>
+                        {Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={m}>{m}월</option>)}
+                      </select>
+                    </div>
                   </div>
-                ))}
-              </div>
+                  {filtered.length === 0 ? (
+                    <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0" }}>{lvFilterYear}년 {lvFilterMonth}월 등록 일정 없음</p>
+                  ) : (
+                    <>
+                      <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 6px" }}>{lvFilterYear}년 {lvFilterMonth}월 — {filtered.length}건</p>
+                      <div style={{ maxHeight: 240, overflowY: "auto" }}>
+                        {filtered.map((lv, i) => (
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, background: "#f9fafb", borderRadius: 8, padding: "7px 10px", marginBottom: 4 }}>
+                            <span style={{ fontWeight: 600, color: "#1f2937", minWidth: 44 }}>{lv.name}</span>
+                            <span style={{ background: "#F57F17", color: "#fff", borderRadius: 4, padding: "2px 6px", fontSize: 11, fontWeight: 700 }}>{lv.type}</span>
+                            <span style={{ color: "#6b7280", flex: 1 }}>
+                              {lv.start}{lv.start !== lv.end ? ` ~ ${lv.end}` : ""}
+                              {lv.sub ? ` | 대근: ${lv.sub}` : ""}
+                            </span>
+                            {admin && (
+                              <button onClick={() => handleDeleteLeave(lv)}
+                                style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 16, fontWeight: 700, padding: "0 2px" }}>
+                                ×
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </>
               );
             })()}
           </Modal>
