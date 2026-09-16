@@ -606,13 +606,20 @@ export default function AttendancePage() {
               </button>
             </form>
 
-            {/* 등록된 휴가 목록 */}
-            <p style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", marginBottom: 8 }}>등록된 휴가/대근 목록</p>
-            {leaves.length === 0 ? (
-              <p style={{ fontSize: 13, color: "#6b7280" }}>등록된 내역이 없습니다.</p>
-            ) : (
+            {/* 등록된 휴가 목록 - 현재 조회 월만 */}
+            <p style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", marginBottom: 8 }}>
+              {year}년 {month + 1}월 휴가/대근 목록
+            </p>
+            {(() => {
+              const mo = String(month + 1).padStart(2, "0");
+              const monthStart = `${year}-${mo}-01`;
+              const monthEnd = `${year}-${mo}-${String(daysInMonth(year, month)).padStart(2, "0")}`;
+              const filtered = leaves.filter(lv => lv.start <= monthEnd && lv.end >= monthStart);
+              return filtered.length === 0 ? (
+                <p style={{ fontSize: 13, color: "#6b7280" }}>이 달 등록된 내역이 없습니다.</p>
+              ) : (
               <div style={{ maxHeight: 260, overflowY: "auto" }}>
-                {leaves.map((lv, i) => (
+                {filtered.map((lv, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, background: "#f9fafb", borderRadius: 8, padding: "7px 10px", marginBottom: 4 }}>
                     <span style={{ fontWeight: 600, color: "#1f2937", minWidth: 44 }}>{lv.name}</span>
                     <span style={{ background: "#F57F17", color: "#fff", borderRadius: 4, padding: "2px 6px", fontSize: 11, fontWeight: 700 }}>{lv.type}</span>
@@ -626,7 +633,8 @@ export default function AttendancePage() {
                   </div>
                 ))}
               </div>
-            )}
+              );
+            })()}
           </Modal>
         )}
 
