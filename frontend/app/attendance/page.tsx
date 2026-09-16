@@ -566,7 +566,7 @@ export default function AttendancePage() {
                           )}
                         </div>
                         {holName && (
-                          <div style={{ fontSize: 10, fontWeight: 600, color: "#EF4444", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, marginBottom: 2, paddingX: "2px" }}>
+                          <div style={{ fontSize: 10, fontWeight: 600, color: "#EF4444", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, marginBottom: 2, padding: "0 2px" }}>
                             {holName}
                           </div>
                         )}
