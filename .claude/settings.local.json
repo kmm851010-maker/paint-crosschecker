@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -Command \"\n\\\\$path = 'C:\\\\Projects\\\\KGCounter\\\\paint-crosschecker\\\\mobile\\\\app\\\\inventory.tsx'\n[System.Text.Encoding]::RegisterProvider\\([System.Text.CodePagesEncodingProvider]::Instance\\)\n\\\\$enc = [System.Text.Encoding]::GetEncoding\\(949\\)\n\\\\$bytes = [System.IO.File]::ReadAllBytes\\(\\\\$path\\)\n\\\\$content = \\\\$enc.GetString\\(\\\\$bytes\\)\n\\\\$idx = \\\\$content.IndexOf\\('await registerDrums\\(drumsToSend, sector\\)'\\)\nWrite-Host \\\\$content.Substring\\(\\\\$idx, 300\\)\n\")",
+      "Bash(node:*)"
+    ]
+  }
+}

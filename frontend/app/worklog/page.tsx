@@ -137,7 +137,7 @@ export default function WorklogPage() {
       }));
       await saveWorklog({
         date,
-        shift_data: shiftData as Record<string, unknown>,
+        shift_data: shiftData as unknown as Record<string, unknown>,
         work_items: workPayload,
         safety_items: safetyItems.filter(Boolean),
         note,
@@ -213,7 +213,7 @@ export default function WorklogPage() {
                         <div key={field} className="flex flex-col gap-1">
                           <label className="text-xs text-gray-500">{label}</label>
                           <input
-                            value={(shiftData as Record<string, string>)[field] ?? ""}
+                            value={(shiftData as unknown as Record<string, string>)[field] ?? ""}
                             onChange={(e) => updateShiftField(field, e.target.value)}
                             className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4B2D8E]"
                           />
@@ -225,7 +225,7 @@ export default function WorklogPage() {
                       <div key={shift} className="flex flex-col gap-1">
                         <label className="text-xs text-gray-500">{shift} 근무자</label>
                         <input
-                          value={(shiftData as Record<string, string>)?.[`${shift}_근무자`] ?? ""}
+                          value={(shiftData as unknown as Record<string, string>)?.[`${shift}_근무자`] ?? ""}
                           onChange={(e) => updateShiftField(`${shift}_근무자`, e.target.value)}
                           className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4B2D8E]"
                         />
@@ -240,7 +240,7 @@ export default function WorklogPage() {
                     <div key={shift} className="flex flex-col gap-1">
                       <label className="text-xs text-gray-500">{is2p ? (i === 0 ? "주간" : "야간") : shift} 비고</label>
                       <input
-                        value={(shiftData as Record<string, string>)?.[`${shift}_비고`] ?? ""}
+                        value={(shiftData as unknown as Record<string, string>)?.[`${shift}_비고`] ?? ""}
                         onChange={(e) => updateShiftField(`${shift}_비고`, e.target.value)}
                         className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4B2D8E]"
                       />
