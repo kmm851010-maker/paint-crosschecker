@@ -417,6 +417,253 @@ async def parse_return_list_endpoint(req: ParseReturnListRequest):
     return {"success": True, "count": len(items), "items": items}
 
 
+# ═══════════════════════════════════════════════════════════════════
+# 직원 관리
+# ═══════════════════════════════════════════════════════════════════
+
+class RegisterEmployeeRequest(BaseModel):
+    department: str
+    name: str
+    employee_id: str
+    password: str = ""
+
+
+class ResetPasswordRequest(BaseModel):
+    new_password: str
+
+
+@app.get("/api/employees")
+async def get_employees(department: str = ""):
+    from utils.supabase_db import list_app_users
+    return {"success": True, "employees": list_app_users(department or None)}
+
+
+@app.post("/api/employees")
+async def create_employee(req: RegisterEmployeeRequest):
+    from utils.supabase_db import register_app_user
+    init_pw = req.password.strip() or req.employee_id
+    try:
+        register_app_user(req.department, req.name, req.employee_id, init_pw)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True}
+
+
+@app.delete("/api/employees/{employee_id}")
+async def remove_employee(employee_id: str):
+    from utils.supabase_db import delete_app_user
+    try:
+        delete_app_user(employee_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True}
+
+
+@app.post("/api/employees/{employee_id}/reset-password")
+async def reset_employee_password(employee_id: str, req: ResetPasswordRequest):
+    from utils.supabase_db import reset_app_user_password
+    if not req.new_password.strip():
+        raise HTTPException(status_code=400, detail="비밀번호를 입력하세요.")
+    try:
+        reset_app_user_password(employee_id, req.new_password.strip())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True}
+
+
+@app.get("/api/members")
+async def get_members(department: str = "칼라반지게차"):
+    from utils.supabase_db import get_members_dict
+    return {"success": True, "members": get_members_dict(department)}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 작업일지
+# ═══════════════════════════════════════════════════════════════════
+
+class SaveWorklogRequest(BaseModel):
+    date: str           # YYYY-MM-DD
+    shift_data: dict
+    work_items: list
+    safety_items: list = []
+    note: str = ""
+    leave_list: list = []
+
+
+@app.get("/api/worklog")
+async def get_worklog(date: str):
+    """date=YYYY-MM-DD. 저장된 작업일지 + 자동 shift 계산 반환."""
+    import datetime as _dt
+    from utils.supabase_db import (
+        load_work_items, load_daily_detail, load_leaves,
+        get_monthly_totals, get_members_dict, get_shift_info, apply_leaves,
+    )
+    try:
+        d = _dt.date.fromisoformat(date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)")
+
+    members = get_members_dict()
+    shift_auto = get_shift_info(d, members)
+    leave_list = load_leaves()
+    shift_auto = apply_leaves(shift_auto, d, leave_list)
+
+    detail = load_daily_detail(date)
+    work_items = load_work_items(date)
+    monthly_totals = get_monthly_totals(date)
+
+    return {
+        "success": True,
+        "date": date,
+        "members": members,
+        "shift_auto": shift_auto,
+        "saved_shift": (detail.get("shift") if detail else None),
+        "saved_safety": (detail.get("safety") if detail else []),
+        "saved_note": (detail.get("note") if detail else ""),
+        "work_items": work_items,
+        "monthly_totals": monthly_totals,
+        "leave_list": leave_list,
+    }
+
+
+@app.post("/api/worklog")
+async def save_worklog(req: SaveWorklogRequest):
+    from utils.supabase_db import save_work_items, save_daily_detail
+    try:
+        save_work_items(req.date, req.work_items)
+        save_daily_detail(req.date, req.shift_data, req.safety_items, req.note)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 휴가/대근
+# ═══════════════════════════════════════════════════════════════════
+
+class SaveLeavesRequest(BaseModel):
+    leave_list: list
+
+
+@app.get("/api/leaves")
+async def get_leaves():
+    from utils.supabase_db import load_leaves
+    return {"success": True, "leave_list": load_leaves()}
+
+
+@app.post("/api/leaves")
+async def save_leaves_endpoint(req: SaveLeavesRequest):
+    from utils.supabase_db import save_leaves
+    try:
+        save_leaves(req.leave_list)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 근무메모 (schedule_notes)
+# ═══════════════════════════════════════════════════════════════════
+
+class SaveScheduleNoteRequest(BaseModel):
+    name: str
+    date: str
+    note: str
+
+
+@app.get("/api/schedule-notes")
+async def get_schedule_notes(name: str, year: int, month: int):
+    from utils.supabase_db import load_schedule_notes_month
+    return {"success": True, "notes": load_schedule_notes_month(name, year, month)}
+
+
+@app.post("/api/schedule-notes")
+async def save_schedule_note_endpoint(req: SaveScheduleNoteRequest):
+    from utils.supabase_db import save_schedule_note
+    try:
+        save_schedule_note(req.name, req.date, req.note)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 일일 재고기록
+# ═══════════════════════════════════════════════════════════════════
+
+class UpsertRemarkRequest(BaseModel):
+    date: str
+    shift: str
+    product: str
+    remark: str
+
+
+@app.get("/api/daily-inventory")
+async def get_daily_inventory(date: str):
+    """date=YYYY-MM-DD. 근별 입고 품목 + 비고 반환."""
+    import datetime as _dt
+    from utils.supabase_db import (
+        load_daily_detail, get_inventory_registered_in_range, get_daily_inventory_remarks,
+    )
+    try:
+        d = _dt.date.fromisoformat(date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="날짜 형식이 올바르지 않습니다.")
+
+    next_date = (d + _dt.timedelta(days=1)).strftime("%Y-%m-%d")
+    detail = load_daily_detail(date)
+    shift_data = (detail.get("shift") or {}) if detail else {}
+
+    if not shift_data:
+        return {"success": True, "date": date, "shift_data": {}, "shift_groups": []}
+
+    is_2p = shift_data.get("is_2person", False)
+    if is_2p:
+        shifts = [
+            ("주간", f"{date} 06:30:00", f"{date} 18:30:00", shift_data.get("주간_근무자", "")),
+            ("야간", f"{date} 18:30:00", f"{next_date} 06:30:00", shift_data.get("야간_근무자", "")),
+        ]
+    else:
+        shifts = [
+            ("1근", f"{date} 06:30:00", f"{date} 14:30:00", shift_data.get("1근_근무자", "")),
+            ("2근", f"{date} 14:30:00", f"{date} 22:30:00", shift_data.get("2근_근무자", "")),
+            ("3근", f"{date} 22:30:00", f"{next_date} 06:30:00", shift_data.get("3근_근무자", "")),
+        ]
+
+    remarks_raw = get_daily_inventory_remarks(date)
+    remarks_map = {(r["shift"], r["product"]): r["remark"] for r in remarks_raw}
+
+    shift_groups = []
+    for sname, sstart, send, sworker in shifts:
+        items = get_inventory_registered_in_range(sstart, send)
+        pmap: dict = {}
+        for it in items:
+            if (it.get("remark") or "") == "신규":
+                continue
+            prod = (it.get("product") or "").strip() or "미상"
+            pmap.setdefault(prod, []).append((it.get("lot") or "").strip())
+        rows = [
+            {"product": p, "qty": len(ls), "lots": sorted(ls),
+             "remark": remarks_map.get((sname, p), "")}
+            for p, ls in pmap.items()
+        ]
+        shift_groups.append({"shift": sname, "worker": sworker, "rows": rows})
+
+    return {"success": True, "date": date, "shift_data": shift_data, "shift_groups": shift_groups}
+
+
+@app.post("/api/daily-inventory/remark")
+async def upsert_remark(req: UpsertRemarkRequest):
+    from utils.supabase_db import upsert_daily_inventory_remark
+    try:
+        upsert_daily_inventory_remark(req.date, req.shift, req.product, req.remark)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
