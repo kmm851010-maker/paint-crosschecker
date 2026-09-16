@@ -98,6 +98,7 @@ function computePersonDays(year: number, month: number, members: Record<string, 
     for (const lv of leaves) {
       if (lv.start <= ds && ds <= lv.end) {
         if (lv.name === name) { shift = "휴가"; leaveType = lv.type; break; }
+        if (lv.type === "명휴") continue; // 명휴는 전원 휴무 — 대근 없음
         const absentTeam = Object.entries(members).find(([, v]) => v === lv.name)?.[0];
         if (absentTeam && memberTeam && [s1, s2, s3].includes(memberTeam) && [s1, s2, s3].includes(absentTeam) && absentTeam !== memberTeam) {
           shift = "대근"; break;
