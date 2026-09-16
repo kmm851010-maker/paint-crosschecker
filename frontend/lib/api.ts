@@ -143,9 +143,9 @@ export function getMakerFromLot(lot: string) {
 export function isRecentlyRegistered(registered: string, hours = 8) {
   if (!registered) return false;
   try {
+    // 백엔드가 KST 시간을 "YYYY-MM-DD HH:MM:SS" 로 저장 → 브라우저에서 로컬 시간으로 파싱
     const t = new Date(registered.replace("T", " "));
-    const now = new Date(Date.now() + 9 * 3600000); // KST
-    return (now.getTime() - t.getTime()) / 1000 <= hours * 3600;
+    return (Date.now() - t.getTime()) / 1000 <= hours * 3600;
   } catch { return false; }
 }
 
