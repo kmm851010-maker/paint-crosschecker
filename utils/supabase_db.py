@@ -314,9 +314,18 @@ def load_all(selected_date: datetime.date) -> dict:
 
 def get_sector_inventory() -> dict:
     """섹터별 드럼 목록 반환."""
-    res = _sb().table("inventory").select("*").limit(10000).execute()
+    sb = _sb()
+    all_data = []
+    page_size = 1000
+    offset = 0
+    while True:
+        res = sb.table("inventory").select("*").range(offset, offset + page_size - 1).execute()
+        all_data.extend(res.data)
+        if len(res.data) < page_size:
+            break
+        offset += page_size
     sectors = {}
-    for r in res.data:
+    for r in all_data:
         sector = r.get("sector") or "미분류"
         sectors.setdefault(sector, []).append({
             "lot": r["lot"],
