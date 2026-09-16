@@ -851,16 +851,45 @@ async def get_attendance_month_stats(year: int, month: int, name: str):
     ss3 = ms - _dt.timedelta(days=6)
     se3 = me + _dt.timedelta(days=6)
 
-    # overtime per date from daily_details
+    # Source 1: 이미 계산된 salary_rows에서 연장 overtime 추출 (대근 포함, 가장 정확)
     obd: dict = {}
-    for ds5, dd5 in daily_details.items():
-        sh5 = dd5.get("shift", {})
+    for row in salary_rows:
+        parts = row["날짜"].split("/")  # "MM/DD"
+        date_key = f"{year}-{parts[0]}-{parts[1]}"
+        ot = (row.get("연장근로") or 0) + (row.get("휴일연장") or 0)
+        if ot > 0:
+            obd[date_key] = ot
+
+    # Source 2: 월 경계 전후 6일치 (다른 월의 cycle block 포함용)
+    ext_prev = load_daily_detail_month(
+        ss3.year, ss3.month
+    ) if ss3.month != month or ss3.year != year else {}
+    ext_next = load_daily_detail_month(
+        se3.year, se3.month
+    ) if se3.month != month or se3.year != year else {}
+    ext_details = {**ext_prev, **ext_next}
+
+    for ds5, dd5 in ext_details.items():
+        d5 = _dt.date.fromisoformat(ds5)
+        if not (ss3 <= d5 < ms or me < d5 <= se3):
+            continue
+        sh5 = dd5.get("shift", {}) if dd5 else {}
         if sh5 and not sh5.get("is_2person"):
             for sk5, ok5 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
                 if sh5.get(sk5) == name:
-                    ot5 = _sff(sh5.get(f"{ok5}_연장", 0))
+                    ot5 = _sff(sh5.get(f"{ok5}_연장", 0) or 0)
                     if ot5 > 0: obd[ds5] = ot5
                     break
+        elif sh5 and sh5.get("is_2person"):
+            # 2인 근무: 주간/야간 연장 합산
+            dw5 = sh5.get("주간_근무자","") or sh5.get("1근_근무자","")
+            nw5 = sh5.get("야간_근무자","") or sh5.get("2근_근무자","")
+            if name == dw5:
+                ot5 = _sff(sh5.get("1근_연장", 4) or 4)
+                if ot5 > 0: obd[ds5] = ot5
+            elif name == nw5:
+                ot5 = _sff(sh5.get("2근_연장", 4) or 4)
+                if ot5 > 0: obd[ds5] = ot5
 
     # 근무 시퀀스
     wseq = []
