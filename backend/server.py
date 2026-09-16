@@ -1238,6 +1238,124 @@ async def upsert_remark(req: UpsertRemarkRequest):
     return {"success": True}
 
 
+class DailyInventoryExportRequest(BaseModel):
+    date: str
+    shift_groups: list[dict]
+
+
+@app.post("/api/daily-inventory/export")
+async def export_daily_inventory(req: DailyInventoryExportRequest):
+    """일일 재고기록 서식 적용 엑셀 생성."""
+    import base64
+    from io import BytesIO
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    PURPLE = PatternFill(start_color="4B2D8E", end_color="4B2D8E", fill_type="solid")
+    GRAY   = PatternFill(start_color="DFE4EA", end_color="DFE4EA", fill_type="solid")
+    LIGHT  = PatternFill(start_color="F5F3FF", end_color="F5F3FF", fill_type="solid")
+    W_FONT = Font(name="맑은 고딕", size=10, bold=True, color="FFFFFF")
+    D_FONT = Font(name="맑은 고딕", size=10)
+    B_FONT = Font(name="맑은 고딕", size=10, bold=True)
+    thin   = Side(style="thin", color="AAAAAA")
+    BORDER = Border(left=thin, right=thin, top=thin, bottom=thin)
+    C      = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    L      = Alignment(horizontal="left",   vertical="center", wrap_text=True)
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    for group in req.shift_groups:
+        shift   = group.get("shift", "")
+        worker  = group.get("worker", "")
+        rows    = group.get("rows", [])
+        if not rows:
+            continue
+
+        ws = wb.create_sheet(title=shift)
+        ws.freeze_panes = "A3"
+
+        # 1행: 날짜·근무 정보
+        title_text = f"{req.date}  {shift}" + (f"  ({worker})" if worker else "")
+        ws.merge_cells("A1:E1")
+        t = ws["A1"]
+        t.value        = title_text
+        t.font         = Font(name="맑은 고딕", size=12, bold=True, color="FFFFFF")
+        t.fill         = PURPLE
+        t.alignment    = C
+        t.border       = BORDER
+        ws.row_dimensions[1].height = 22
+
+        # 2행: 헤더
+        for ci, h in enumerate(["No.", "품명", "수량", "LOT번호", "비고"], 1):
+            c = ws.cell(row=2, column=ci, value=h)
+            c.font = W_FONT; c.fill = PURPLE; c.alignment = C; c.border = BORDER
+        ws.row_dimensions[2].height = 18
+
+        # 데이터
+        r = 3
+        total_qty = 0
+        no = 1
+        for row in rows:
+            product = row.get("product", "")
+            qty     = row.get("qty", 0)
+            lots    = sorted(row.get("lots", [])) or [""]
+            remark  = row.get("remark", "")
+            total_qty += qty
+            fill = LIGHT if no % 2 == 0 else None
+
+            for li, lot in enumerate(lots):
+                for ci in range(1, 6):
+                    c = ws.cell(row=r + li, column=ci)
+                    c.border = BORDER
+                    c.font   = D_FONT
+                    if fill:
+                        c.fill = fill
+
+                ws.cell(row=r + li, column=4, value=lot).alignment = C
+
+            # 첫 행에만 No./품명/수량/비고
+            ws.cell(row=r, column=1, value=no).alignment = C
+            ws.cell(row=r, column=2, value=product).alignment = L
+            ws.cell(row=r, column=3, value=qty).alignment = C
+            ws.cell(row=r, column=5, value=remark).alignment = L
+
+            # 여러 LOT이면 병합
+            if len(lots) > 1:
+                for col in [1, 2, 3, 5]:
+                    ws.merge_cells(
+                        start_row=r, start_column=col,
+                        end_row=r + len(lots) - 1, end_column=col
+                    )
+                    ws.cell(row=r, column=col).alignment = Alignment(
+                        horizontal=("center" if col in [1, 3] else "left"),
+                        vertical="center", wrap_text=True
+                    )
+
+            r += len(lots)
+            no += 1
+
+        # 합계 행
+        for ci in range(1, 6):
+            c = ws.cell(row=r, column=ci)
+            c.fill = GRAY; c.font = B_FONT; c.border = BORDER; c.alignment = C
+        ws.cell(row=r, column=2, value="합  계").alignment = C
+        ws.cell(row=r, column=3, value=total_qty)
+
+        # 열 너비
+        ws.column_dimensions["A"].width = 6
+        ws.column_dimensions["B"].width = 22
+        ws.column_dimensions["C"].width = 7
+        ws.column_dimensions["D"].width = 16
+        ws.column_dimensions["E"].width = 20
+
+    buf = BytesIO()
+    wb.save(buf)
+    b64 = base64.b64encode(buf.getvalue()).decode()
+    return {"success": True, "excel_base64": b64}
+
+
 # ═══════════════════════════════════════════════════════════════════
 # 근태관리 — 공휴일 조회
 # ═══════════════════════════════════════════════════════════════════

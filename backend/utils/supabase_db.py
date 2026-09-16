@@ -82,7 +82,7 @@ def reset_app_user_password(employee_id: str, new_password: str) -> bool:
     return True
 
 
-def authenticate_app_user(employee_id: str, password: str) -> dict | None:
+def authenticate_app_user(employee_id: str, password: str):
     """사번+비밀번호로 인증. 성공 시 user dict 반환, 실패 시 None."""
     rows = _sb().table("app_users") \
         .select("employee_id,name,role,department,team") \

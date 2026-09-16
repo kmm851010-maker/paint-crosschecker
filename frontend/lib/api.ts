@@ -263,6 +263,11 @@ export async function upsertDailyInventoryRemark(date: string, shift: string, pr
   return data;
 }
 
+export async function exportDailyInventoryExcel(date: string, shift_groups: unknown[]): Promise<{ excel_base64: string }> {
+  const { data } = await api.post("/api/daily-inventory/export", { date, shift_groups });
+  return data;
+}
+
 // ── Additional Types ──
 export interface Employee {
   department: string;

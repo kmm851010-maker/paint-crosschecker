@@ -1,9 +1,9 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
-import { getDailyInventory, upsertDailyInventoryRemark } from "@/lib/api";
+import { getDailyInventory, upsertDailyInventoryRemark, exportDailyInventoryExcel } from "@/lib/api";
+import { downloadBase64 } from "@/lib/utils";
 import toast from "react-hot-toast";
-import * as XLSX from "xlsx";
 import { Download } from "lucide-react";
 
 interface InventoryRow {
@@ -75,36 +75,27 @@ export default function DailyInventoryPage() {
     }
   }
 
-  function handleDownload() {
+  const [downloading, setDownloading] = useState(false);
+
+  async function handleDownload() {
     if (!hasData) return;
-    const wb = XLSX.utils.book_new();
-    for (const group of groups) {
-      if (group.rows.length === 0) continue;
-      const aoa: unknown[][] = [];
-      aoa.push([`${group.shift}${group.worker ? ` (${group.worker})` : ""}`]);
-      aoa.push(["No.", "품명", "수량", "LOT번호", "비고"]);
-      let no = 1;
-      for (const row of group.rows) {
-        const remark = remarks[`${group.shift}|${row.product}`] ?? row.remark ?? "";
-        const lots = row.lots.length > 0 ? row.lots : [""];
-        for (let i = 0; i < lots.length; i++) {
-          aoa.push([
-            i === 0 ? no : "",
-            i === 0 ? row.product : "",
-            i === 0 ? row.qty : "",
-            lots[i],
-            i === 0 ? remark : "",
-          ]);
-        }
-        no++;
-      }
-      // 합계 행
-      aoa.push(["", "합계", groups.find(g => g.shift === group.shift)?.rows.reduce((s, r) => s + r.qty, 0) ?? 0, "", ""]);
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
-      ws["!cols"] = [{ wch: 6 }, { wch: 22 }, { wch: 6 }, { wch: 14 }, { wch: 20 }];
-      XLSX.utils.book_append_sheet(wb, ws, group.shift);
+    setDownloading(true);
+    try {
+      // remarks를 현재 편집 상태로 반영
+      const groupsWithRemarks = groups.map(g => ({
+        ...g,
+        rows: g.rows.map(row => ({
+          ...row,
+          remark: remarks[`${g.shift}|${row.product}`] ?? row.remark ?? "",
+        })),
+      }));
+      const res = await exportDailyInventoryExcel(date, groupsWithRemarks);
+      downloadBase64(res.excel_base64, `${date.replace(/-/g, "")}일일재고기록.xlsx`);
+    } catch {
+      toast.error("엑셀 생성 실패");
+    } finally {
+      setDownloading(false);
     }
-    XLSX.writeFile(wb, `${date.replace(/-/g, "")}일일재고기록.xlsx`);
   }
 
   const noShift = !loading && !shiftData;
@@ -123,9 +114,9 @@ export default function DailyInventoryPage() {
             새로고침
           </button>
           {hasData && (
-            <button onClick={handleDownload}
-              className="flex items-center gap-1.5 text-sm border border-gray-300 rounded-lg px-3 py-1.5 hover:bg-gray-50 text-gray-600">
-              <Download size={14} /> 엑셀 다운로드
+            <button onClick={handleDownload} disabled={downloading}
+              className="flex items-center gap-1.5 text-sm border border-gray-300 rounded-lg px-3 py-1.5 hover:bg-gray-50 text-gray-600 disabled:opacity-50">
+              <Download size={14} /> {downloading ? "생성 중..." : "엑셀 다운로드"}
             </button>
           )}
         </div>
