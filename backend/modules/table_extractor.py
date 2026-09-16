@@ -55,17 +55,27 @@ def extract_table_from_image(
     image_bytes: bytes,
     file_name: str,
     api_key: str,
-    model: str = "claude-opus-4-8",
+    model: str = "claude-sonnet-4-6",
 ) -> dict:
     """
-    캡처 이미지에서 표 데이터를 추출합니다.
+    캡처 이미지 또는 PDF에서 표 데이터를 추출합니다.
 
     Returns:
         {"headers": [...], "rows": [[...], ...]}
     """
     client = anthropic.Anthropic(api_key=api_key)
-    b64_image = base64.standard_b64encode(image_bytes).decode("utf-8")
+    b64_data = base64.standard_b64encode(image_bytes).decode("utf-8")
     media_type = detect_media_type(file_name)
+
+    is_pdf = media_type == "application/pdf"
+    file_content = {
+        "type": "document" if is_pdf else "image",
+        "source": {
+            "type": "base64",
+            "media_type": media_type,
+            "data": b64_data,
+        },
+    }
 
     response = client.messages.create(
         model=model,
@@ -74,14 +84,7 @@ def extract_table_from_image(
             {
                 "role": "user",
                 "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": b64_image,
-                        },
-                    },
+                    file_content,
                     {
                         "type": "text",
                         "text": TABLE_EXTRACT_PROMPT,

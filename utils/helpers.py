@@ -24,7 +24,11 @@ def encode_image_to_base64(image_bytes: bytes) -> str:
 
 def detect_media_type(file_name: str) -> str:
     ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
-    mapping = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
+    mapping = {
+        "jpg": "image/jpeg", "jpeg": "image/jpeg",
+        "png": "image/png", "webp": "image/webp",
+        "pdf": "application/pdf",
+    }
     return mapping.get(ext, "image/jpeg")
 
 
