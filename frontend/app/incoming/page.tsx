@@ -723,6 +723,26 @@ const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완�
                   .filter(({ h }) => (h.includes("신규") || h.includes("입고")) && !h.includes("기입고") && !h.includes("위치") && h !== "상태")
                   .map(({ i }) => i)
               );
+              // 신규_idx → { 입고_idx, 상태_idx } 매핑 (실시간 상태 재계산용)
+              const statusUpdateMap = new Map<number, { 입고_idx: number; 상태_idx: number }>();
+              for (let i = 0; i < headers.length; i++) {
+                if (headers[i]?.includes("신규") && i + 1 < headers.length && headers[i + 1]?.includes("입고")) {
+                  for (let j = i + 2; j < headers.length; j++) {
+                    if (headers[j]?.includes("상태")) { statusUpdateMap.set(i, { 입고_idx: i + 1, 상태_idx: j }); break; }
+                    if (headers[j]?.includes("신규")) break;
+                  }
+                }
+              }
+              const 입고ToShinGyu = new Map<number, number>();
+              for (const [ni, { 입고_idx }] of statusUpdateMap) 입고ToShinGyu.set(입고_idx, ni);
+
+              function calcStatus(신규_n: number, 입고_n: number) {
+                if (신규_n === 0) return "";
+                if (입고_n === 0) return "미입고";
+                if (입고_n === 신규_n) return "일치";
+                if (입고_n > 신규_n) return "초과";
+                return "일부";
+              }
               function getCellStyle(h: string, cell: string) {
                 if (h === "상태") {
                   if (cell.includes("미입고")) return "bg-red-100 text-red-700";
@@ -752,12 +772,22 @@ const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완�
                               {editableCols.has(ci) ? (
                                 <input
                                   type="text"
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
                                   value={String(cell ?? "")}
                                   onChange={e => {
-                                    const val = e.target.value;
+                                    const val = e.target.value.replace(/[^0-9]/g, "");
                                     setErpFillEditRows(prev => {
                                       const next = (prev ?? erpFillData.rows).map(r => [...r]);
                                       next[ri][ci] = val;
+                                      // 실시간 상태 재계산
+                                      const ni = statusUpdateMap.has(ci) ? ci : 입고ToShinGyu.get(ci);
+                                      if (ni !== undefined) {
+                                        const info = statusUpdateMap.get(ni)!;
+                                        const 신규_n = parseInt(String(next[ri][ni] ?? "")) || 0;
+                                        const 입고_n = parseInt(String(next[ri][info.입고_idx] ?? "")) || 0;
+                                        next[ri][info.상태_idx] = calcStatus(신규_n, 입고_n);
+                                      }
                                       return next;
                                     });
                                   }}
@@ -814,7 +844,7 @@ const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완�
                         />
                       </td>
                       <td className="py-1.5 px-3 font-mono text-xs font-medium">{r.색상코드}</td>
-                      <td className="py-1.5 px-3 text-xs text-gray-600">{r.제조사}</td>
+                      <td className="py-1.5 px-3 text-xs text-gray-600">{r.제조사 || "-"}</td>
                       <td className="py-1.5 px-3 text-xs text-center">{r.입고수량}</td>
                       <td className="py-1.5 px-3">
                         <span className={cn("text-xs px-2 py-0.5 rounded font-medium", statusColor(r.상태))}>
