@@ -974,10 +974,19 @@ def _build_worklog_sheet(ws, selected_date, shift_data: dict, work_items: list, 
             ("휴무", shift_data.get("휴무_조",""), "", "", shift_data.get("휴무_근무자",""), "", shift_data.get("휴무_구분",""))
         ]
     else:
+        # 부분 휴가 처리: leave_person에 있는 근무자는 휴무자 칸으로 이동, 비고에 휴가 유형 표시
+        absent_set = {n.strip() for n in shift_data.get("leave_person", "").split(",") if n.strip()}
+        ltype = shift_data.get("leave_type", "")
+
+        def _row(label, team, time_, worker, ext, note):
+            if worker in absent_set:
+                return (label, team, time_, "", worker, ext, ltype or note)
+            return (label, team, time_, worker, "", ext, note)
+
         rows_1 = [
-            ("1근", shift_data.get("1근_조",""), "06:30 – 14:30", shift_data.get("1근_근무자",""), "", shift_data.get("1근_연장",""), shift_data.get("1근_비고","")),
-            ("2근", shift_data.get("2근_조",""), "14:30 – 22:30", shift_data.get("2근_근무자",""), "", shift_data.get("2근_연장",""), shift_data.get("2근_비고","")),
-            ("3근", shift_data.get("3근_조",""), "22:30 – 06:30", shift_data.get("3근_근무자",""), "", shift_data.get("3근_연장",""), shift_data.get("3근_비고","")),
+            _row("1근", shift_data.get("1근_조",""), "06:30 – 14:30", shift_data.get("1근_근무자",""), shift_data.get("1근_연장",""), shift_data.get("1근_비고","")),
+            _row("2근", shift_data.get("2근_조",""), "14:30 – 22:30", shift_data.get("2근_근무자",""), shift_data.get("2근_연장",""), shift_data.get("2근_비고","")),
+            _row("3근", shift_data.get("3근_조",""), "22:30 – 06:30", shift_data.get("3근_근무자",""), shift_data.get("3근_연장",""), shift_data.get("3근_비고","")),
             ("휴무", shift_data.get("휴무_조",""), "", "", shift_data.get("휴무_근무자",""), "", shift_data.get("휴무_구분",""))
         ]
     for ri, r in enumerate(rows_1, start=7):
