@@ -5,6 +5,7 @@ export interface KGUser {
   token: string;
   name: string;
   employee_id: string;
+  role?: string;
 }
 
 export function saveAuth(user: KGUser) {
@@ -25,5 +26,5 @@ export function clearAuth() {
 
 export function isAdmin(): boolean {
   const u = getAuth();
-  return u?.employee_id === "admin";
+  return u?.role === "admin" || u?.employee_id === "admin";
 }

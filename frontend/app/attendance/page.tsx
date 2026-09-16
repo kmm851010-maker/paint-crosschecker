@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { getLeaves, saveLeaves, getMembers, getAttendanceMonthStats, getHolidays, type LeaveItem, type MonthStatsResult } from "@/lib/api";
-import { isAdmin } from "@/lib/auth";
+import { isAdmin, getAuth } from "@/lib/auth";
 import toast from "react-hot-toast";
 
 // ── 4조3교대 로테이션 (BASE: 2026-03-01) ──
@@ -232,6 +232,8 @@ export default function AttendancePage() {
   const [leaves, setLeaves] = useState<LeaveItem[]>([]);
   const [selName, setSelName] = useState("");
   const [admin] = useState(isAdmin);
+  const currentUser = getAuth();
+  const isRegularUser = !admin;
 
   // 모달 상태
   const [showLvDlg, setShowLvDlg] = useState(false);
@@ -267,9 +269,19 @@ export default function AttendancePage() {
       setMembers(m);
       setLeaves(l);
       const names = Object.values(m);
-      if (names.length) setSelName(n => n || names[0]);
+      if (names.length) {
+        setSelName(prev => {
+          if (prev) return prev;
+          // 일반 직원: 자기 이름으로 고정
+          if (currentUser && currentUser.role !== "admin") {
+            const myName = names.find(n => n === currentUser.name);
+            if (myName) return myName;
+          }
+          return names[0];
+        });
+      }
     } catch { toast.error("데이터 로드 실패"); }
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -391,13 +403,19 @@ export default function AttendancePage() {
             {/* 근무자 선택 */}
             {allNames.length > 0 && (
               <div style={{ marginTop: 10 }}>
-                <select value={selName} onChange={e => setSelName(e.target.value)}
-                  style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 10px", fontSize: 13, width: "100%" }}>
-                  {allNames.map(n => {
-                    const team = Object.entries(members).find(([, v]) => v === n)?.[0];
-                    return <option key={n} value={n}>{n} ({team ?? "?"}조)</option>;
-                  })}
-                </select>
+                {isRegularUser ? (
+                  <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 10px", fontSize: 13, background: "#f9fafb", color: "#374151", fontWeight: 600 }}>
+                    {selName}{selTeam ? ` (${selTeam}조)` : ""}
+                  </div>
+                ) : (
+                  <select value={selName} onChange={e => setSelName(e.target.value)}
+                    style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 10px", fontSize: 13, width: "100%" }}>
+                    {allNames.map(n => {
+                      const team = Object.entries(members).find(([, v]) => v === n)?.[0];
+                      return <option key={n} value={n}>{n} ({team ?? "?"}조)</option>;
+                    })}
+                  </select>
+                )}
               </div>
             )}
 
