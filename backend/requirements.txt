@@ -10,3 +10,4 @@ python-dotenv>=1.0.0
 gspread==6.2.1
 google-auth==2.56.3
 supabase>=2.0.0
+holidays>=0.62

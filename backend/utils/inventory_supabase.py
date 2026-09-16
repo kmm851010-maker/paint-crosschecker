@@ -224,11 +224,23 @@ def set_scan_disabled(drums: list, disabled: bool):
 
 
 def get_inventory_history(from_dt: str, to_dt: str):
-    """이력 조회 (from_dt ~ to_dt, 'YYYY-MM-DD HH:MM' 형식)."""
-    res = _sb().table("inventory_history").select("*").gte("recorded_at", from_dt).lte("recorded_at", to_dt).order("recorded_at").limit(10000).execute()
+    """이력 조회 (from_dt ~ to_dt, 'YYYY-MM-DD HH:MM' 형식). 페이지네이션으로 전체 조회."""
+    PAGE = 1000
+    all_data = []
+    offset = 0
+    while True:
+        res = _sb().table("inventory_history").select("*") \
+            .gte("recorded_at", from_dt).lte("recorded_at", to_dt) \
+            .order("recorded_at") \
+            .range(offset, offset + PAGE - 1).execute()
+        batch = res.data or []
+        all_data.extend(batch)
+        if len(batch) < PAGE:
+            break
+        offset += PAGE
 
     result = []
-    for r in res.data:
+    for r in all_data:
         from_sector = r.get("prev_sector", "")
         to_sector = r.get("new_sector", "")
         if from_sector == "미등록":

@@ -52,12 +52,14 @@ TABLE_EXTRACT_PROMPT = """당신은 이미지 속 표(테이블)를 완벽하게
 
 
 def _build_image_content(image_bytes: bytes, file_name: str) -> dict:
-    """이미지 바이트를 Claude content block으로 변환."""
+    """이미지/PDF 바이트를 Claude content block으로 변환."""
+    media_type = detect_media_type(file_name)
+    is_pdf = media_type == "application/pdf"
     return {
-        "type": "image",
+        "type": "document" if is_pdf else "image",
         "source": {
             "type": "base64",
-            "media_type": detect_media_type(file_name),
+            "media_type": media_type,
             "data": base64.standard_b64encode(image_bytes).decode("utf-8"),
         },
     }
