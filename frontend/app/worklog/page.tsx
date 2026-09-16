@@ -301,7 +301,7 @@ export default function WorklogPage() {
                       <input value={shiftData?.["주간_근무자"] ?? ""} onChange={e => updateShiftField("주간_근무자", e.target.value)}
                         style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "5px 8px", fontSize: 13, boxSizing: "border-box" }} />
                       <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2, marginTop: 6 }}>주간 비고</label>
-                      <input value={(shiftData as Record<string, string>)?.["1근_비고"] ?? ""} onChange={e => updateShiftField("1근_비고", e.target.value)}
+                      <input value={(shiftData as unknown as Record<string, string>)?.["1근_비고"] ?? ""} onChange={e => updateShiftField("1근_비고", e.target.value)}
                         style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "5px 8px", fontSize: 13, boxSizing: "border-box" }} />
                     </div>
                     {/* 야간 */}
@@ -311,7 +311,7 @@ export default function WorklogPage() {
                       <input value={shiftData?.["야간_근무자"] ?? ""} onChange={e => updateShiftField("야간_근무자", e.target.value)}
                         style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "5px 8px", fontSize: 13, boxSizing: "border-box" }} />
                       <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2, marginTop: 6 }}>야간 비고</label>
-                      <input value={(shiftData as Record<string, string>)?.["2근_비고"] ?? ""} onChange={e => updateShiftField("2근_비고", e.target.value)}
+                      <input value={(shiftData as unknown as Record<string, string>)?.["2근_비고"] ?? ""} onChange={e => updateShiftField("2근_비고", e.target.value)}
                         style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "5px 8px", fontSize: 13, boxSizing: "border-box" }} />
                     </div>
                     {/* 휴무 */}
@@ -337,11 +337,11 @@ export default function WorklogPage() {
                           {sh} ({sh === "1근" ? "06:30~14:30" : sh === "2근" ? "14:30~22:30" : "22:30~06:30"})
                         </div>
                         <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>{sh} 근무자</label>
-                        <input value={(shiftData as Record<string, string>)?.[`${sh}_근무자`] ?? ""}
+                        <input value={(shiftData as unknown as Record<string, string>)?.[`${sh}_근무자`] ?? ""}
                           onChange={e => updateShiftField(`${sh}_근무자`, e.target.value)}
                           style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "5px 8px", fontSize: 13, boxSizing: "border-box" }} />
                         <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2, marginTop: 6 }}>{sh} 비고</label>
-                        <input value={(shiftData as Record<string, string>)?.[`${sh}_비고`] ?? ""}
+                        <input value={(shiftData as unknown as Record<string, string>)?.[`${sh}_비고`] ?? ""}
                           onChange={e => updateShiftField(`${sh}_비고`, e.target.value)}
                           style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "5px 8px", fontSize: 13, boxSizing: "border-box" }} />
                       </div>
@@ -359,7 +359,7 @@ export default function WorklogPage() {
             </div>
 
             {/* ── 2. 업무 현황 ── */}
-            <div style={{ background: "#fff", borderRadius: 0, border: "2px solid #4B2D8E", borderRadius: 4, marginBottom: 18, overflow: "hidden" }}>
+            <div style={{ background: "#fff", border: "2px solid #4B2D8E", borderRadius: 4, marginBottom: 18, overflow: "hidden" }}>
               <div style={{ background: "#4B2D8E", color: "#fff", padding: "6px 14px", fontSize: 13, fontWeight: 700 }}>2. 업무 현황</div>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 700, fontSize: 12 }}>
