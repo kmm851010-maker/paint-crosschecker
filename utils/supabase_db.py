@@ -314,7 +314,7 @@ def load_all(selected_date: datetime.date) -> dict:
 
 def get_sector_inventory() -> dict:
     """섹터별 드럼 목록 반환."""
-    res = _sb().table("inventory").select("*").execute()
+    res = _sb().table("inventory").select("*").limit(10000).execute()
     sectors = {}
     for r in res.data:
         sector = r.get("sector") or "미분류"
