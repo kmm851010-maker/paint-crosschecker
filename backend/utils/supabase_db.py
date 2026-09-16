@@ -140,16 +140,19 @@ def get_shift_info(target_date: datetime.date, members: dict) -> dict:
         "3근_연장": 0.0, "3근_주간연장": 0.0, "3근_야간연장": 0.0, "3근_비고": "",
         "휴무_조": off, "휴무_근무자": members.get(off, off),
         "휴무_구분": off_type,
-        "is_2person": False, "leave_person": "", "leave_type": "",
+        "is_2person": False, "is_allleave": False, "leave_person": "", "leave_type": "",
     }
 
 
 def apply_leaves(shift_data: dict, target_date: datetime.date, leave_list: list) -> dict:
     result = shift_data.copy()
     result["is_2person"] = False
+    result["is_allleave"] = False
     result["leave_person"] = ""
     result["leave_type"] = ""
 
+    # 해당 날짜에 휴가인 근무자 수집
+    on_leave: dict[str, str] = {}
     for leave in leave_list:
         try:
             start = datetime.date.fromisoformat(leave["start"])
@@ -157,27 +160,37 @@ def apply_leaves(shift_data: dict, target_date: datetime.date, leave_list: list)
         except Exception:
             continue
         if start <= target_date <= end:
-            absent = leave["name"]
-            ltype = leave["type"]
-            if result["1근_근무자"] == absent:
-                result.update({
-                    "is_2person": True, "leave_person": absent, "leave_type": ltype,
-                    "주간_근무자": result["2근_근무자"], "야간_근무자": result["3근_근무자"],
-                    "주간_조": result["2근_조"], "야간_조": result["3근_조"],
-                })
-            elif result["2근_근무자"] == absent:
-                result.update({
-                    "is_2person": True, "leave_person": absent, "leave_type": ltype,
-                    "주간_근무자": result["1근_근무자"], "야간_근무자": result["3근_근무자"],
-                    "주간_조": result["1근_조"], "야간_조": result["3근_조"],
-                })
-            elif result["3근_근무자"] == absent:
-                result.update({
-                    "is_2person": True, "leave_person": absent, "leave_type": ltype,
-                    "주간_근무자": result["1근_근무자"], "야간_근무자": result["2근_근무자"],
-                    "주간_조": result["1근_조"], "야간_조": result["2근_조"],
-                })
-            break
+            on_leave[leave["name"]] = leave["type"]
+
+    w1 = result.get("1근_근무자", "")
+    w2 = result.get("2근_근무자", "")
+    w3 = result.get("3근_근무자", "")
+    workers = [w for w in [w1, w2, w3] if w]
+    absent = [w for w in workers if w in on_leave]
+
+    if len(absent) >= len(workers) and len(workers) > 0:
+        # 전원 휴가
+        leave_type = on_leave.get(w1) or on_leave.get(w2) or on_leave.get(w3) or ""
+        result["is_allleave"] = True
+        result["leave_type"] = leave_type
+    elif w1 in on_leave:
+        result.update({
+            "is_2person": True, "leave_person": w1, "leave_type": on_leave[w1],
+            "주간_근무자": w2, "야간_근무자": w3,
+            "주간_조": result["2근_조"], "야간_조": result["3근_조"],
+        })
+    elif w2 in on_leave:
+        result.update({
+            "is_2person": True, "leave_person": w2, "leave_type": on_leave[w2],
+            "주간_근무자": w1, "야간_근무자": w3,
+            "주간_조": result["1근_조"], "야간_조": result["3근_조"],
+        })
+    elif w3 in on_leave:
+        result.update({
+            "is_2person": True, "leave_person": w3, "leave_type": on_leave[w3],
+            "주간_근무자": w1, "야간_근무자": w2,
+            "주간_조": result["1근_조"], "야간_조": result["2근_조"],
+        })
     return result
 
 

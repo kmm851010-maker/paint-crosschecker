@@ -54,7 +54,7 @@ interface ShiftInfo {
   "휴무_조": string; "휴무_근무자": string; "휴무_구분": string;
   "주간_조"?: string; "주간_근무자"?: string;
   "야간_조"?: string; "야간_근무자"?: string;
-  is_2person: boolean; leave_person: string; leave_type: string;
+  is_2person: boolean; is_allleave?: boolean; leave_person: string; leave_type: string;
 }
 
 interface SafetyRow {
@@ -150,6 +150,7 @@ export default function WorklogPage() {
   useEffect(() => { loadData(date); }, [date, loadData]);
 
   const is2p = shiftData?.is_2person ?? false;
+  const isAllLeave = shiftData?.is_allleave ?? false;
 
   // 비활성 컬럼 (2인: 1근/2근/3근 비활성 / 3교대: 주간/야간 비활성)
   const disabledShifts: Set<string> = is2p
@@ -314,16 +315,28 @@ export default function WorklogPage() {
               <div style={{ padding: 16 }}>
 
                 {/* 근무 배너 */}
-                {shiftAuto && is2p && (
+                {shiftAuto && isAllLeave && (
+                  <div style={{ background: "#f5f3ff", border: "1px solid #c4b5fd", borderRadius: 8, padding: "8px 14px", marginBottom: 8, fontSize: 13, color: "#5b21b6" }}>
+                    <strong>전원 {shiftAuto.leave_type || "명휴"}</strong> — 해당일 전원 휴무
+                  </div>
+                )}
+                {shiftAuto && !isAllLeave && is2p && (
                   <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 14px", marginBottom: 8, fontSize: 13, color: "#92400e" }}>
                     ⚠️ <strong>{shiftAuto.leave_person}</strong> {shiftAuto.leave_type} —
                     2인 근무 체계 (주간/야간 12시간) 자동 전환
                   </div>
                 )}
                 {shiftData && (
-                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "8px 14px", marginBottom: 12, fontSize: 13, color: "#166534" }}>
-                    <strong>{fmtDate(date)}</strong>{is2p ? " 2인 근무" : " 근무 매칭 완료"}&nbsp;&nbsp;
-                    {is2p ? (
+                  <div style={{ background: isAllLeave ? "#f5f3ff" : "#f0fdf4", border: `1px solid ${isAllLeave ? "#c4b5fd" : "#bbf7d0"}`, borderRadius: 8, padding: "8px 14px", marginBottom: 12, fontSize: 13, color: isAllLeave ? "#5b21b6" : "#166534" }}>
+                    <strong>{fmtDate(date)}</strong>{isAllLeave ? ` 전원 ${shiftData.leave_type || "명휴"}` : is2p ? " 2인 근무" : " 근무 매칭 완료"}&nbsp;&nbsp;
+                    {isAllLeave ? (
+                      <>
+                        1근: <strong>{shiftData["1근_조"]}조 {shiftData["1근_근무자"]}</strong> |&nbsp;
+                        2근: <strong>{shiftData["2근_조"]}조 {shiftData["2근_근무자"]}</strong> |&nbsp;
+                        3근: <strong>{shiftData["3근_조"]}조 {shiftData["3근_근무자"]}</strong> |&nbsp;
+                        휴무: <strong>{shiftData["휴무_조"]}조 {shiftData["휴무_근무자"]}</strong>
+                      </>
+                    ) : is2p ? (
                       <>
                         주간(06:30-18:30): <strong>{shiftData["주간_조"]}조 {shiftData["주간_근무자"]}</strong> |&nbsp;
                         야간(18:30-06:30): <strong>{shiftData["야간_조"]}조 {shiftData["야간_근무자"]}</strong> |&nbsp;
