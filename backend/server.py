@@ -26,7 +26,7 @@ from modules.vision_ocr import extract_production_plan
 from modules.erp_parser import process_erp_file
 from modules.matcher import cross_check
 from modules.excel_generator import generate_report
-from modules.excel_converter import generate_incoming_plan_excel
+from modules.excel_converter import generate_incoming_plan_excel, convert_to_excel
 from utils.formatter import format_summary
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
@@ -95,18 +95,33 @@ async def parse_plan(req: ParsePlanRequest):
     key = get_api_key(req.api_key)
 
     all_items = []
+    all_table_data = []
     for file_b64, filename in zip(req.plan_files, req.plan_filenames):
         plan_bytes = base64.b64decode(file_b64)
         try:
             result = extract_production_plan(plan_bytes, filename, key)
             all_items.extend(result["items"])
+            if result.get("table_data"):
+                all_table_data.append(result["table_data"])
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"생산계획서 분석 실패: {str(e)}")
+
+    merged_table_data = None
+    if all_table_data:
+        if len(all_table_data) == 1:
+            merged_table_data = all_table_data[0]
+        else:
+            headers = all_table_data[0]["headers"]
+            rows = []
+            for td in all_table_data:
+                rows.extend(td["rows"])
+            merged_table_data = {"headers": headers, "rows": rows}
 
     return {
         "success": True,
         "items": all_items,
         "count": len(all_items),
+        "table_data": merged_table_data,
     }
 
 
@@ -181,6 +196,144 @@ async def export_excel_multi(req: CrossCheckRequest):
 
     return {
         "success": True,
+        "excel_base64": base64.b64encode(excel_bytes).decode("utf-8"),
+    }
+
+
+# --- 생산계획서 변환결과 (입고/위치 컬럼 추가) ---
+
+class PlanConversionRequest(BaseModel):
+    table_data: dict  # {"headers": [...], "rows": [[...], ...]}
+    plan_items: list[dict] = []
+
+
+@app.post("/api/plan-conversion")
+async def plan_conversion_endpoint(req: PlanConversionRequest):
+    """생산계획서 변환결과 테이블 생성 (신규→입고 컬럼, 재고→위치 컬럼 추가)."""
+    import re as _re
+
+    headers = req.table_data.get("headers", [])
+    rows_raw = req.table_data.get("rows", [])
+
+    if not headers:
+        return {"success": True, "headers": [], "rows": [], "excel_base64": ""}
+
+    # 1. 헤더 중복 해소
+    unique_h, seen = [], {}
+    for h in headers:
+        hs = str(h) if h else ""
+        if hs in seen:
+            seen[hs] += 1
+            unique_h.append(f"{hs}_{seen[hs]}")
+        else:
+            seen[hs] = 0
+            unique_h.append(hs)
+
+    # 2. 행 패딩
+    padded = [list(r[:len(unique_h)]) + [""] * max(0, len(unique_h) - len(r)) for r in rows_raw]
+
+    # 3. 신규 컬럼 다음에 입고 컬럼 삽입
+    final_h = []
+    new_col_flags = []
+    for h in unique_h:
+        final_h.append(h)
+        new_col_flags.append(False)
+        if "신규" in str(h):
+            in_name = str(h).replace("신규", "입고")
+            base_n, c = in_name, 1
+            while in_name in final_h:
+                in_name = f"{base_n}_{c}"; c += 1
+            final_h.append(in_name)
+            new_col_flags.append(True)
+
+    def _ts(x):
+        if x is None or str(x) in ("nan", "None", "NaN"):
+            return ""
+        if isinstance(x, float):
+            return str(int(x)) if x == int(x) else str(x)
+        return x if isinstance(x, str) else str(x)
+
+    final_rows = []
+    for rw in padded:
+        new_row = []
+        orig_idx = 0
+        for is_new in new_col_flags:
+            if is_new:
+                new_row.append("")
+            else:
+                new_row.append(_ts(rw[orig_idx]) if orig_idx < len(rw) else "")
+                orig_idx += 1
+        final_rows.append(new_row)
+
+    # 4. 재고 위치 조회
+    inv_location_map = {}
+    try:
+        from utils.inventory_supabase import get_sector_inventory
+        inv_raw = get_sector_inventory()
+        prod_sectors: dict = {}
+        for sec, drums in inv_raw.items():
+            for d in drums:
+                p = str(d.get("product", "")).strip().upper()
+                if p:
+                    prod_sectors.setdefault(p, {})
+                    prod_sectors[p][sec] = prod_sectors[p].get(sec, 0) + 1
+        inv_location_map = {
+            p: " / ".join(f"{s}({n})" for s, n in sv.items())
+            for p, sv in prod_sectors.items()
+        }
+    except Exception:
+        pass
+
+    # 5. 색상코드 컬럼 탐지
+    code_col_idx = None
+    code_kws = ["색상코드", "품목코드", "clrcd", "color", "코드", "품목"]
+    for i, ch in enumerate(final_h):
+        if any(kw in str(ch).lower() for kw in code_kws):
+            code_col_idx = i
+            break
+    if code_col_idx is None:
+        for i, ch in enumerate(final_h):
+            vals = [row[i] for row in final_rows if i < len(row)]
+            match_cnt = sum(1 for v in vals if _re.match(r"^[A-Za-z][A-Za-z0-9]{5,}$", str(v).strip()))
+            if vals and match_cnt >= len(vals) * 0.4:
+                code_col_idx = i
+                break
+
+    # 6. 재고 컬럼 우측에 위치 컬럼 삽입 (역순으로 처리해 인덱스 유지)
+    if inv_location_map:
+        jaego_idxs = [(i, c) for i, c in enumerate(final_h) if _re.match(r'^재고(_\d+)?$', str(c).strip())]
+        for rc_idx, rc in reversed(jaego_idxs):
+            suffix = str(rc)[2:]
+            corr_code_col = f"색상코드{suffix}"
+            if corr_code_col in final_h:
+                corr_code_idx = final_h.index(corr_code_col)
+            else:
+                corr_code_idx = code_col_idx
+            wi_col_name = f"위치{suffix}"
+            insert_pos = rc_idx + 1
+            loc_vals = []
+            for row in final_rows:
+                stock = str(row[rc_idx]).strip() if rc_idx < len(row) else ""
+                try:
+                    stock_n = int(stock) if stock else 0
+                except Exception:
+                    stock_n = 0
+                loc = ""
+                if stock_n > 0 and corr_code_idx is not None and corr_code_idx < len(row):
+                    code = str(row[corr_code_idx]).strip().upper()
+                    loc = inv_location_map.get(code, "")
+                loc_vals.append(loc)
+            final_h.insert(insert_pos, wi_col_name)
+            for j, row in enumerate(final_rows):
+                row.insert(insert_pos, loc_vals[j])
+
+    # 7. 엑셀 생성
+    excel_bytes = convert_to_excel(final_h, final_rows)
+
+    return {
+        "success": True,
+        "headers": final_h,
+        "rows": final_rows,
         "excel_base64": base64.b64encode(excel_bytes).decode("utf-8"),
     }
 

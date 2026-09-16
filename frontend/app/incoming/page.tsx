@@ -1,15 +1,16 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import AppShell from "@/components/AppShell";
 import Button from "@/components/ui/Button";
 import toast from "react-hot-toast";
 import {
   parsePlan, crossCheckMulti, exportExcelMulti,
-  generateIncomingExcel, registerDrums, DrumItem, SECTORS,
+  generateIncomingExcel, registerDrums, planConversion,
+  DrumItem, SECTORS,
 } from "@/lib/api";
 import { fileToBase64, downloadBase64 } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { RefreshCw, Download, ChevronDown, ChevronUp } from "lucide-react";
+import { RefreshCw, Download, ChevronDown, ChevronUp, X } from "lucide-react";
 import * as XLSX from "xlsx";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ interface Summary {
   total_actual: number;
 }
 interface ExtractedDrum { lot: string; product: string; maker: string; }
+interface TableData { headers: string[]; rows: unknown[][]; }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function kstDateStr() {
@@ -65,8 +67,6 @@ function statusEmoji(status: string) {
 }
 
 const LOT_PAT = /^[A-Z][A-Z0-9]{7,11}$/;
-
-// Client-side LOT extraction from ERP Excel (for 신규 입고처리)
 const WEIGHT_KW = ["중량", "무게", "kg", "weight", "wgt", "pkgwgt", "netwgt"];
 
 async function extractDrumsFromExcel(file: File): Promise<ExtractedDrum[]> {
@@ -105,7 +105,6 @@ async function extractDrumsFromExcel(file: File): Promise<ExtractedDrum[]> {
       let raw = String(row[lotCol] ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
       if (raw.length === 10) raw = raw.slice(0, 9);
       if (!LOT_PAT.test(raw) || raw in seen) continue;
-      // 500kg 이상 대형 벌크 제외
       if (weightCol >= 0 && weightCol < row.length) {
         const w = parseFloat(String(row[weightCol] ?? "0")) || 0;
         if (w >= 500) continue;
@@ -117,6 +116,206 @@ async function extractDrumsFromExcel(file: File): Promise<ExtractedDrum[]> {
   return Object.values(seen);
 }
 
+// ── IncomingListDialog ─────────────────────────────────────────────────────────
+function IncomingListDialog({
+  planItems,
+  onClose,
+}: {
+  planItems: PlanItem[];
+  onClose: () => void;
+}) {
+  const incItems = useMemo(
+    () => planItems.filter(i => (i.신규 ?? 0) > 0),
+    [planItems]
+  );
+  const [preQty, setPreQty] = useState<Record<number, number>>(() =>
+    Object.fromEntries(incItems.map((_, i) => [i, 0]))
+  );
+
+  const totalPlan = incItems.reduce((s, i) => s + (i.신규 ?? 0), 0);
+  const totalPre = Object.values(preQty).reduce((s, v) => s + (v || 0), 0);
+
+  async function handleDownload() {
+    try {
+      const items = incItems.map((item, i) => ({
+        ...item,
+        기입고수량: preQty[i] ?? 0,
+      }));
+      const data = await generateIncomingExcel(items);
+      downloadBase64(data.excel_base64, `${kstDateStr()}입고예정품목.xlsx`);
+    } catch {
+      toast.error("입고예정 엑셀 생성 실패");
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div
+        className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+          <h3 className="font-semibold text-gray-800">입고예정 품목 리스트</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+        <div className="px-5 py-3 border-b border-gray-100 flex justify-end">
+          <Button variant="secondary" size="sm" onClick={handleDownload}>
+            <Download size={14} /> 입고예정 엑셀 다운로드
+          </Button>
+        </div>
+        <div className="overflow-auto flex-1 px-2">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 sticky top-0">
+              <tr>
+                {["#", "품목코드", "제조사", "기입고수량", "입고예정수량", "비고"].map(h => (
+                  <th key={h} className="py-2 px-3 text-left text-xs font-semibold text-gray-500">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {incItems.map((item, i) => (
+                <tr key={i} className="border-t border-gray-100">
+                  <td className="py-1.5 px-3 text-xs text-gray-400">{i + 1}</td>
+                  <td className="py-1.5 px-3 font-mono text-xs font-medium">{item.색상코드}</td>
+                  <td className="py-1.5 px-3 text-xs text-gray-600">{item.제조사}</td>
+                  <td className="py-1.5 px-3">
+                    <input
+                      type="number"
+                      min={0}
+                      value={preQty[i] ?? 0}
+                      onChange={e => setPreQty(prev => ({ ...prev, [i]: parseInt(e.target.value) || 0 }))}
+                      className="w-16 border border-gray-300 rounded px-2 py-0.5 text-xs text-center"
+                    />
+                  </td>
+                  <td className="py-1.5 px-3 text-xs text-center font-semibold">{item.신규}</td>
+                  <td className="py-1.5 px-3 text-xs text-gray-400">{item.비고 ?? ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="px-5 py-3 border-t border-gray-200 bg-green-50 rounded-b-xl text-sm text-green-800 font-medium">
+          총 {incItems.length}개 품목 | 입고예정: {totalPlan}개 | 기입고: {totalPre}개 | 잔여: {totalPlan - totalPre}개
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ConversionDialog ───────────────────────────────────────────────────────────
+function ConversionDialog({
+  tableData,
+  planItems,
+  onClose,
+}: {
+  tableData: TableData;
+  planItems: PlanItem[];
+  onClose: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ headers: string[]; rows: string[][]; excel_base64: string } | null>(null);
+  const [showIncoming, setShowIncoming] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await planConversion(tableData, planItems);
+      setResult(res);
+    } catch {
+      toast.error("변환결과 로드 실패");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // auto-load on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, []);
+
+  const headers = result?.headers ?? [];
+  const rows = result?.rows ?? [];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div
+        className="bg-white rounded-xl shadow-2xl flex flex-col"
+        style={{ width: "96vw", maxWidth: "96vw", maxHeight: "90vh" }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
+          <h3 className="font-semibold text-gray-800">생산계획서 전체 변환 결과</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+        <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-100 shrink-0">
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!result}
+            onClick={() => result && downloadBase64(result.excel_base64, `${kstDateStr()}생산계획서변환.xlsx`)}
+          >
+            <Download size={14} /> 전체 엑셀 다운로드
+          </Button>
+          {planItems.some(i => (i.신규 ?? 0) > 0) && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowIncoming(true)}
+            >
+              입고예정리스트 확인
+            </Button>
+          )}
+          {result && (
+            <span className="text-xs text-gray-400 ml-auto">
+              변환 결과 ({rows.length}행 × {headers.length}열)
+            </span>
+          )}
+        </div>
+        <div className="overflow-auto flex-1">
+          {loading ? (
+            <div className="flex items-center justify-center h-40 text-gray-400 text-sm">로딩 중...</div>
+          ) : (
+            <table className="text-sm border-collapse" style={{ minWidth: "max-content" }}>
+              <thead className="bg-gray-50 sticky top-0 z-10">
+                <tr>
+                  {headers.map((h, i) => (
+                    <th
+                      key={i}
+                      className="py-2 px-3 text-left text-xs font-semibold text-gray-600 border border-gray-200 whitespace-nowrap bg-gray-50"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, ri) => (
+                  <tr key={ri} className="hover:bg-blue-50">
+                    {row.map((cell, ci) => (
+                      <td
+                        key={ci}
+                        className={cn(
+                          "py-1 px-3 text-xs border border-gray-100 whitespace-nowrap",
+                          headers[ci]?.includes("위치") && cell ? "text-blue-600 font-medium" : "",
+                          headers[ci]?.includes("입고") && !headers[ci]?.includes("기입고") ? "bg-yellow-50" : "",
+                        )}
+                      >
+                        {String(cell ?? "")}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+      {showIncoming && (
+        <IncomingListDialog planItems={planItems} onClose={() => setShowIncoming(false)} />
+      )}
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function IncomingPage() {
   // ── Files ──
@@ -125,10 +324,11 @@ export default function IncomingPage() {
 
   // ── Plan state ──
   const [planItems, setPlanItems] = useState<PlanItem[]>([]);
+  const [planTableData, setPlanTableData] = useState<TableData | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
   const [planFileB64s, setPlanFileB64s] = useState<{ data: string; name: string }[]>([]);
-  const [incomingExcelLoading, setIncomingExcelLoading] = useState(false);
   const [showPlanTable, setShowPlanTable] = useState(false);
+  const [showConversion, setShowConversion] = useState(false);
 
   // ── Crosscheck state ──
   const [results, setResults] = useState<ResultItem[]>([]);
@@ -144,18 +344,14 @@ export default function IncomingPage() {
   const [newRegLoading, setNewRegLoading] = useState(false);
   const [showNewReg, setShowNewReg] = useState(false);
 
-  // ── API key ──
-  const [apiKey, setApiKey] = useState("");
-  const [showApiKey, setShowApiKey] = useState(false);
-
   // ── Reset ──────────────────────────────────────────────────────────────────
   function reset() {
     setPlanFiles([]); setErpFile(null);
-    setPlanItems([]); setPlanFileB64s([]);
+    setPlanItems([]); setPlanTableData(null); setPlanFileB64s([]);
     setResults([]); setSummary(null);
     setErpFileB64(null); setReverseChecked(new Set());
     setNewRegDrums([]); setShowNewReg(false);
-    setShowPlanTable(false);
+    setShowPlanTable(false); setShowConversion(false);
   }
 
   // ── Plan extraction ────────────────────────────────────────────────────────
@@ -169,30 +365,16 @@ export default function IncomingPage() {
       const data = await parsePlan(
         encoded.map(e => e.data),
         encoded.map(e => e.name),
-        apiKey
+        ""
       );
-      setPlanItems(data.items ?? []);
+      setPlanItems((data.items ?? []) as PlanItem[]);
+      setPlanTableData(data.table_data ?? null);
       setPlanFileB64s(encoded);
       toast.success(`생산계획서 분석 완료 (${data.items?.length ?? 0}개 품목)`);
     } catch (e) {
       toast.error(`생산계획서 분석 실패: ${e instanceof Error ? e.message : "오류"}`);
     } finally {
       setPlanLoading(false);
-    }
-  }
-
-  // ── Incoming Excel download ────────────────────────────────────────────────
-  async function handleIncomingExcel() {
-    const newItems = planItems.filter(i => (i.신규 ?? 0) > 0);
-    if (newItems.length === 0) { toast("입고 예정 품목이 없습니다."); return; }
-    setIncomingExcelLoading(true);
-    try {
-      const data = await generateIncomingExcel(newItems);
-      downloadBase64(data.excel_base64, `${kstDateStr()}입고예정품목.xlsx`);
-    } catch {
-      toast.error("입고예정 엑셀 생성 실패");
-    } finally {
-      setIncomingExcelLoading(false);
     }
   }
 
@@ -205,7 +387,7 @@ export default function IncomingPage() {
       setErpFileB64({ data: erpB64, name: erpFile.name });
       const data = await crossCheckMulti(
         planFileB64s.map(e => e.data), planFileB64s.map(e => e.name),
-        erpB64, erpFile.name, apiKey
+        erpB64, erpFile.name, ""
       );
       setResults(data.results ?? []);
       setSummary(data.summary ?? null);
@@ -225,7 +407,7 @@ export default function IncomingPage() {
     try {
       const data = await exportExcelMulti(
         planFileB64s.map(e => e.data), planFileB64s.map(e => e.name),
-        erpFileB64.data, erpFileB64.name, apiKey
+        erpFileB64.data, erpFileB64.name, ""
       );
       downloadBase64(data.excel_base64, `${kstDateStr()}입고교차검증.xlsx`);
     } catch {
@@ -235,7 +417,7 @@ export default function IncomingPage() {
     }
   }
 
-  // ── 신규 입고처리 (ERP only) ───────────────────────────────────────────────
+  // ── 신규 입고처리 ─────────────────────────────────────────────────────────
   async function handleNewRegExtract() {
     if (!erpFile) return;
     try {
@@ -301,23 +483,6 @@ export default function IncomingPage() {
           </div>
         </div>
 
-        {/* API Key 고급설정 */}
-        <div className="mb-4">
-          <button onClick={() => setShowApiKey(v => !v)} className="text-xs text-gray-400 flex items-center gap-1 hover:text-gray-600">
-            {showApiKey ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            API Key 설정 (선택사항)
-          </button>
-          {showApiKey && (
-            <input
-              type="password"
-              value={apiKey}
-              onChange={e => setApiKey(e.target.value)}
-              placeholder="Anthropic API Key (서버에 설정된 경우 불필요)"
-              className="mt-1 w-full max-w-md border border-gray-300 rounded px-3 py-1.5 text-sm"
-            />
-          )}
-        </div>
-
         {/* ── 파일 업로드 (2컬럼) ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           {/* 왼쪽: 생산계획서 */}
@@ -330,7 +495,7 @@ export default function IncomingPage() {
                 multiple
                 accept=".jpg,.jpeg,.png,.webp,.xlsx,.xls,.csv,.pdf,.docx"
                 className="mt-1 block w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
-                onChange={e => { setPlanFiles(Array.from(e.target.files ?? [])); setPlanItems([]); setPlanFileB64s([]); }}
+                onChange={e => { setPlanFiles(Array.from(e.target.files ?? [])); setPlanItems([]); setPlanFileB64s([]); setPlanTableData(null); }}
               />
             </label>
             {planFiles.length > 0 && planItems.length === 0 && (
@@ -347,15 +512,28 @@ export default function IncomingPage() {
                     {showPlanTable ? "접기" : "목록 보기"}
                   </button>
                 </div>
-                {incomingItems.length > 0 && (
+                {planTableData?.headers?.length ? (
                   <Button
                     variant="secondary" size="sm"
-                    onClick={handleIncomingExcel} loading={incomingExcelLoading}
+                    onClick={() => setShowConversion(true)}
+                    className="w-full"
+                  >
+                    변환결과
+                  </Button>
+                ) : incomingItems.length > 0 ? (
+                  <Button
+                    variant="secondary" size="sm"
+                    onClick={async () => {
+                      try {
+                        const data = await generateIncomingExcel(incomingItems);
+                        downloadBase64(data.excel_base64, `${kstDateStr()}입고예정품목.xlsx`);
+                      } catch { toast.error("입고예정 엑셀 생성 실패"); }
+                    }}
                     className="w-full"
                   >
                     <Download size={14} /> 입고예정 엑셀 ({incomingItems.length}건)
                   </Button>
-                )}
+                ) : null}
               </div>
             )}
           </div>
@@ -651,6 +829,15 @@ export default function IncomingPage() {
           </div>
         )}
       </div>
+
+      {/* ── 변환결과 다이얼로그 ── */}
+      {showConversion && planTableData && (
+        <ConversionDialog
+          tableData={planTableData}
+          planItems={planItems}
+          onClose={() => setShowConversion(false)}
+        />
+      )}
     </AppShell>
   );
 }

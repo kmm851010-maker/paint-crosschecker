@@ -73,7 +73,12 @@ export async function parseReturnList(file_data: string, filename: string, api_k
 // ── Cross Check ──
 export async function parsePlan(plan_files: string[], plan_filenames: string[], api_key: string) {
   const { data } = await api.post("/api/parse-plan", { plan_files, plan_filenames, api_key }, { timeout: 120000 });
-  return data;
+  return data as { success: boolean; items: unknown[]; count: number; table_data: { headers: string[]; rows: unknown[][] } | null };
+}
+
+export async function planConversion(table_data: { headers: string[]; rows: unknown[][] }, plan_items: unknown[]) {
+  const { data } = await api.post("/api/plan-conversion", { table_data, plan_items }, { timeout: 30000 });
+  return data as { success: boolean; headers: string[]; rows: string[][]; excel_base64: string };
 }
 
 export async function crossCheckMulti(
