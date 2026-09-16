@@ -305,14 +305,25 @@ def save_schedule_note(name: str, date_str: str, note_text: str):
 # ════════════════════════════════════════════════════════════════════
 
 def get_inventory_registered_in_range(start_kst: str, end_kst: str) -> list:
-    res = _sb().table("inventory") \
-        .select("lot,product,maker,registered_at,remark") \
-        .gte("registered_at", start_kst) \
-        .lt("registered_at", end_kst) \
-        .order("registered_at") \
-        .limit(10000) \
-        .execute()
-    return res.data or []
+    """PostgREST max-rows 제한을 우회하기 위해 페이지네이션으로 전체 데이터 조회."""
+    sb = _sb()
+    PAGE = 300
+    results = []
+    offset = 0
+    while True:
+        res = sb.table("inventory") \
+            .select("lot,product,maker,registered_at,remark") \
+            .gte("registered_at", start_kst) \
+            .lt("registered_at", end_kst) \
+            .order("registered_at") \
+            .range(offset, offset + PAGE - 1) \
+            .execute()
+        batch = res.data or []
+        results.extend(batch)
+        if len(batch) < PAGE:
+            break
+        offset += PAGE
+    return results
 
 
 def get_daily_inventory_remarks(date_str: str) -> list:
