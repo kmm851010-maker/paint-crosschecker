@@ -571,6 +571,12 @@ def _apply_leaves_stat(shift, target_date, leaves):
             continue
         if start <= target_date <= end:
             absent, ltype = lv["name"], lv["type"]
+            if ltype == "명휴":
+                # 명휴: 회사 가동 중단 → is_2person 전환 없이 leave 기록만 (여러 명 가능)
+                if not result.get("leave_person"):
+                    result["leave_person"] = absent
+                    result["leave_type"] = ltype
+                continue
             if result["1근_근무자"] == absent:
                 result.update({"is_2person": True, "leave_person": absent, "leave_type": ltype,
                                 "주간_근무자": result["2근_근무자"], "야간_근무자": result["3근_근무자"],
@@ -2536,6 +2542,19 @@ def page_statistics():
                 if night_base > 0:
                     row["야간근로"] = night_base + night_ot_h
 
+        def _is_명휴_day(pname, pdate):
+            """해당 날짜에 명휴 신청된 사람인지 확인"""
+            for lv in base_leaves:
+                if lv.get("type") != "명휴" or lv.get("name") != pname:
+                    continue
+                try:
+                    if (datetime.date.fromisoformat(lv["start"][:10]) <= pdate
+                            <= datetime.date.fromisoformat(lv["end"][:10])):
+                        return True
+                except Exception:
+                    pass
+            return False
+
         rows = []
         for day in range(1, days_in_month + 1):
             date = datetime.date(year, month, day)
@@ -2545,7 +2564,9 @@ def page_statistics():
             row = {c: 0.0 for c in _SALARY_COLS}
             row["날짜"] = f"{month:02d}/{day:02d}"
 
-            if date_str in daily_details and daily_details[date_str].get("shift"):
+            if _is_명휴_day(name, date):
+                row["휴가비근로"] = 8.0
+            elif date_str in daily_details and daily_details[date_str].get("shift"):
                 # ── 저장된 일지 우선 사용 ──
                 shift = daily_details[date_str].get("shift", {})
                 is_2p = shift.get("is_2person", False)
@@ -2579,6 +2600,7 @@ def page_statistics():
 
             else:
                 # ── 저장 없음 → 교대 스케줄 기반 기본값 ──
+                # (명휴는 위 _is_명휴_day 블록에서 이미 처리됨)
                 sched = _shift_for_date(date, MEMBERS)
                 sched = _apply_leaves_stat(sched, date, base_leaves)
                 is_2p = sched.get("is_2person", False)
