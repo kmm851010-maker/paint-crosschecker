@@ -4756,6 +4756,8 @@ def page_inventory():
         st.subheader("재고 현황")
     with _inv_hdr_c2:
         if st.button("🔄", key="inv_refresh", use_container_width=True, help="새로고침"):
+            st.session_state.pop("inv_cache_data", None)
+            st.session_state.pop("inv_cache_ts", None)
             st.rerun()
 
     _half_hours = [f"{h:02d}:{m:02d}" for h in range(24) for m in (0, 30)]
@@ -4938,15 +4940,23 @@ def page_inventory():
 
         return_filter = ""
 
-        try:
-            _inv_r = _req.get(f"{BACKEND}/api/inventory/sectors", timeout=15)
-            if not _inv_r.ok:
-                st.error(f"조회 실패: {_inv_r.status_code}")
+        # 캐시된 데이터 사용 (60초 TTL)
+        _cache_ts = st.session_state.get("inv_cache_ts", 0)
+        _cache_age = datetime.datetime.utcnow().timestamp() - _cache_ts
+        if "inv_cache_data" in st.session_state and _cache_age < 60:
+            sectors_raw = st.session_state["inv_cache_data"]
+        else:
+            try:
+                _inv_r = _req.get(f"{BACKEND}/api/inventory/sectors", timeout=30)
+                if not _inv_r.ok:
+                    st.error(f"조회 실패: {_inv_r.status_code}")
+                    return
+                sectors_raw = _inv_r.json().get("sectors", {})
+                st.session_state["inv_cache_data"] = sectors_raw
+                st.session_state["inv_cache_ts"] = datetime.datetime.utcnow().timestamp()
+            except Exception as e:
+                st.error(f"연결 오류: {e}")
                 return
-            sectors_raw = _inv_r.json().get("sectors", {})
-        except Exception as e:
-            st.error(f"연결 오류: {e}")
-            return
 
         # 전체 드럼 목록 (sector 컬럼 추가)
         all_drums = []
@@ -5293,11 +5303,13 @@ def page_inventory():
                         from utils.supabase_db import set_return_status as _srs
                         _srs(selected_drums_list, "")
                         st.success(f"{len(selected_drums_list)}드럼 반품 해제!")
+                        st.session_state.pop("inv_cache_data", None)
                         st.rerun()
                     except Exception as e:
                         st.error(f"오류: {e}")
                 if bc.button(f"라인입고 ({len(selected_lots)})", key="btn_checkout_r"):
                     st.session_state["inv_confirm"] = "checkout_r"
+                    st.session_state.pop("inv_cache_data", None)
                     st.rerun()
                 if len(selected_lots) == 1:
                     if st.button("✏️ 정보 수정", key="btn_edit_r"):
@@ -5316,6 +5328,7 @@ def page_inventory():
                                             json={"drums": _sel_ingo, "disabled": True}, timeout=15)
                             if res.ok:
                                 st.success(f"{len(_sel_ingo)}드럼 스캔불가 설정!")
+                                st.session_state.pop("inv_cache_data", None)
                                 st.rerun()
                             else:
                                 st.error(f"실패: {res.text}")
@@ -5327,6 +5340,7 @@ def page_inventory():
                                             json={"drums": _sel_ingo_dis, "disabled": False}, timeout=15)
                             if res.ok:
                                 st.success(f"{len(_sel_ingo_dis)}드럼 스캔불가 해제!")
+                                st.session_state.pop("inv_cache_data", None)
                                 st.rerun()
                             else:
                                 st.error(f"실패: {res.text}")
@@ -5337,12 +5351,14 @@ def page_inventory():
                 ca, cb, cc, cd = st.columns(4)
                 if ca.button(f"라인입고 ({len(selected_lots)})", type="primary", key="btn_checkout"):
                     st.session_state["inv_confirm"] = "checkout"
+                    st.session_state.pop("inv_cache_data", None)
                     st.rerun()
                 if cb.button(f"🔴 불량반품 ({len(selected_lots)})", key="btn_return_bad"):
                     try:
                         from utils.supabase_db import set_return_status as _srs
                         _srs(selected_drums_list, "불량")
                         st.success(f"{len(selected_drums_list)}드럼 불량반품 등록!")
+                        st.session_state.pop("inv_cache_data", None)
                         st.rerun()
                     except Exception as e:
                         st.error(f"오류: {e}")
@@ -5351,6 +5367,7 @@ def page_inventory():
                         from utils.supabase_db import set_return_status as _srs
                         _srs(selected_drums_list, "기술")
                         st.success(f"{len(selected_drums_list)}드럼 기술반품 등록!")
+                        st.session_state.pop("inv_cache_data", None)
                         st.rerun()
                     except Exception as e:
                         st.error(f"오류: {e}")
@@ -5359,6 +5376,7 @@ def page_inventory():
                         from utils.supabase_db import set_return_status as _srs
                         _srs(selected_drums_list, "무상")
                         st.success(f"{len(selected_drums_list)}드럼 무상반품 등록!")
+                        st.session_state.pop("inv_cache_data", None)
                         st.rerun()
                     except Exception as e:
                         st.error(f"오류: {e}")
