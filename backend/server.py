@@ -26,7 +26,7 @@ from modules.vision_ocr import extract_production_plan
 from modules.erp_parser import process_erp_file
 from modules.matcher import cross_check
 from modules.excel_generator import generate_report
-from modules.excel_converter import generate_incoming_plan_excel, convert_to_excel
+from modules.excel_converter import generate_incoming_plan_excel, convert_to_excel, convert_erp_filled_to_excel
 from utils.formatter import format_summary
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
@@ -196,6 +196,199 @@ async def export_excel_multi(req: CrossCheckRequest):
 
     return {
         "success": True,
+        "excel_base64": base64.b64encode(excel_bytes).decode("utf-8"),
+    }
+
+
+# --- ERP 입고 반영 결과 ---
+
+class ErpFillRequest(BaseModel):
+    table_data: dict  # {"headers": [...], "rows": [[...], ...]}
+    erp_results: list[dict]  # [{"색상코드": "...", "입고수량": 5}, ...]
+
+
+@app.post("/api/erp-fill")
+async def erp_fill_endpoint(req: ErpFillRequest):
+    """ERP 입고수량을 생산계획서 table_data에 채워 반영합니다."""
+    import re as _re
+    from utils.helpers import auto_correct_code, is_valid_item_code
+
+    headers = req.table_data.get("headers", [])
+    rows_raw = req.table_data.get("rows", [])
+
+    if not headers:
+        return {"success": True, "headers": [], "rows": [], "excel_base64": ""}
+
+    # 1. ERP 수량 맵
+    erp_qty_map = {
+        str(r.get("색상코드", "")).strip(): int(r.get("입고수량", 0) or 0)
+        for r in req.erp_results
+        if str(r.get("색상코드", "")).strip()
+    }
+
+    # 2. 헤더 중복 해소
+    unique_h, seen = [], {}
+    for h in headers:
+        hs = str(h) if h else ""
+        if hs in seen:
+            seen[hs] += 1
+            unique_h.append(f"{hs}_{seen[hs]}")
+        else:
+            seen[hs] = 0
+            unique_h.append(hs)
+
+    padded = [list(r[:len(unique_h)]) + [""] * max(0, len(unique_h) - len(r)) for r in rows_raw]
+
+    # 3. 신규 다음 입고 컬럼 삽입
+    exp_h = []
+    new_col_flags = []
+    for h in unique_h:
+        exp_h.append(h)
+        new_col_flags.append(False)
+        if "신규" in str(h):
+            in_name = str(h).replace("신규", "입고")
+            base_n, c = in_name, 1
+            while in_name in exp_h:
+                in_name = f"{base_n}_{c}"; c += 1
+            exp_h.append(in_name)
+            new_col_flags.append(True)
+
+    def _ts(x):
+        if x is None or str(x) in ("nan", "None", "NaN"): return ""
+        if isinstance(x, float): return str(int(x)) if x == int(x) else str(x)
+        return x if isinstance(x, str) else str(x)
+
+    exp_rows = []
+    for rw in padded:
+        new_row = []
+        orig_idx = 0
+        for is_new in new_col_flags:
+            if is_new:
+                new_row.append("")
+            else:
+                new_row.append(_ts(rw[orig_idx]) if orig_idx < len(rw) else "")
+                orig_idx += 1
+        exp_rows.append(new_row)
+
+    # 4. 입고 컬럼에 ERP 수량 채우기 (code는 신규 인덱스 - 3)
+    신규_col_indices = [i for i, h in enumerate(exp_h) if "신규" in str(h)]
+    for row_idx in range(len(exp_rows)):
+        for ni in 신규_col_indices:
+            if ni + 1 >= len(exp_h): continue
+            inc_col_name = exp_h[ni + 1]
+            if "입고" not in str(inc_col_name): continue
+            code_col_idx = ni - 3
+            if code_col_idx < 0: continue
+            raw_code = str(exp_rows[row_idx][code_col_idx]).strip()
+            corrected = auto_correct_code(raw_code)
+            if is_valid_item_code(corrected) and corrected in erp_qty_map:
+                qty = erp_qty_map[corrected]
+                exp_rows[row_idx][ni + 1] = str(qty) if qty > 0 else ""
+
+    # 5. 중복 코드 행 병합 (같은 코드 두 번 나오면 신규 합산, 중복 행 입고 클리어)
+    for ni in 신규_col_indices:
+        if ni + 1 >= len(exp_h): continue
+        inc_col_idx = ni + 1
+        code_col_idx = ni - 3
+        if code_col_idx < 0: continue
+        first_seen: dict = {}
+        for ridx in range(len(exp_rows)):
+            raw = str(exp_rows[ridx][code_col_idx]).strip()
+            corr = auto_correct_code(raw)
+            if not is_valid_item_code(corr): continue
+            if corr not in first_seen:
+                first_seen[corr] = ridx
+            else:
+                fidx = first_seen[corr]
+                try: fn = int(str(exp_rows[fidx][ni]).strip() or "0")
+                except: fn = 0
+                try: dn = int(str(exp_rows[ridx][ni]).strip() or "0")
+                except: dn = 0
+                if dn > 0:
+                    exp_rows[fidx][ni] = str(fn + dn)
+                    exp_rows[ridx][ni] = ""
+                exp_rows[ridx][inc_col_idx] = ""
+
+    # 6. 재고 위치 조회
+    inv_location_map = {}
+    try:
+        from utils.inventory_supabase import get_sector_inventory
+        inv_raw = get_sector_inventory()
+        prod_sectors: dict = {}
+        for sec, drums in inv_raw.items():
+            for d in drums:
+                p = str(d.get("product", "")).strip().upper()
+                if p:
+                    prod_sectors.setdefault(p, {})
+                    prod_sectors[p][sec] = prod_sectors[p].get(sec, 0) + 1
+        inv_location_map = {
+            p: " / ".join(f"{s}({n})" for s, n in sv.items())
+            for p, sv in prod_sectors.items()
+        }
+    except Exception:
+        pass
+
+    # 7. 재고 컬럼 우측에 위치 삽입 (역순, code는 재고_idx - 2)
+    final_h = list(exp_h)
+    final_rows = [list(row) for row in exp_rows]
+    if inv_location_map:
+        jaego_idxs = [(i, c) for i, c in enumerate(final_h) if _re.match(r'^재고(_\d+)?$', str(c).strip())]
+        for rc_idx, rc in reversed(jaego_idxs):
+            suffix = str(rc)[2:]
+            code_for_loc_idx = rc_idx - 2
+            wi_col_name = f"위치{suffix}"
+            insert_pos = rc_idx + 1
+            loc_vals = []
+            for row in final_rows:
+                stock = str(row[rc_idx]).strip() if rc_idx < len(row) else ""
+                try: stock_n = int(stock) if stock else 0
+                except: stock_n = 0
+                loc = ""
+                if stock_n > 0 and 0 <= code_for_loc_idx < len(row):
+                    code = str(row[code_for_loc_idx]).strip().upper()
+                    loc = inv_location_map.get(code, "")
+                loc_vals.append(loc)
+            final_h.insert(insert_pos, wi_col_name)
+            for j, row in enumerate(final_rows):
+                row.insert(insert_pos, loc_vals[j])
+
+    # 8. 엑셀 생성 (위치 포함, 상태 컬럼 없는 버전)
+    excel_bytes = convert_erp_filled_to_excel(final_h, final_rows)
+
+    # 9. 상태 컬럼 삽입 (표시용)
+    disp_h = list(final_h)
+    disp_rows = [list(row) for row in final_rows]
+    orig_h = list(final_h)
+    insert_offset = 0
+    for fi, fh in enumerate(orig_h):
+        if "신규" in str(fh):
+            next_i = fi + 1
+            if next_i < len(orig_h) and "입고" in str(orig_h[next_i]):
+                inc_col = orig_h[next_i]
+                insert_at = fi + insert_offset + 2
+                st_vals = []
+                for row in disp_rows:
+                    try:
+                        sq_i = disp_h.index(fh)
+                        iq_i = disp_h.index(inc_col)
+                        sq = int(str(row[sq_i]).strip() or "0") if sq_i < len(row) else 0
+                        iq = int(str(row[iq_i]).strip() or "0") if iq_i < len(row) else 0
+                    except Exception:
+                        sq, iq = 0, 0
+                    if sq == 0: st_vals.append("")
+                    elif iq == 0: st_vals.append("🟥 미입고")
+                    elif iq == sq: st_vals.append("🟩 일치")
+                    elif iq > sq: st_vals.append("🟡 초과")
+                    else: st_vals.append("🟠 일부")
+                disp_h.insert(insert_at, "상태")
+                for j, row in enumerate(disp_rows):
+                    row.insert(insert_at, st_vals[j])
+                insert_offset += 1
+
+    return {
+        "success": True,
+        "headers": disp_h,
+        "rows": disp_rows,
         "excel_base64": base64.b64encode(excel_bytes).decode("utf-8"),
     }
 

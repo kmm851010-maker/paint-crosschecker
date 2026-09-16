@@ -81,6 +81,11 @@ export async function planConversion(table_data: { headers: string[]; rows: unkn
   return data as { success: boolean; headers: string[]; rows: string[][]; excel_base64: string };
 }
 
+export async function erpFill(table_data: { headers: string[]; rows: unknown[][] }, erp_results: unknown[]) {
+  const { data } = await api.post("/api/erp-fill", { table_data, erp_results }, { timeout: 30000 });
+  return data as { success: boolean; headers: string[]; rows: string[][]; excel_base64: string };
+}
+
 export async function crossCheckMulti(
   plan_files: string[], plan_filenames: string[],
   erp_file: string, erp_filename: string, api_key: string

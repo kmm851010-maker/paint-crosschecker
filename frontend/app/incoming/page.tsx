@@ -5,7 +5,7 @@ import Button from "@/components/ui/Button";
 import toast from "react-hot-toast";
 import {
   parsePlan, crossCheckMulti, exportExcelMulti,
-  generateIncomingExcel, registerDrums, planConversion,
+  generateIncomingExcel, registerDrums, planConversion, erpFill,
   DrumItem, SECTORS,
 } from "@/lib/api";
 import { fileToBase64, downloadBase64 } from "@/lib/utils";
@@ -370,6 +370,11 @@ export default function IncomingPage() {
   const [erpFileB64, setErpFileB64] = useState<{ data: string; name: string } | null>(null);
   const [reverseChecked, setReverseChecked] = useState<Set<number>>(new Set());
 
+  // ── ERP 입고반영 결과 ──
+  const [erpFillData, setErpFillData] = useState<{ headers: string[]; rows: string[][]; excel_base64: string } | null>(null);
+  const [erpFillLoading, setErpFillLoading] = useState(false);
+  const [erpFillEditRows, setErpFillEditRows] = useState<string[][] | null>(null);
+
   // ── 신규 입고처리 ──
   const [newRegDrums, setNewRegDrums] = useState<ExtractedDrum[]>([]);
   const [newRegSector, setNewRegSector] = useState("창고주위");
@@ -384,6 +389,7 @@ export default function IncomingPage() {
     setErpFileB64(null); setReverseChecked(new Set());
     setNewRegDrums([]); setShowNewReg(false);
     setShowPlanTable(false); setShowConversion(false);
+    setErpFillData(null); setErpFillEditRows(null);
   }
 
   // ── Plan extraction ────────────────────────────────────────────────────────
@@ -428,6 +434,20 @@ export default function IncomingPage() {
       setSummary(data.summary ?? null);
       setReverseChecked(new Set());
       toast.success("교차검증 완료!");
+
+      // table_data 있으면 ERP 입고반영 결과도 자동 생성
+      if (planTableData?.headers?.length && (data.results ?? []).length > 0) {
+        setErpFillLoading(true);
+        try {
+          const filled = await erpFill(planTableData, data.results ?? []);
+          setErpFillData(filled);
+          setErpFillEditRows(filled.rows.map(r => [...r]));
+        } catch {
+          // ERP fill 실패해도 교차검증 결과는 유지
+        } finally {
+          setErpFillLoading(false);
+        }
+      }
     } catch (e) {
       toast.error(`교차검증 실패: ${e instanceof Error ? e.message : "오류"}`);
     } finally {
@@ -861,6 +881,89 @@ export default function IncomingPage() {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── ERP 입고반영 결과 ── */}
+        {(erpFillLoading || erpFillData) && (
+          <div className="mt-6 bg-white rounded-xl border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <h3 className="font-semibold text-gray-800">ERP 입고 반영 결과</h3>
+                <p className="text-xs text-gray-400 mt-0.5">신규 옆 입고 칸에 ERP 실입고 수량이 자동 기입된 양식입니다. 🟥 미입고 · 🟩 일치 · 🟡 초과 · 🟠 일부</p>
+              </div>
+              {erpFillData && (
+                <Button
+                  variant="secondary" size="sm"
+                  onClick={() => downloadBase64(erpFillData.excel_base64, `${kstDateStr()}입고교차검증.xlsx`)}
+                >
+                  <Download size={14} /> ERP 입고반영 엑셀
+                </Button>
+              )}
+            </div>
+            {erpFillLoading ? (
+              <div className="flex items-center justify-center h-20 text-gray-400 text-sm">입고반영 계산 중...</div>
+            ) : erpFillData && (() => {
+              const headers = erpFillData.headers;
+              const displayRows = erpFillEditRows ?? erpFillData.rows;
+              const editableCols = new Set(
+                headers.map((h, i) => ({ h, i }))
+                  .filter(({ h }) => (h.includes("신규") || h.includes("입고")) && !h.includes("기입고") && !h.includes("위치") && h !== "상태")
+                  .map(({ i }) => i)
+              );
+              function getCellStyle(h: string, cell: string) {
+                if (h === "상태") {
+                  if (cell.includes("미입고")) return "bg-red-100 text-red-700";
+                  if (cell.includes("일치")) return "bg-green-100 text-green-700";
+                  if (cell.includes("초과")) return "bg-yellow-100 text-yellow-700";
+                  if (cell.includes("일부")) return "bg-orange-100 text-orange-700";
+                }
+                return "";
+              }
+              return (
+                <div className="overflow-auto max-h-[60vh] rounded border border-gray-200">
+                  <table className="text-xs border-collapse" style={{ minWidth: "max-content" }}>
+                    <thead className="bg-gray-50 sticky top-0 z-10">
+                      <tr>
+                        {headers.map((h, i) => (
+                          <th key={i} className="py-1.5 px-2 text-left font-semibold text-gray-600 border border-gray-200 whitespace-nowrap bg-gray-50">
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayRows.map((row, ri) => (
+                        <tr key={ri} className="hover:bg-blue-50">
+                          {row.map((cell, ci) => (
+                            <td key={ci} className={cn("py-0.5 px-1 border border-gray-100 whitespace-nowrap", getCellStyle(headers[ci], cell), headers[ci]?.includes("위치") && cell ? "text-blue-600" : "")}>
+                              {editableCols.has(ci) ? (
+                                <input
+                                  type="text"
+                                  value={String(cell ?? "")}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    setErpFillEditRows(prev => {
+                                      const next = (prev ?? erpFillData.rows).map(r => [...r]);
+                                      next[ri][ci] = val;
+                                      return next;
+                                    });
+                                  }}
+                                  onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                                  className="w-12 text-xs text-center bg-transparent outline-none border-b border-gray-300 focus:border-blue-500"
+                                />
+                              ) : (
+                                <span className="px-1">{String(cell ?? "")}</span>
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
