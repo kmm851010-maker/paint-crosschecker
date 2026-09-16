@@ -591,6 +591,9 @@ def _extract_lots_from_excel(file_bytes: bytes, filename: str) -> list:
             continue
         if lot[0] not in maker_codes:
             continue
+        # 10자리 LOT는 끝자리 1자리 제거 (재고장 형식 보정: 9자리가 표준)
+        if len(lot) == 10:
+            lot = lot[:-1]
         if lot in seen:
             continue
         seen.add(lot)
