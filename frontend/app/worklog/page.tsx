@@ -250,7 +250,8 @@ export default function WorklogPage() {
     const [y, m] = date.split("-").map(Number);
     setDownloading(true);
     try {
-      const res = await exportWorklogExcel(y, m);
+      const d = Number(date.split("-")[2]);
+      const res = await exportWorklogExcel(y, m, d);
       const bytes = Uint8Array.from(atob(res.data), c => c.charCodeAt(0));
       const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
       const url = URL.createObjectURL(blob);

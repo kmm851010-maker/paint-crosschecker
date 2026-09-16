@@ -1072,8 +1072,8 @@ def _build_worklog_sheet(ws, selected_date, shift_data: dict, work_items: list, 
 
 
 @app.get("/api/worklog/export")
-async def export_worklog_excel(year: int, month: int):
-    """월간 작업일지 Excel 생성. base64 인코딩으로 반환."""
+async def export_worklog_excel(year: int, month: int, day: int = 0):
+    """월간 작업일지 Excel 생성. base64 인코딩으로 반환. day 지정 시 해당 시트를 active로 설정."""
     import io
     import base64
     import calendar as _cal
@@ -1115,6 +1115,13 @@ async def export_worklog_excel(year: int, month: int):
     if added == 0:
         ws_empty = wb.create_sheet(title="데이터없음")
         ws_empty["A1"] = "저장된 작업일지가 없습니다."
+
+    # 요청된 날짜 시트를 active로 설정
+    target_title = f"{month}월{day}일" if day else None
+    if target_title and target_title in wb.sheetnames:
+        wb.active = wb[target_title]
+    elif wb.sheetnames:
+        wb.active = wb[wb.sheetnames[-1]]  # 없으면 마지막 시트
 
     buf = io.BytesIO()
     wb.save(buf)
