@@ -1497,6 +1497,26 @@ async def get_attendance_month_stats(year: int, month: int, name: str):
         if not sh2:
             continue
 
+        # 본인이 직접 휴가 등록된 날은 is_2person 여부와 무관하게 휴가비근로로 처리
+        person_leave_type = None
+        for lv in base_leaves:
+            try:
+                ls = _dt.date.fromisoformat(lv["start"][:10])
+                le = _dt.date.fromisoformat(lv["end"][:10])
+            except Exception:
+                continue
+            if ls <= fd_date <= le and lv["name"] == name:
+                person_leave_type = lv["type"]
+                break
+        if person_leave_type:
+            if person_leave_type == "공가":
+                frow["공가"] = 8.0
+            else:
+                frow["휴가비근로"] = 8.0
+            frow["일별합계"] = frow["공가"] + frow["휴가비근로"]
+            salary_rows.append(frow)
+            continue
+
         if sh2.get("is_2person"):
             lp = sh2.get("leave_person","") or sh2.get("3근_근무자","")
             dw = sh2.get("주간_근무자","") or sh2.get("1근_근무자","")
