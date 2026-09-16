@@ -75,7 +75,7 @@ def extract_table_from_image_tool_use(
     image_bytes: bytes,
     file_name: str,
     api_key: str,
-    model: str = "claude-opus-4-8",
+    model: str = "claude-sonnet-4-6",
 ) -> dict:
     """
     Tool Use 강제로 이미지에서 표 데이터를 추출합니다.
@@ -236,7 +236,7 @@ def extract_production_plan(
     file_bytes: bytes,
     file_name: str,
     api_key: str,
-    model: str = "claude-opus-4-8",
+    model: str = "claude-sonnet-4-6",
 ) -> dict:
     """
     생산계획서(이미지/엑셀)에서 신규 입고 대상 품목을 추출합니다.
@@ -261,7 +261,7 @@ def extract_production_plan(
 
 
 # 하위 호환용
-def extract_document_data(file_bytes, file_name, api_key, model="claude-opus-4-8"):
+def extract_document_data(file_bytes, file_name, api_key, model="claude-sonnet-4-6"):
     """기존 호환: 범용 문서 데이터 추출 (ERP 파서 등에서 사용)"""
     if is_document_file(file_name, file_bytes):
         return _parse_document_to_universal(file_bytes, file_name)
@@ -404,7 +404,7 @@ def _parse_document_to_universal(file_bytes: bytes, file_name: str) -> dict:
     return {"doc_type": doc_type, "items": items}
 
 
-def extract_erp_from_image(file_bytes, file_name, api_key, model="claude-opus-4-8"):
+def extract_erp_from_image(file_bytes, file_name, api_key, model="claude-sonnet-4-6"):
     return extract_document_data(file_bytes, file_name, api_key, model)
 
 

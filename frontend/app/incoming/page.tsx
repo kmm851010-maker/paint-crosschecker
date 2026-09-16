@@ -67,6 +67,8 @@ function statusEmoji(status: string) {
 const LOT_PAT = /^[A-Z][A-Z0-9]{7,11}$/;
 
 // Client-side LOT extraction from ERP Excel (for 신규 입고처리)
+const WEIGHT_KW = ["중량", "무게", "kg", "weight", "wgt", "pkgwgt", "netwgt"];
+
 async function extractDrumsFromExcel(file: File): Promise<ExtractedDrum[]> {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array" });
@@ -77,13 +79,14 @@ async function extractDrumsFromExcel(file: File): Promise<ExtractedDrum[]> {
   for (const sheetName of wb.SheetNames) {
     const ws = wb.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "" });
-    let lotCol = -1, prodCol = -1;
+    let lotCol = -1, prodCol = -1, weightCol = -1;
     for (let r = 0; r < Math.min(5, rows.length); r++) {
       const row = rows[r] as unknown[];
       for (let c = 0; c < row.length; c++) {
-        const cell = String(row[c] ?? "").toUpperCase();
-        if (cell.includes("LOT") && lotCol === -1) lotCol = c;
-        if ((cell.includes("품명") || cell.includes("제품") || cell.includes("PRODUCT")) && prodCol === -1) prodCol = c;
+        const cell = String(row[c] ?? "").toLowerCase();
+        if (cell.includes("lot") && lotCol === -1) lotCol = c;
+        if ((cell.includes("품명") || cell.includes("제품") || cell.includes("product")) && prodCol === -1) prodCol = c;
+        if (WEIGHT_KW.some(k => cell.includes(k)) && weightCol === -1) weightCol = c;
       }
       if (lotCol !== -1) break;
     }
@@ -102,6 +105,11 @@ async function extractDrumsFromExcel(file: File): Promise<ExtractedDrum[]> {
       let raw = String(row[lotCol] ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
       if (raw.length === 10) raw = raw.slice(0, 9);
       if (!LOT_PAT.test(raw) || raw in seen) continue;
+      // 500kg 이상 대형 벌크 제외
+      if (weightCol >= 0 && weightCol < row.length) {
+        const w = parseFloat(String(row[weightCol] ?? "0")) || 0;
+        if (w >= 500) continue;
+      }
       const product = prodCol >= 0 && prodCol < row.length ? String(row[prodCol] ?? "").trim() : "";
       seen[raw] = { lot: raw, product, maker: MAKERS[raw[0]] ?? "알 수 없음" };
     }
