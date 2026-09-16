@@ -546,28 +546,42 @@ def _extract_lots_from_excel(file_bytes: bytes, filename: str) -> list:
         df = pd.read_excel(BytesIO(file_bytes), engine="openpyxl", dtype=str)
 
     df = df.fillna("")
-    lot_pat = re.compile(r"^[A-Z]\d{8}$")
-    lot_kw = ["lot", "로트", "LOT", "lot번호", "lot no"]
+
+    # LOT 패턴: 영문1+숫자8 (바코드형) 또는 영문1+영숫자8~11 (재고장형)
+    # 예) G12345678, D26A304031, D26C43601
+    lot_pat = re.compile(r"^[A-Z][A-Z0-9]{7,11}$")
+    # 제조사 코드 확인 (첫 글자)
+    maker_codes = {"G", "D", "K", "S", "Y", "P"}
+
+    lot_kw = ["lot", "로트", "lot-no", "lot번호", "lot no"]
     prod_kw = ["품명", "제품명", "product", "색상", "품목"]
 
+    cols = list(df.columns)
     lot_col = prod_col = None
-    for col in df.columns:
+    for col in cols:
         cl = str(col).lower()
-        if not lot_col and any(k.lower() in cl for k in lot_kw):
+        if not lot_col and any(k in cl for k in lot_kw):
             lot_col = col
-        if not prod_col and any(k.lower() in cl for k in prod_kw):
+        if not prod_col and any(k in cl for k in prod_kw):
             prod_col = col
 
     # 헤더에서 못 찾으면 데이터 내 LOT 패턴 열 자동 감지
     if not lot_col:
-        for col in df.columns:
-            sample = df[col].dropna().head(20)
-            if sample.apply(lambda v: bool(lot_pat.match(str(v).strip().upper()))).sum() >= 3:
+        for col in cols:
+            sample = df[col].dropna().head(30)
+            matched = sample.apply(lambda v: bool(lot_pat.match(str(v).strip().upper())) and str(v).strip().upper()[:1] in maker_codes).sum()
+            if matched >= 3:
                 lot_col = col
                 break
 
     if not lot_col:
-        raise ValueError("LOT번호 열을 찾을 수 없습니다.")
+        raise ValueError("LOT번호 열을 찾을 수 없습니다. (열 이름에 'LOT' 또는 '로트' 포함 필요)")
+
+    # 품명 열을 못 찾았으면 LOT 열 왼쪽 열 시도
+    if not prod_col and lot_col in cols:
+        lot_idx = cols.index(lot_col)
+        if lot_idx > 0:
+            prod_col = cols[lot_idx - 1]
 
     result = []
     seen = set()
@@ -575,10 +589,15 @@ def _extract_lots_from_excel(file_bytes: bytes, filename: str) -> list:
         lot = str(row[lot_col]).strip().upper()
         if not lot_pat.match(lot):
             continue
+        if lot[0] not in maker_codes:
+            continue
         if lot in seen:
             continue
         seen.add(lot)
         product = str(row[prod_col]).strip() if prod_col else ""
+        # 품명이 헤더 텍스트이거나 너무 길면 제외
+        if product.lower() in ("nan", "none", "") or len(product) > 50:
+            product = ""
         result.append({"lot": lot, "product": product})
     return result
 
