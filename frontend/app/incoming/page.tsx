@@ -128,18 +128,16 @@ function IncomingListDialog({
     () => planItems.filter(i => (i.신규 ?? 0) > 0),
     [planItems]
   );
-  const [preQty, setPreQty] = useState<Record<number, number>>(() =>
-    Object.fromEntries(incItems.map((_, i) => [i, 0]))
-  );
+  const [preQty, setPreQty] = useState<Record<number, string>>({});
 
   const totalPlan = incItems.reduce((s, i) => s + (i.신규 ?? 0), 0);
-  const totalPre = Object.values(preQty).reduce((s, v) => s + (v || 0), 0);
+  const totalPre = Object.values(preQty).reduce((s, v) => s + (parseInt(v) || 0), 0);
 
   async function handleDownload() {
     try {
       const items = incItems.map((item, i) => ({
         ...item,
-        기입고수량: preQty[i] ?? 0,
+        기입고수량: parseInt(preQty[i] ?? "") || 0,
       }));
       const data = await generateIncomingExcel(items);
       downloadBase64(data.excel_base64, `${kstDateStr()}입고예정품목.xlsx`);
@@ -182,8 +180,9 @@ function IncomingListDialog({
                     <input
                       type="number"
                       min={0}
-                      value={preQty[i] ?? 0}
-                      onChange={e => setPreQty(prev => ({ ...prev, [i]: parseInt(e.target.value) || 0 }))}
+                      value={preQty[i] ?? ""}
+                      placeholder="0"
+                      onChange={e => setPreQty(prev => ({ ...prev, [i]: e.target.value }))}
                       onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
                       className="w-16 border border-gray-300 rounded px-2 py-0.5 text-xs text-center"
                     />
