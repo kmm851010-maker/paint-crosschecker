@@ -5382,29 +5382,36 @@ def page_inventory():
 
             if _bulk_files:
                 if st.button("LOT 추출", type="primary", key="btn_bulk_extract"):
-                    if not api_key:
-                        st.error("API 키가 설정되지 않았습니다.")
+                    _has_non_excel = any(
+                        f.name.lower().rsplit(".", 1)[-1] not in ("xlsx", "xls", "csv")
+                        for f in _bulk_files
+                    )
+                    if _has_non_excel and not api_key:
+                        st.error("PDF/이미지 파싱에는 API 키가 필요합니다.")
                     else:
                         _extracted_bulk = []
                         _bulk_errs = []
                         with st.spinner(f"{len(_bulk_files)}개 파일 분석 중..."):
                             for _bf in _bulk_files:
+                                _bext = _bf.name.lower().rsplit(".", 1)[-1]
                                 try:
-                                    _bdata = base64.b64encode(_bf.read()).decode()
-                                    _bres = _req.post(
-                                        f"{BACKEND}/api/inventory/parse-pdf-lots",
-                                        json={"file_data": _bdata, "filename": _bf.name, "api_key": api_key},
-                                        timeout=120,
-                                    )
-                                    if _bres.ok:
-                                        _extracted_bulk.extend(_bres.json().get("items", []))
+                                    _braw = _bf.read()
+                                    if _bext in ("xlsx", "xls", "csv"):
+                                        from modules.vision_ocr import _extract_lots_from_excel
+                                        _extracted_bulk.extend(_extract_lots_from_excel(_braw, _bf.name))
                                     else:
-                                        _bulk_errs.append(f"{_bf.name}: {_bres.json().get('detail', '추출 실패')}")
+                                        _bdata = base64.b64encode(_braw).decode()
+                                        _bres = _req.post(
+                                            f"{BACKEND}/api/inventory/parse-pdf-lots",
+                                            json={"file_data": _bdata, "filename": _bf.name, "api_key": api_key},
+                                            timeout=120,
+                                        )
+                                        if _bres.ok:
+                                            _extracted_bulk.extend(_bres.json().get("items", []))
+                                        else:
+                                            _bulk_errs.append(f"{_bf.name}: {_bres.json().get('detail', '추출 실패')}")
                                 except Exception as _be:
                                     _bulk_errs.append(f"{_bf.name}: {str(_be)}")
-                        for _berr in _bulk_errs:
-                            st.warning(_berr)
-                        # 중복 제거 + 제조사 자동 도출
                         _seen_blots = {}
                         for _bi in _extracted_bulk:
                             _blot = _bi["lot"]
@@ -5412,9 +5419,16 @@ def page_inventory():
                                 _bmaker = _MAKERS_BULK.get(_blot[0], "알 수 없음")
                                 _seen_blots[_blot] = {"lot": _blot, "product": _bi["product"], "maker": _bmaker}
                         st.session_state["bulk_extracted"] = list(_seen_blots.values())
+                        st.session_state["bulk_extract_errors"] = _bulk_errs
                         st.rerun()
 
+            # 추출 후 오류/결과 표시
+            for _berr in st.session_state.get("bulk_extract_errors", []):
+                st.warning(_berr)
+
             _bulk_data = st.session_state.get("bulk_extracted", [])
+            if not _bulk_data and "bulk_extracted" in st.session_state:
+                st.warning("추출된 LOT가 없습니다. 파일에 LOT번호(영문1자+숫자8자리) 열이 있는지 확인하세요.")
             if _bulk_data:
                 import pandas as _pd_bulk
                 st.info(f"총 {len(_bulk_data)}개 LOT 추출됨 — 수정 후 등록하세요.")
