@@ -113,7 +113,17 @@ export default function WorklogPage() {
     try {
       const res = await getWorklog(d);
       setShiftAuto(res.shift_auto);
-      const usedShift: ShiftInfo = res.saved_shift || res.shift_auto;
+      let usedShift: ShiftInfo = res.saved_shift || res.shift_auto;
+      // 2인 모드일 때 주간/야간 비고가 비어있으면 항상 대근 사유 자동 설정
+      if (usedShift?.is_2person && usedShift?.leave_person) {
+        const defaultNote = `${usedShift.leave_person} ${usedShift.leave_type}로 대근`;
+        const r = usedShift as unknown as Record<string, string>;
+        usedShift = {
+          ...usedShift,
+          "1근_비고": r["1근_비고"] || defaultNote,
+          "2근_비고": r["2근_비고"] || defaultNote,
+        } as ShiftInfo;
+      }
       setShiftData(usedShift);
       setMonthlyTotals(res.monthly_totals || {});
       const is2p = usedShift?.is_2person ?? false;

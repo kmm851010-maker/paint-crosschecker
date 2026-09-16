@@ -26,7 +26,7 @@ export default function LoginPage() {
       const id = employeeId.trim();
       const data = await login(id, password);
       saveAuth({ token: data.token, name: data.name, employee_id: data.employee_id });
-      router.push("/inventory");
+      router.push("/attendance");
     } catch {
       setError("아이디 또는 비밀번호가 올바르지 않습니다.");
     } finally {
