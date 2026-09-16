@@ -5463,6 +5463,99 @@ def page_inventory():
                         except Exception as _bex:
                             st.error(f"등록 실패: {_bex}")
 
+            # ── 섹터 일괄 이동 ──────────────────────────────────────────────
+            st.divider()
+            st.markdown("#### 섹터 일괄 이동")
+            st.caption("LOT번호 목록 파일을 첨부하면 재고에서 매칭되는 드럼을 선택 섹터로 일괄 이동합니다.")
+
+            _move_file = st.file_uploader(
+                "LOT 목록 파일 (엑셀, CSV, TXT, PDF)", type=["xlsx", "xls", "csv", "txt", "pdf"],
+                key="bulk_move_file",
+            )
+
+            if _move_file:
+                if st.button("LOT 목록 추출", key="btn_move_extract"):
+                    import re as _re_bulk
+                    _lot_pat = _re_bulk.compile(r"[A-Z]\d{8}")
+                    _move_bytes = _move_file.read()
+                    _move_ext = _move_file.name.lower().rsplit(".", 1)[-1]
+                    _move_lots = []
+                    try:
+                        if _move_ext in ("xlsx", "xls", "csv"):
+                            from modules.vision_ocr import _extract_lots_from_excel
+                            _move_lots = [i["lot"] for i in _extract_lots_from_excel(_move_bytes, _move_file.name)]
+                        elif _move_ext == "txt":
+                            _txt = _move_bytes.decode("utf-8", errors="replace")
+                            _move_lots = list(dict.fromkeys(_lot_pat.findall(_txt.upper())))
+                        elif _move_ext == "pdf":
+                            if not api_key:
+                                st.error("PDF 파싱에는 API 키가 필요합니다.")
+                                _move_lots = []
+                            else:
+                                from modules.vision_ocr import extract_lot_list_from_pdf
+                                _move_lots = [i["lot"] for i in extract_lot_list_from_pdf(_move_bytes, _move_file.name, api_key)]
+                        st.session_state["bulk_move_lots"] = _move_lots
+                        st.rerun()
+                    except Exception as _me:
+                        st.error(f"LOT 추출 실패: {_me}")
+
+            _move_lots = st.session_state.get("bulk_move_lots", [])
+            if _move_lots:
+                # 현재 재고 조회 → 매칭
+                try:
+                    _inv_r2 = _req.get(f"{BACKEND}/api/inventory/sectors", timeout=15)
+                    _inv_r2.raise_for_status()
+                    _all_inv = {}
+                    for _sec, _drums in _inv_r2.json().get("sectors", {}).items():
+                        for _d in _drums:
+                            _all_inv[_d["lot"]] = {**_d, "sector": _sec}
+                except Exception as _ie:
+                    st.error(f"재고 조회 실패: {_ie}")
+                    _all_inv = {}
+
+                _matched = [_all_inv[l] for l in _move_lots if l in _all_inv]
+                _not_found = [l for l in _move_lots if l not in _all_inv]
+
+                st.info(f"파일 내 LOT {len(_move_lots)}개 → 재고 매칭 {len(_matched)}개 / 미등록 {len(_not_found)}개")
+                if _not_found:
+                    with st.expander(f"미등록 LOT {len(_not_found)}개 보기"):
+                        st.write(", ".join(_not_found))
+
+                if _matched:
+                    import pandas as _pd_move
+                    _move_df = _pd_move.DataFrame([{"lot": d["lot"], "product": d.get("product",""), "maker": d.get("maker",""), "현재섹터": d["sector"]} for d in _matched])
+                    st.dataframe(_move_df, use_container_width=True, hide_index=True, height=min(len(_matched)*35+38, 400))
+
+                    _mc1, _mc2 = st.columns([3, 1])
+                    with _mc1:
+                        _move_sector = st.selectbox(
+                            "이동할 섹터", _SECTOR_BULK,
+                            index=_SECTOR_BULK.index("창고") if "창고" in _SECTOR_BULK else 0,
+                            key="bulk_move_sector",
+                        )
+                    with _mc2:
+                        st.write("")
+                        st.write("")
+                        if st.button(f"일괄 이동 ({len(_matched)}개)", type="primary", use_container_width=True, key="btn_bulk_move"):
+                            try:
+                                _drums_to_move = [{"lot": d["lot"], "product": d.get("product",""), "maker": d.get("maker",""), "scanDisabled": False} for d in _matched]
+                                _mres = _req.post(
+                                    f"{BACKEND}/api/inventory/register",
+                                    json={"drums": _drums_to_move, "sector": _move_sector, "remark": ""},
+                                    timeout=60,
+                                )
+                                _mres.raise_for_status()
+                                _mrd = _mres.json()
+                                _mmoved = _mrd.get("moved", len(_matched))
+                                _malready = _mrd.get("already_same", [])
+                                st.success(f"{_mmoved}개 [{_move_sector}]으로 이동 완료!")
+                                if _malready:
+                                    st.info(f"이미 해당 섹터: {len(_malready)}개 건너뜀")
+                                st.session_state.pop("bulk_move_lots", None)
+                                st.rerun()
+                            except Exception as _mex:
+                                st.error(f"이동 실패: {_mex}")
+
 
 # ══════════════════════════════════════
 # 반품 관리 페이지
