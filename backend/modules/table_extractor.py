@@ -55,7 +55,7 @@ def extract_table_from_image(
     image_bytes: bytes,
     file_name: str,
     api_key: str,
-    model: str = "claude-sonnet-4-6",
+    model: str = "claude-opus-4-8",
 ) -> dict:
     """
     캡처 이미지 또는 PDF에서 표 데이터를 추출합니다.
