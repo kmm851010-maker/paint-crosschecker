@@ -4759,7 +4759,12 @@ def page_inventory():
             st.rerun()
 
     _half_hours = [f"{h:02d}:{m:02d}" for h in range(24) for m in (0, 30)]
-    _tab_sector, _tab_history = st.tabs(["섹터별 현황", "날짜별 이력"])
+    _is_admin_inv = st.session_state.get("user_role", "admin") == "admin"
+    _tab_names = ["섹터별 현황", "날짜별 이력"] + (["대량 등록"] if _is_admin_inv else [])
+    _tabs_inv = st.tabs(_tab_names)
+    _tab_sector = _tabs_inv[0]
+    _tab_history = _tabs_inv[1]
+    _tab_bulk = _tabs_inv[2] if _is_admin_inv else None
 
     # ── 날짜별 이력 탭 ──────────────────────────────────────────────────────
     with _tab_history:
@@ -5253,7 +5258,7 @@ def page_inventory():
                     _maker_list = ["고려(KCC)", "대한(노루)", "건설(제비)", "삼화", "애경", "동주(PPG)"]
                     _cur_mkr_idx = _maker_list.index(_edit_drum["maker"]) if _edit_drum["maker"] in _maker_list else 0
                     _new_maker = _ec3.selectbox("제조사", _maker_list, index=_cur_mkr_idx, key="edit_mkr_inp")
-                    _sector_list = ["입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리", "8번자리", "9번자리", "반품자리", "창고주위"]
+                    _sector_list = ["입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리", "8번자리", "9번자리", "반품자리", "창고주위", "창고"]
                     _cur_sidx = _sector_list.index(_edit_drum["sector"]) if _edit_drum["sector"] in _sector_list else 0
                     _new_sector = _ec4.selectbox("섹터", _sector_list, index=_cur_sidx, key="edit_sec_inp")
                     _cur_remark = _edit_drum.get("remark", "")
@@ -5362,6 +5367,101 @@ def page_inventory():
                         st.session_state["inv_confirm"] = "edit"
                         st.session_state["inv_edit_lot"] = next(iter(selected_lots))
                         st.rerun()
+
+    # ── 대량 등록 탭 (관리자 전용) ────────────────────────────────────────
+    if _tab_bulk is not None:
+        with _tab_bulk:
+            _MAKERS_BULK = {"G": "고려(KCC)", "D": "대한(노루)", "K": "건설(제비)", "S": "삼화", "Y": "애경", "P": "동주(PPG)"}
+            _SECTOR_BULK = ["입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리", "8번자리", "9번자리", "반품자리", "창고주위", "창고"]
+
+            st.caption("PDF 또는 이미지 파일에서 LOT번호+품명을 추출하여 대량 등록합니다.")
+            _bulk_files = st.file_uploader(
+                "파일 업로드 (PDF, 엑셀, JPG, PNG)", type=["pdf", "xlsx", "xls", "csv", "jpg", "jpeg", "png"],
+                accept_multiple_files=True, key="bulk_upload_files",
+            )
+
+            if _bulk_files:
+                if st.button("LOT 추출", type="primary", key="btn_bulk_extract"):
+                    if not api_key:
+                        st.error("API 키가 설정되지 않았습니다.")
+                    else:
+                        _extracted_bulk = []
+                        _bulk_errs = []
+                        with st.spinner(f"{len(_bulk_files)}개 파일 분석 중..."):
+                            for _bf in _bulk_files:
+                                try:
+                                    _bdata = base64.b64encode(_bf.read()).decode()
+                                    _bres = _req.post(
+                                        f"{BACKEND}/api/inventory/parse-pdf-lots",
+                                        json={"file_data": _bdata, "filename": _bf.name, "api_key": api_key},
+                                        timeout=120,
+                                    )
+                                    if _bres.ok:
+                                        _extracted_bulk.extend(_bres.json().get("items", []))
+                                    else:
+                                        _bulk_errs.append(f"{_bf.name}: {_bres.json().get('detail', '추출 실패')}")
+                                except Exception as _be:
+                                    _bulk_errs.append(f"{_bf.name}: {str(_be)}")
+                        for _berr in _bulk_errs:
+                            st.warning(_berr)
+                        # 중복 제거 + 제조사 자동 도출
+                        _seen_blots = {}
+                        for _bi in _extracted_bulk:
+                            _blot = _bi["lot"]
+                            if _blot not in _seen_blots:
+                                _bmaker = _MAKERS_BULK.get(_blot[0], "알 수 없음")
+                                _seen_blots[_blot] = {"lot": _blot, "product": _bi["product"], "maker": _bmaker}
+                        st.session_state["bulk_extracted"] = list(_seen_blots.values())
+                        st.rerun()
+
+            _bulk_data = st.session_state.get("bulk_extracted", [])
+            if _bulk_data:
+                import pandas as _pd_bulk
+                st.info(f"총 {len(_bulk_data)}개 LOT 추출됨 — 수정 후 등록하세요.")
+                _bulk_df = _pd_bulk.DataFrame(_bulk_data)
+                _bulk_df.insert(0, "선택", True)
+                _edited_bulk = st.data_editor(
+                    _bulk_df,
+                    column_config={
+                        "선택": st.column_config.CheckboxColumn("선택", width="small"),
+                        "lot": st.column_config.TextColumn("LOT번호"),
+                        "product": st.column_config.TextColumn("품명"),
+                        "maker": st.column_config.SelectboxColumn("제조사", options=list(_MAKERS_BULK.values()) + ["알 수 없음"]),
+                    },
+                    use_container_width=True, hide_index=True, num_rows="dynamic",
+                    key="bulk_edit_df",
+                    height=min(len(_bulk_data) * 35 + 38, 600),
+                )
+                _sel_bulk = _edited_bulk[_edited_bulk["선택"] == True].drop(columns=["선택"]).to_dict(orient="records")
+                _bc1, _bc2 = st.columns([3, 1])
+                with _bc1:
+                    _bulk_sector = st.selectbox(
+                        "등록 섹터", _SECTOR_BULK,
+                        index=_SECTOR_BULK.index("창고") if "창고" in _SECTOR_BULK else 0,
+                        key="bulk_sector_sel",
+                    )
+                with _bc2:
+                    st.write("")
+                    st.write("")
+                    if st.button(f"재고 등록 ({len(_sel_bulk)}개)", type="primary", use_container_width=True,
+                                 key="btn_bulk_register", disabled=len(_sel_bulk) == 0):
+                        try:
+                            _breg = _req.post(
+                                f"{BACKEND}/api/inventory/register",
+                                json={"drums": _sel_bulk, "sector": _bulk_sector, "remark": ""},
+                                timeout=60,
+                            )
+                            _breg.raise_for_status()
+                            _brd = _breg.json()
+                            _bmoved = _brd.get("moved", len(_sel_bulk))
+                            _balready = _brd.get("already_same", [])
+                            st.success(f"{_bmoved}개 등록 완료!")
+                            if _balready:
+                                st.info(f"이미 같은 섹터: {len(_balready)}개 건너뜀")
+                            st.session_state.pop("bulk_extracted", None)
+                            st.rerun()
+                        except Exception as _bex:
+                            st.error(f"등록 실패: {_bex}")
 
 
 # ══════════════════════════════════════

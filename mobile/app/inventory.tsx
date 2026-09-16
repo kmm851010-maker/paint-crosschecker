@@ -202,7 +202,7 @@ function filterAndProceed(
 
 const SECTORS = [
   "입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리",
-  "8번자리", "9번자리", "반품자리", "창고주위",
+  "8번자리", "9번자리", "반품자리", "창고주위", "창고",
 ];
 const CHECKOUT = "라인입고";
 type Mode = "idle" | "scanning" | "sectorPick" | "status";
