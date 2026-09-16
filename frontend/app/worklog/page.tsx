@@ -327,9 +327,15 @@ export default function WorklogPage() {
                     2인 근무 체계 (주간/야간 12시간) 자동 전환
                   </div>
                 )}
+                {shiftAuto && !isAllLeave && !is2p && shiftAuto.leave_person && (
+                  <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "8px 14px", marginBottom: 8, fontSize: 13, color: "#9a3412" }}>
+                    ⚠️ <strong>{shiftAuto.leave_person}</strong> {shiftAuto.leave_type} —
+                    나머지 1인 정상 근무 (수동 입력)
+                  </div>
+                )}
                 {shiftData && (
                   <div style={{ background: isAllLeave ? "#f5f3ff" : "#f0fdf4", border: `1px solid ${isAllLeave ? "#c4b5fd" : "#bbf7d0"}`, borderRadius: 8, padding: "8px 14px", marginBottom: 12, fontSize: 13, color: isAllLeave ? "#5b21b6" : "#166534" }}>
-                    <strong>{fmtDate(date)}</strong>{isAllLeave ? ` 전원 ${shiftData.leave_type || "명휴"}` : is2p ? " 2인 근무" : " 근무 매칭 완료"}&nbsp;&nbsp;
+                    <strong>{fmtDate(date)}</strong>{isAllLeave ? ` 전원 ${shiftData.leave_type || "명휴"}` : is2p ? " 2인 근무" : (shiftData.leave_person && !is2p) ? " 부분 휴가" : " 근무 매칭 완료"}&nbsp;&nbsp;
                     {isAllLeave ? (
                       <>
                         1근: <strong>{shiftData["1근_조"]}조 {shiftData["1근_근무자"]}</strong> |&nbsp;

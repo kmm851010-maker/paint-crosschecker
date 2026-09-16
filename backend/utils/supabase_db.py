@@ -173,24 +173,30 @@ def apply_leaves(shift_data: dict, target_date: datetime.date, leave_list: list)
         leave_type = on_leave.get(w1) or on_leave.get(w2) or on_leave.get(w3) or ""
         result["is_allleave"] = True
         result["leave_type"] = leave_type
-    elif w1 in on_leave:
-        result.update({
-            "is_2person": True, "leave_person": w1, "leave_type": on_leave[w1],
-            "주간_근무자": w2, "야간_근무자": w3,
-            "주간_조": result["2근_조"], "야간_조": result["3근_조"],
-        })
-    elif w2 in on_leave:
-        result.update({
-            "is_2person": True, "leave_person": w2, "leave_type": on_leave[w2],
-            "주간_근무자": w1, "야간_근무자": w3,
-            "주간_조": result["1근_조"], "야간_조": result["3근_조"],
-        })
-    elif w3 in on_leave:
-        result.update({
-            "is_2person": True, "leave_person": w3, "leave_type": on_leave[w3],
-            "주간_근무자": w1, "야간_근무자": w2,
-            "주간_조": result["1근_조"], "야간_조": result["2근_조"],
-        })
+    elif len(absent) == 1:
+        # 1명만 휴가 → 2인 근무 전환 (대체자도 정상 근무인 경우만)
+        if w1 in on_leave:
+            result.update({
+                "is_2person": True, "leave_person": w1, "leave_type": on_leave[w1],
+                "주간_근무자": w2, "야간_근무자": w3,
+                "주간_조": result["2근_조"], "야간_조": result["3근_조"],
+            })
+        elif w2 in on_leave:
+            result.update({
+                "is_2person": True, "leave_person": w2, "leave_type": on_leave[w2],
+                "주간_근무자": w1, "야간_근무자": w3,
+                "주간_조": result["1근_조"], "야간_조": result["3근_조"],
+            })
+        elif w3 in on_leave:
+            result.update({
+                "is_2person": True, "leave_person": w3, "leave_type": on_leave[w3],
+                "주간_근무자": w1, "야간_근무자": w2,
+                "주간_조": result["1근_조"], "야간_조": result["2근_조"],
+            })
+    elif len(absent) == 2:
+        # 2명 휴가 → 남은 1명 정상 근무, 2인 근무 전환 없음
+        result["leave_person"] = ", ".join(absent)
+        result["leave_type"] = on_leave.get(absent[0], "")
     return result
 
 
