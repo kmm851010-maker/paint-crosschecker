@@ -955,7 +955,16 @@ def _build_worklog_sheet(ws, selected_date, shift_data: dict, work_items: list, 
     for c in "HIJ":
         ws[f"{c}6"].fill, ws[f"{c}6"].border = fill_gray, thin
 
-    if shift_data.get("is_2person"):
+    if shift_data.get("is_allleave"):
+        fill_purple = PatternFill(start_color="EDE9FE", end_color="EDE9FE", fill_type="solid")
+        font_purple = Font(name="맑은 고딕", size=11, bold=True, color="5B21B6")
+        ws.merge_cells("A7:J7")
+        ws["A7"] = f"전원 {shift_data.get('leave_type', '명휴')} — 해당일 전원 휴무"
+        ws["A7"].font = font_purple
+        ws["A7"].fill = fill_purple
+        ws["A7"].alignment = align_c
+        ws["A7"].border = thin
+    elif shift_data.get("is_2person"):
         rows_1 = [
             ("주간", shift_data.get("주간_조", shift_data.get("1근_조","")), "06:30 – 18:30",
              shift_data.get("주간_근무자", shift_data.get("1근_근무자","")), "", shift_data.get("1근_연장",""), shift_data.get("1근_비고","")),

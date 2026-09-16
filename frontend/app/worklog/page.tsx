@@ -150,7 +150,8 @@ export default function WorklogPage() {
   useEffect(() => { loadData(date); }, [date, loadData]);
 
   const is2p = shiftData?.is_2person ?? false;
-  const isAllLeave = shiftData?.is_allleave ?? false;
+  // saved_shift는 이전 저장값이라 is_allleave가 없을 수 있으므로 shiftAuto 기준 사용
+  const isAllLeave = shiftAuto?.is_allleave ?? false;
 
   // 비활성 컬럼 (2인: 1근/2근/3근 비활성 / 3교대: 주간/야간 비활성)
   const disabledShifts: Set<string> = is2p
@@ -423,8 +424,18 @@ export default function WorklogPage() {
               </div>
             </div>
 
+            {/* ── 전원 명휴 안내 ── */}
+            {isAllLeave && (
+              <div style={{ background: "#f5f3ff", border: "2px solid #7C3AED", borderRadius: 8, padding: "18px 20px", marginBottom: 18, textAlign: "center" }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: "#5b21b6", marginBottom: 6 }}>
+                  전원 {shiftAuto?.leave_type || "명휴"}
+                </div>
+                <div style={{ fontSize: 13, color: "#6d28d9" }}>해당일은 전원 휴무로 업무 현황 작성이 필요하지 않습니다.</div>
+              </div>
+            )}
+
             {/* ── 2. 업무 현황 ── */}
-            <div style={{ background: "#fff", border: "2px solid #4B2D8E", borderRadius: 4, marginBottom: 18, overflow: "hidden" }}>
+            <div style={{ background: "#fff", border: "2px solid #4B2D8E", borderRadius: 4, marginBottom: 18, overflow: "hidden", opacity: isAllLeave ? 0.35 : 1, pointerEvents: isAllLeave ? "none" : "auto" }}>
               <div style={{ background: "#4B2D8E", color: "#fff", padding: "6px 14px", fontSize: 13, fontWeight: 700 }}>2. 업무 현황</div>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 700, fontSize: 12 }}>
@@ -486,7 +497,7 @@ export default function WorklogPage() {
             </div>
 
             {/* ── 3. 안전 관리 사항 ── */}
-            <div style={{ background: "#fff", border: "2px solid #4B2D8E", borderRadius: 4, marginBottom: 18, overflow: "hidden" }}>
+            <div style={{ background: "#fff", border: "2px solid #4B2D8E", borderRadius: 4, marginBottom: 18, overflow: "hidden", opacity: isAllLeave ? 0.35 : 1, pointerEvents: isAllLeave ? "none" : "auto" }}>
               <div style={{ background: "#4B2D8E", color: "#fff", padding: "6px 14px", fontSize: 13, fontWeight: 700 }}>3. 안전 관리 사항</div>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
@@ -525,7 +536,7 @@ export default function WorklogPage() {
             </div>
 
             {/* ── 4. 특이사항 ── */}
-            <div style={{ background: "#fff", border: "2px solid #4B2D8E", borderRadius: 4, marginBottom: 18, overflow: "hidden" }}>
+            <div style={{ background: "#fff", border: "2px solid #4B2D8E", borderRadius: 4, marginBottom: 18, overflow: "hidden", opacity: isAllLeave ? 0.35 : 1, pointerEvents: isAllLeave ? "none" : "auto" }}>
               <div style={{ background: "#4B2D8E", color: "#fff", padding: "6px 14px", fontSize: 13, fontWeight: 700 }}>4. 특이 사항</div>
               <div style={{ padding: 14 }}>
                 <textarea
