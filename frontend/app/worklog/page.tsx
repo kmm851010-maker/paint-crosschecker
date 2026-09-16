@@ -114,12 +114,21 @@ export default function WorklogPage() {
       const res = await getWorklog(d);
       setShiftAuto(res.shift_auto);
       let usedShift: ShiftInfo = res.saved_shift || res.shift_auto;
-      // 2인 모드일 때 주간/야간 비고가 비어있으면 항상 대근 사유 자동 설정
-      if (usedShift?.is_2person && usedShift?.leave_person) {
-        const defaultNote = `${usedShift.leave_person} ${usedShift.leave_type}로 대근`;
+      // 2인 모드일 때 빠진 필드는 shift_auto 값으로 채우기
+      if (usedShift?.is_2person) {
+        const auto = res.shift_auto as unknown as Record<string, string>;
         const r = usedShift as unknown as Record<string, string>;
+        const lp = r["leave_person"] || auto["leave_person"] || "";
+        const lt = r["leave_type"] || auto["leave_type"] || "";
+        const defaultNote = lp ? `${lp} ${lt}로 대근` : "";
         usedShift = {
           ...usedShift,
+          "주간_근무자": r["주간_근무자"] || auto["주간_근무자"] || "",
+          "야간_근무자": r["야간_근무자"] || auto["야간_근무자"] || "",
+          "주간_조": r["주간_조"] || auto["주간_조"] || "",
+          "야간_조": r["야간_조"] || auto["야간_조"] || "",
+          leave_person: lp,
+          leave_type: lt,
           "1근_비고": r["1근_비고"] || defaultNote,
           "2근_비고": r["2근_비고"] || defaultNote,
         } as ShiftInfo;
