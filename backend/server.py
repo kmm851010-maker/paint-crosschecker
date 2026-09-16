@@ -381,6 +381,25 @@ class ParseReturnListRequest(BaseModel):
     api_key: str = ""
 
 
+class ParsePDFLotsRequest(BaseModel):
+    file_data: str  # base64
+    filename: str
+    api_key: str = ""
+
+
+@app.post("/api/inventory/parse-pdf-lots")
+async def parse_pdf_lots_endpoint(req: ParsePDFLotsRequest):
+    """PDF/이미지에서 LOT번호+품명 추출 (재고 대량 등록용)"""
+    from modules.vision_ocr import extract_lot_list_from_pdf
+    key = get_api_key(req.api_key)
+    file_bytes = base64.b64decode(req.file_data)
+    try:
+        items = extract_lot_list_from_pdf(file_bytes, req.filename, key)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, "count": len(items), "items": items}
+
+
 @app.post("/api/inventory/parse-return-list")
 async def parse_return_list_endpoint(req: ParseReturnListRequest):
     """반품 리스트 이미지/엑셀에서 품명·LOT-NO·반품유형 추출"""

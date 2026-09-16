@@ -491,6 +491,148 @@ def extract_erp_from_image(file_bytes, file_name, api_key, model="claude-opus-4-
     return extract_document_data(file_bytes, file_name, api_key, model)
 
 
+EXTRACT_LOT_TOOL = {
+    "name": "extract_lot_list",
+    "description": "재고 문서에서 LOT번호와 품명 목록을 추출합니다.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "lot": {"type": "string", "description": "LOT번호 (9자리: 영문1 + 숫자8, 예: G12345678)"},
+                        "product": {"type": "string", "description": "품명 또는 색상코드"},
+                    },
+                    "required": ["lot", "product"],
+                },
+                "description": "LOT번호와 품명 쌍 목록",
+            }
+        },
+        "required": ["items"],
+    },
+}
+
+LOT_EXTRACT_PROMPT = """이 문서에서 LOT번호와 품명을 모두 추출하세요.
+
+LOT번호: 영문 대문자 1글자 + 숫자 8자리 = 총 9자리 (예: G12345678, D87654321)
+품명: LOT번호와 연결된 제품명 또는 색상코드
+
+extract_lot_list 도구를 사용하여 모든 항목을 반환하세요."""
+
+
+def _extract_lots_from_excel(file_bytes: bytes, filename: str) -> list:
+    """엑셀/CSV에서 LOT번호+품명 추출 (Vision AI 없이 직접 파싱)."""
+    import re
+    from io import BytesIO
+    import pandas as pd
+
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+    is_ole = len(file_bytes) >= 8 and file_bytes[:8] == bytes.fromhex("d0cf11e0a1b011ae")
+
+    if ext == "csv":
+        for enc in ["utf-8", "cp949", "euc-kr", "latin-1"]:
+            try:
+                df = pd.read_csv(BytesIO(file_bytes), encoding=enc, dtype=str)
+                break
+            except Exception:
+                continue
+        else:
+            raise ValueError("CSV 인코딩 인식 불가")
+    elif is_ole or ext == "xls":
+        df = pd.read_excel(BytesIO(file_bytes), engine="xlrd", dtype=str)
+    else:
+        df = pd.read_excel(BytesIO(file_bytes), engine="openpyxl", dtype=str)
+
+    df = df.fillna("")
+    lot_pat = re.compile(r"^[A-Z]\d{8}$")
+    lot_kw = ["lot", "로트", "LOT", "lot번호", "lot no"]
+    prod_kw = ["품명", "제품명", "product", "색상", "품목"]
+
+    lot_col = prod_col = None
+    for col in df.columns:
+        cl = str(col).lower()
+        if not lot_col and any(k.lower() in cl for k in lot_kw):
+            lot_col = col
+        if not prod_col and any(k.lower() in cl for k in prod_kw):
+            prod_col = col
+
+    # 헤더에서 못 찾으면 데이터 내 LOT 패턴 열 자동 감지
+    if not lot_col:
+        for col in df.columns:
+            sample = df[col].dropna().head(20)
+            if sample.apply(lambda v: bool(lot_pat.match(str(v).strip().upper()))).sum() >= 3:
+                lot_col = col
+                break
+
+    if not lot_col:
+        raise ValueError("LOT번호 열을 찾을 수 없습니다.")
+
+    result = []
+    seen = set()
+    for _, row in df.iterrows():
+        lot = str(row[lot_col]).strip().upper()
+        if not lot_pat.match(lot):
+            continue
+        if lot in seen:
+            continue
+        seen.add(lot)
+        product = str(row[prod_col]).strip() if prod_col else ""
+        result.append({"lot": lot, "product": product})
+    return result
+
+
+def extract_lot_list_from_pdf(pdf_bytes: bytes, filename: str, api_key: str, model: str = "claude-opus-4-8") -> list:
+    """PDF/이미지/엑셀에서 LOT번호+품명 목록 추출 (재고 대량 등록용)."""
+    import re
+    import base64 as _b64
+
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+
+    # 엑셀/CSV는 AI 없이 직접 파싱
+    if ext in ("xlsx", "xls", "csv"):
+        return _extract_lots_from_excel(pdf_bytes, filename)
+
+    client = anthropic.Anthropic(api_key=api_key)
+
+    if ext == "pdf":
+        b64 = _b64.standard_b64encode(pdf_bytes).decode("utf-8")
+        content = [
+            {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": b64}},
+            {"type": "text", "text": LOT_EXTRACT_PROMPT},
+        ]
+    else:
+        b64 = encode_image_to_base64(pdf_bytes)
+        media_type = detect_media_type(filename)
+        content = [
+            {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}},
+            {"type": "text", "text": LOT_EXTRACT_PROMPT},
+        ]
+
+    response = client.messages.create(
+        model=model,
+        max_tokens=16000,
+        tools=[EXTRACT_LOT_TOOL],
+        tool_choice={"type": "tool", "name": "extract_lot_list"},
+        messages=[{"role": "user", "content": content}],
+    )
+
+    for block in response.content:
+        if getattr(block, "type", "") == "tool_use" and block.name == "extract_lot_list":
+            items = block.input.get("items", [])
+            result = []
+            for item in items:
+                lot = str(item.get("lot", "")).strip().upper()
+                if not re.match(r"^[A-Z]\d{8}$", lot):
+                    continue
+                product = str(item.get("product", "")).strip()
+                result.append({"lot": lot, "product": product})
+            return result
+
+    raise ValueError("LOT 추출 응답을 받지 못했습니다.")
+
+
 def flatten_production_plan(plan_data: dict) -> list:
     """하위 호환: 범용 JSON → flat 리스트"""
     rows = []
