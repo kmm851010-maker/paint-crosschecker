@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
-import { getLeaves, saveLeaves, getMembers, type LeaveItem } from "@/lib/api";
+import { getLeaves, saveLeaves, getMembers, getAttendanceMonthStats, type LeaveItem, type MonthStatsResult } from "@/lib/api";
 import { isAdmin } from "@/lib/auth";
 import toast from "react-hot-toast";
 
@@ -101,6 +101,104 @@ function computePersonDays(year: number, month: number, members: Record<string, 
   return result;
 }
 
+// ── 급여시간표 HTML 생성 (Streamlit _sal_tbl() 동일) ──
+function buildSalaryHtml(data: MonthStatsResult): string {
+  const { salary_rows, totals, scols } = data;
+  function fmt(v: number) { return v ? v.toFixed(2) : ""; }
+
+  const TH = `background:#4472C4;color:#fff;text-align:center;padding:5px 3px;border:1px solid #2F5496;font-size:10px;white-space:nowrap;`;
+  const TH2 = `background:#2F5496;color:#fff;text-align:center;padding:6px 4px;border:1px solid #2F5496;white-space:nowrap;`;
+
+  const headerSub = scols.map(c => `<th style="${TH}">${c}</th>`).join("");
+
+  let html = `<div style="overflow-x:auto;margin-top:8px;">
+<table style="border-collapse:collapse;font-size:11px;width:100%;min-width:900px;">
+<thead>
+<tr>
+  <th rowspan="2" style="${TH}">날짜</th>
+  <th colspan="${scols.length}" style="${TH}">일일 급여시간</th>
+  <th rowspan="2" style="${TH2}">일별합계</th>
+</tr>
+<tr>${headerSub}</tr>
+</thead><tbody>`;
+
+  salary_rows.forEach((r, i) => {
+    const bg = i % 2 === 0 ? "#f0f4fb" : "#ffffff";
+    const cells = scols.map(c => {
+      const v = r[c as keyof typeof r] as number;
+      return `<td style="text-align:right;padding:3px 5px;border:1px solid #D0D7E4;background:${bg};">${fmt(v)}</td>`;
+    }).join("");
+    html += `<tr>
+      <td style="text-align:center;padding:3px 5px;border:1px solid #D0D7E4;background:#EEF2FA;font-weight:600;">${r.날짜}</td>
+      ${cells}
+      <td style="text-align:right;padding:3px 5px;border:1px solid #2F5496;background:#D9E1F2;font-weight:700;color:#1F3864;">${fmt(r.일별합계)}</td>
+    </tr>`;
+  });
+
+  const totalCells = scols.map(c => {
+    const v = totals[c as keyof typeof totals] as number;
+    return `<td style="text-align:right;padding:4px 5px;border:1px solid #9DC3E6;background:#BDD7EE;font-weight:700;color:#1F3864;">${fmt(v)}</td>`;
+  }).join("");
+  html += `<tr>
+    <td style="text-align:center;padding:4px 5px;border:1px solid #9DC3E6;background:#9DC3E6;font-weight:700;color:#1F3864;">근로별 월합계</td>
+    ${totalCells}
+    <td style="text-align:right;padding:4px 5px;border:1px solid #9DC3E6;background:#9DC3E6;font-weight:700;color:#1F3864;">${fmt(totals.일별합계)}</td>
+  </tr>`;
+  html += "</tbody></table></div>";
+  return html;
+}
+
+// ── 교대주기별 HTML 생성 (Streamlit _render_cycle() 동일) ──
+function buildCycleHtml(data: MonthStatsResult, team: string): string {
+  const { cycle_blocks } = data;
+  const TH2 = "background:#374151;color:#D1D5DB;padding:5px 4px;border:1px solid #4B5563;text-align:center;font-size:12px;";
+  const TDB = "padding:6px 4px;border:1px solid #4B5563;text-align:center;font-size:13px;";
+  const TDG = TDB + "background:#1F2937;color:#9CA3AF;";
+  const TDO = TDB + "background:#1F2937;color:#E5E7EB;font-weight:600;";
+  const TDR = TDB + "background:#DC2626;color:#fff;font-weight:700;";
+  const TDW = TDB + "background:#78350F;color:#FDE68A;font-weight:600;";
+
+  let title = `<p style="font-size:13px;font-weight:700;color:#1f2937;margin:0 0 2px;">※ 4조 3교대 ${team}조 연장근로 현황</p>`;
+  let caption = `<p style="font-size:11px;color:#6b7280;margin:0 0 8px;">※ 조회일자 기준의 해당 근무조 교대일정으로 연장근로 현황 시간이 표기됩니다.</p>`;
+
+  if (!cycle_blocks.length) {
+    return title + caption + `<p style="color:#6b7280;font-size:13px;">해당 월 교대 주기 없음</p>`;
+  }
+
+  const dh = cycle_blocks.map(b => `<th colspan="3" style="${TH2}">${b.start}~${b.end}</th>`).join("");
+  const cs2 = cycle_blocks.map(() =>
+    `<th style="${TH2}">연장(발생)</th><th style="${TH2}">연장(잔여)</th><th style="${TH2}">탄력근로 사용</th>`
+  ).join("");
+
+  let dc = "";
+  let hasExceeded = false;
+  for (const b of cycle_blocks) {
+    const io = b.exceeded;
+    const iw = !io && b.warning;
+    if (io) hasExceeded = true;
+    const cst = io ? TDR : (iw ? TDW : TDO);
+    dc += `<td style="${cst}">${b.total_ot}</td><td style="${TDG}">${b.remaining}</td><td style="${TDG}">0</td>`;
+  }
+
+  let html = title + caption + `<div style="overflow-x:auto;margin-top:8px;">
+<table style="border-collapse:collapse;font-size:12px;min-width:100%;">
+<thead>
+  <tr><th style="${TH2}min-width:90px;">구분</th>${dh}</tr>
+  <tr><th style="${TH2}"></th>${cs2}</tr>
+</thead>
+<tbody>
+  <tr><td style="${TH2}text-align:left;white-space:nowrap;">연장/잔여(H)</td>${dc}</tr>
+</tbody>
+</table></div>`;
+
+  if (hasExceeded) {
+    const wl = cycle_blocks.filter(b => b.exceeded).map(b => `${b.start}~${b.end} (${b.total_ot}H)`).join(", ");
+    html += `<div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:8px;padding:10px 14px;margin-top:12px;font-size:13px;color:#991B1B;font-weight:600;">⚠️ 주 52시간 위배 주기: ${wl}</div>`;
+  }
+
+  return html;
+}
+
 // ── 모달 컴포넌트 ──
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -110,11 +208,11 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
       background: "rgba(0,0,0,0.4)",
     }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={ref} style={{
-        background: "#fff", borderRadius: 14, padding: 24, minWidth: 400, maxWidth: "90vw",
-        maxHeight: "85vh", overflowY: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.22)",
+        background: "#fff", borderRadius: 14, padding: 24, minWidth: 400, maxWidth: "95vw",
+        maxHeight: "90vh", overflowY: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.22)",
       }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#1f2937" }}>{title}</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, borderBottom: "1px solid #e5e7eb", paddingBottom: 12 }}>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#1f2937" }}>{title}</h3>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#6b7280" }}>×</button>
         </div>
         {children}
@@ -136,9 +234,13 @@ export default function AttendancePage() {
   const [admin] = useState(isAdmin);
 
   // 모달 상태
-  const [showLvDlg, setShowLvDlg] = useState(false);   // 휴가/연장 신청서
-  const [showSalary, setShowSalary] = useState(false);  // 급여시간표
-  const [showCycle, setShowCycle] = useState(false);    // 교대주기
+  const [showLvDlg, setShowLvDlg] = useState(false);
+  const [showSalary, setShowSalary] = useState(false);
+  const [showCycle, setShowCycle] = useState(false);
+
+  // 급여/교대주기 데이터
+  const [statsData, setStatsData] = useState<MonthStatsResult | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
 
   // 휴가 등록 폼
   const [lvName, setLvName] = useState("");
@@ -163,6 +265,17 @@ export default function AttendancePage() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  async function fetchStats(nm: string) {
+    if (!nm) return;
+    setStatsLoading(true);
+    setStatsData(null);
+    try {
+      const result = await getAttendanceMonthStats(year, month + 1, nm);
+      setStatsData(result);
+    } catch { toast.error("급여시간표 데이터 로드 실패"); }
+    finally { setStatsLoading(false); }
+  }
 
   async function handleAddLeave(e: React.FormEvent) {
     e.preventDefault();
@@ -195,24 +308,36 @@ export default function AttendancePage() {
 
   // 통계 계산
   const subDetail: { ds: string }[] = [];
-  const lvDetail: { ds: string; type: string }[] = [];
   let subHours = 0;
 
-  for (const { shift, ds, leaveType } of personDays) {
+  for (const { shift, ds } of personDays) {
     if (shift === "대근") { subDetail.push({ ds }); subHours += 4; }
-    else if (shift === "휴가") lvDetail.push({ ds, type: leaveType ?? "" });
   }
 
-  const yrLeaves = leaves.filter(lv => {
-    if (lv.name !== selName) return false;
-    return lv.start.startsWith(String(year)) || lv.end.startsWith(String(year));
-  });
+  // 이번 달 휴가 내역 (일별 확장)
+  const lvDetailExpanded: { ds: string; type: string }[] = [];
+  for (const lv of leaves) {
+    if (lv.name !== selName) continue;
+    const s = new Date(lv.start), e = new Date(lv.end);
+    for (let cur = new Date(s); cur <= e; cur.setDate(cur.getDate() + 1)) {
+      const ds2 = cur.toISOString().slice(0, 10);
+      const [ly, lm] = ds2.split("-").map(Number);
+      if (ly === year && lm === month + 1) lvDetailExpanded.push({ ds: ds2, type: lv.type });
+    }
+  }
+
+  // 연간 휴가: 날짜 범위를 일별로 확장
+  const yrLeaves: { 날짜: string; 구분: string }[] = [];
+  for (const lv of leaves) {
+    if (lv.name !== selName) continue;
+    const s = new Date(lv.start), e = new Date(lv.end);
+    for (let cur = new Date(s); cur <= e; cur.setDate(cur.getDate() + 1)) {
+      const ds2 = cur.toISOString().slice(0, 10);
+      if (ds2.startsWith(String(year))) yrLeaves.push({ 날짜: ds2, 구분: lv.type });
+    }
+  }
 
   const selTeam = Object.entries(members).find(([, v]) => v === selName)?.[0];
-
-  // 오늘 근무 (달력 슬롯)
-  const todayIdx = ((diffDays(kstNow.getUTCFullYear(), kstNow.getUTCMonth(), kstNow.getUTCDate()) % 20) + 20) % 20;
-  const [t1, t2, t3, tOff] = CYCLE_20[todayIdx];
 
   const weeks: CalCell[][] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
@@ -295,17 +420,17 @@ export default function AttendancePage() {
 
             {/* 이번 달 휴가 내역 */}
             <div style={{ marginBottom: 8 }}>
-              {lvDetail.length === 0 ? (
+              {lvDetailExpanded.length === 0 ? (
                 <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>이번달 휴가 없음</p>
               ) : (
                 <>
                   <button onClick={() => setExpLv(!expLv)}
                     style={{ background: "none", border: "none", fontSize: 13, fontWeight: 600, color: "#1f2937", cursor: "pointer", padding: 0, textAlign: "left" }}>
-                    {expLv ? "▼" : "▶"} {month + 1}월 휴가 내역 ({lvDetail.length}일)
+                    {expLv ? "▼" : "▶"} {month + 1}월 휴가 내역 ({lvDetailExpanded.length}일)
                   </button>
                   {expLv && (
                     <div style={{ paddingLeft: 16, marginTop: 4 }}>
-                      {lvDetail.map(({ ds, type }) => (
+                      {lvDetailExpanded.map(({ ds, type }) => (
                         <p key={ds} style={{ fontSize: 12, color: "#374151", margin: "2px 0" }}>{ds}: {type}</p>
                       ))}
                     </div>
@@ -325,7 +450,7 @@ export default function AttendancePage() {
                   <div style={{ paddingLeft: 16, marginTop: 4 }}>
                     {(() => {
                       const typeCounts: Record<string, number> = {};
-                      for (const lv of yrLeaves) typeCounts[lv.type] = (typeCounts[lv.type] ?? 0) + 1;
+                      for (const lv of yrLeaves) typeCounts[lv.구분] = (typeCounts[lv.구분] ?? 0) + 1;
                       return (
                         <>
                           <p style={{ fontSize: 12, color: "#1565C0", margin: "0 0 4px", background: "#eff6ff", borderRadius: 6, padding: "3px 8px" }}>
@@ -333,7 +458,7 @@ export default function AttendancePage() {
                           </p>
                           {yrLeaves.map((lv, i) => (
                             <p key={i} style={{ fontSize: 12, color: "#374151", margin: "2px 0" }}>
-                              {lv.start} ~ {lv.end} — {lv.type}
+                              {lv.날짜} — {lv.구분}
                             </p>
                           ))}
                         </>
@@ -346,11 +471,13 @@ export default function AttendancePage() {
 
             {/* 급여시간표 / 교대주기 버튼 */}
             <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-              <button onClick={() => setShowSalary(true)}
+              <button
+                onClick={() => { setShowSalary(true); fetchStats(selName); }}
                 style={{ ...btnStyle("secondary"), textAlign: "left", paddingLeft: 14 }}>
                 {month + 1}월 급여시간표
               </button>
-              <button onClick={() => setShowCycle(true)}
+              <button
+                onClick={() => { setShowCycle(true); fetchStats(selName); }}
                 style={{ ...btnStyle("secondary"), textAlign: "left", paddingLeft: 14 }}>
                 교대주기별 연장 시간
               </button>
@@ -505,48 +632,45 @@ export default function AttendancePage() {
 
         {/* ── 급여시간표 팝업 ── */}
         {showSalary && (
-          <Modal title={`${selName} — ${month + 1}월 급여시간표`} onClose={() => setShowSalary(false)}>
-            <div style={{ padding: "8px 0" }}>
-              <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>
-                저장된 작업일지 데이터를 기반으로 급여시간표가 계산됩니다.<br />
-                작업일지가 저장되지 않은 날짜는 근무 로테이션 기준으로 표시됩니다.
-              </p>
-              <div style={{ background: "#f9fafb", borderRadius: 8, padding: 12 }}>
-                <p style={{ fontSize: 13, fontWeight: 600, color: "#4B2D8E", margin: 0 }}>
-                  {year}년 {month + 1}월 근무 요약
-                </p>
-                {personDays.filter(p => p.shift !== "휴무").map(({ shift, ds }) => (
-                  <div key={ds} style={{ display: "flex", gap: 8, fontSize: 12, padding: "3px 0", borderBottom: "1px solid #e5e7eb" }}>
-                    <span style={{ color: "#6b7280", minWidth: 100 }}>{ds}</span>
-                    <span style={{ fontWeight: 600, color: shift === "휴가" ? "#F57F17" : shift === "대근" ? "#6A1B9A" : "#1f2937" }}>{shift}</span>
-                  </div>
-                ))}
+          <Modal title="급여시간표" onClose={() => setShowSalary(false)}>
+            <p style={{ fontSize: 15, fontWeight: 700, color: "#1f2937", margin: "0 0 12px" }}>
+              {selName} — {month + 1}월 급여시간표
+            </p>
+            {statsLoading ? (
+              <div style={{ textAlign: "center", padding: "40px 0", color: "#6b7280", fontSize: 14 }}>
+                계산 중...
               </div>
-            </div>
+            ) : !statsData ? (
+              <div style={{ textAlign: "center", padding: "40px 0", color: "#6b7280", fontSize: 14 }}>
+                데이터를 불러올 수 없습니다.
+              </div>
+            ) : statsData.salary_rows.length === 0 ? (
+              <div style={{ background: "#eff6ff", borderRadius: 8, padding: "12px 16px", fontSize: 13, color: "#1d4ed8" }}>
+                저장된 근무 데이터가 없습니다.
+              </div>
+            ) : (
+              <div dangerouslySetInnerHTML={{ __html: buildSalaryHtml(statsData) }} />
+            )}
           </Modal>
         )}
 
         {/* ── 교대주기별 연장 시간 팝업 ── */}
         {showCycle && (
-          <Modal title={`${selName} — 교대주기별 연장 시간`} onClose={() => setShowCycle(false)}>
-            <p style={{ fontSize: 13, color: "#6b7280" }}>
-              교대주기별 연장 시간은 저장된 작업일지의 연장 데이터를 기반으로 계산됩니다.<br />
-              작업일지를 먼저 저장하면 정확한 데이터가 표시됩니다.
+          <Modal title="교대주기별 연장 시간" onClose={() => setShowCycle(false)}>
+            <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>
+              교대 주기(연속 근무 5일)별 연장 현황. 주기당 최대 12H — 초과 시 빨간색 경고.
             </p>
-            <div style={{ background: "#f9fafb", borderRadius: 8, padding: 12 }}>
-              <p style={{ fontSize: 13, fontWeight: 600, color: "#4B2D8E", margin: "0 0 8px" }}>
-                {year}년 {month + 1}월 대근 현황
-              </p>
-              {subDetail.length === 0 ? (
-                <p style={{ fontSize: 13, color: "#6b7280" }}>대근 없음</p>
-              ) : (
-                subDetail.map(({ ds }) => (
-                  <div key={ds} style={{ fontSize: 12, padding: "3px 0", borderBottom: "1px solid #e5e7eb" }}>
-                    {ds} — 대근 (4H)
-                  </div>
-                ))
-              )}
-            </div>
+            {statsLoading ? (
+              <div style={{ textAlign: "center", padding: "40px 0", color: "#6b7280", fontSize: 14 }}>
+                계산 중...
+              </div>
+            ) : !statsData ? (
+              <div style={{ textAlign: "center", padding: "40px 0", color: "#6b7280", fontSize: 14 }}>
+                데이터를 불러올 수 없습니다.
+              </div>
+            ) : (
+              <div dangerouslySetInnerHTML={{ __html: buildCycleHtml(statsData, selTeam ?? "?") }} />
+            )}
           </Modal>
         )}
 

@@ -664,6 +664,230 @@ async def upsert_remark(req: UpsertRemarkRequest):
     return {"success": True}
 
 
+# ═══════════════════════════════════════════════════════════════════
+# 근태관리 — 급여시간표 / 교대주기별 연장
+# ═══════════════════════════════════════════════════════════════════
+
+@app.get("/api/attendance/month-stats")
+async def get_attendance_month_stats(year: int, month: int, name: str):
+    """
+    특정 근무자의 월별 급여시간표 및 교대주기별 연장 시간 반환.
+    year: 2026, month: 1-12, name: 근무자 이름
+    """
+    import datetime as _dt
+    import calendar as _cal
+    from utils.supabase_db import (
+        get_members_dict, load_daily_detail_month, load_leaves,
+    )
+
+    CYCLE_20 = [
+        ('B','C','D','A'),('B','C','A','D'),('B','C','A','D'),
+        ('B','D','A','C'),('B','D','A','C'),('C','D','A','B'),
+        ('C','D','B','A'),('C','D','B','A'),('C','A','B','D'),
+        ('C','A','B','D'),('D','A','B','C'),('D','A','C','B'),
+        ('D','A','C','B'),('D','B','C','A'),('D','B','C','A'),
+        ('A','B','C','D'),('A','B','D','C'),('A','B','D','C'),
+        ('A','C','D','B'),('A','C','D','B'),
+    ]
+    BASE_DATE = _dt.date(2026, 3, 1)
+    NIGHT_HOURS = {"1근": 0, "2근": 0.5, "3근": 7.5, "주간": 0, "야간": 7.5}
+    SCOLS = ["정상근로","유휴근로","휴일근로","연장근로","휴일연장","야간근로",
+             "휴일비근로","휴가비근로","스틸아카데미","항군교육",
+             "사내교육(1)","사내교육(1.5)","사외교육(1)","사외교육(1.5)","공가"]
+
+    try:
+        members = get_members_dict() or {}
+        daily_details = load_daily_detail_month(year, month)
+        base_leaves = load_leaves()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # 한국 공휴일
+    try:
+        import holidays as _hol
+        kr_holidays = _hol.SouthKorea(years=[year, year-1, year+1])
+    except Exception:
+        kr_holidays = set()
+
+    def _sff(v):
+        try: return float(v)
+        except Exception:
+            import re as _re
+            nums = _re.findall(r"[\d.]+", str(v))
+            return float(nums[0]) if nums else 0.0
+
+    # 멤버 팀 코드
+    member_team = next((k for k, v in members.items() if v == name), None)
+
+    def _shift_for_date(d):
+        idx = (d - BASE_DATE).days % 20
+        s1, s2, s3, off = CYCLE_20[idx]
+        return {"1근_조": s1, "2근_조": s2, "3근_조": s3, "휴무_조": off,
+                "1근_근무자": members.get(s1,""), "2근_근무자": members.get(s2,""),
+                "3근_근무자": members.get(s3,""), "휴무_근무자": members.get(off,"")}
+
+    def _apply_leaves(sh, d):
+        result = dict(sh)
+        result["is_2person"] = False
+        for lv in base_leaves:
+            try:
+                ls = _dt.date.fromisoformat(lv["start"][:10])
+                le = _dt.date.fromisoformat(lv["end"][:10])
+            except Exception:
+                continue
+            if ls <= d <= le:
+                absent = lv["name"]
+                if result["1근_근무자"] == absent:
+                    result["is_2person"] = True
+                    result["주간_근무자"] = result["2근_근무자"]
+                    result["야간_근무자"] = result["3근_근무자"]
+                    result["주간_조"] = result["2근_조"]
+                    result["야간_조"] = result["3근_조"]
+                    result["leave_person"] = absent
+                    result["leave_type"] = lv["type"]
+                elif result["2근_근무자"] == absent:
+                    result["is_2person"] = True
+                    result["주간_근무자"] = result["1근_근무자"]
+                    result["야간_근무자"] = result["3근_근무자"]
+                    result["주간_조"] = result["1근_조"]
+                    result["야간_조"] = result["3근_조"]
+                    result["leave_person"] = absent
+                    result["leave_type"] = lv["type"]
+                elif result["3근_근무자"] == absent:
+                    result["is_2person"] = True
+                    result["주간_근무자"] = result["1근_근무자"]
+                    result["야간_근무자"] = result["2근_근무자"]
+                    result["주간_조"] = result["1근_조"]
+                    result["야간_조"] = result["2근_조"]
+                    result["leave_person"] = absent
+                    result["leave_type"] = lv["type"]
+                break
+        return result
+
+    days_in_month = _cal.monthrange(year, month)[1]
+    salary_rows = []
+
+    for fd in range(1, days_in_month + 1):
+        fd_date = _dt.date(year, month, fd)
+        fds = fd_date.strftime("%Y-%m-%d")
+        fhol = fd_date in kr_holidays
+        frow = {c: 0.0 for c in SCOLS}
+        frow["날짜"] = f"{month:02d}/{fd:02d}"
+
+        sh2 = None
+        if fds in daily_details and daily_details[fds].get("shift"):
+            sh2 = daily_details[fds]["shift"]
+        else:
+            auto = _shift_for_date(fd_date)
+            sh2 = _apply_leaves(auto, fd_date)
+
+        if not sh2:
+            continue
+
+        if sh2.get("is_2person"):
+            lp = sh2.get("leave_person","") or sh2.get("3근_근무자","")
+            dw = sh2.get("주간_근무자","") or sh2.get("1근_근무자","")
+            nw = sh2.get("야간_근무자","") or sh2.get("2근_근무자","")
+            lv_type = sh2.get("leave_type","") or sh2.get("3근_비고","")
+            nb = NIGHT_HOURS.get("야간", 7.5)
+            dot = _sff(sh2.get("1근_연장", 4) or 4)
+            not_ = _sff(sh2.get("2근_연장", 4) or 4)
+            if name == lp:
+                if lv_type == "공가": frow["공가"] = 8.0
+                else: frow["휴가비근로"] = 8.0
+            elif name == dw:
+                if fhol: frow["유휴근로"]=8.0; frow["휴일연장"]=dot; frow["휴일비근로"]=8.0
+                else: frow["정상근로"]=8.0; frow["연장근로"]=dot
+            elif name == nw:
+                if fhol: frow["유휴근로"]=8.0; frow["야간근로"]=nb; frow["휴일연장"]=not_; frow["휴일비근로"]=8.0
+                else: frow["정상근로"]=8.0; frow["야간근로"]=nb; frow["연장근로"]=not_
+        else:
+            for sk, 근k in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                if sh2.get(sk) == name:
+                    nb3 = NIGHT_HOURS.get(근k, 0)
+                    ot3 = _sff(sh2.get(f"{근k}_연장", 0) or 0)
+                    dy3 = _sff(sh2.get(f"{근k}_주간연장") or ot3)
+                    ny3 = _sff(sh2.get(f"{근k}_야간연장") or 0)
+                    if fhol:
+                        frow["유휴근로"]=8.0; frow["휴일비근로"]=8.0
+                        frow["휴일연장"]=dy3+ny3
+                        if nb3 > 0: frow["야간근로"] = nb3
+                    else:
+                        frow["정상근로"]=8.0; frow["연장근로"]=dy3
+                        if nb3 > 0: frow["야간근로"] = nb3+ny3
+                    break
+
+        ft = sum(frow[c] for c in SCOLS)
+        frow["일별합계"] = ft
+        if ft > 0:
+            salary_rows.append(frow)
+
+    # 교대주기별 연장 계산
+    ms = _dt.date(year, month, 1)
+    next_mo = month % 12 + 1
+    next_yr = year + (1 if month == 12 else 0)
+    me = _dt.date(next_yr, next_mo, 1) - _dt.timedelta(days=1)
+    ss3 = ms - _dt.timedelta(days=6)
+    se3 = me + _dt.timedelta(days=6)
+
+    # overtime per date from daily_details
+    obd: dict = {}
+    for ds5, dd5 in daily_details.items():
+        sh5 = dd5.get("shift", {})
+        if sh5 and not sh5.get("is_2person"):
+            for sk5, ok5 in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
+                if sh5.get(sk5) == name:
+                    ot5 = _sff(sh5.get(f"{ok5}_연장", 0))
+                    if ot5 > 0: obd[ds5] = ot5
+                    break
+
+    # 근무 시퀀스
+    wseq = []
+    cur = ss3
+    while cur <= se3:
+        idx = (cur - BASE_DATE).days % 20
+        c1, c2, c3, _ = CYCLE_20[idx]
+        if member_team and member_team in (c1, c2, c3):
+            wseq.append((cur, obd.get(cur.strftime("%Y-%m-%d"), 0)))
+        cur += _dt.timedelta(days=1)
+
+    # 연속 블록으로 그룹화
+    blks = []
+    if wseq:
+        cb = [wseq[0]]
+        for i in range(1, len(wseq)):
+            if (wseq[i][0] - wseq[i-1][0]).days == 1:
+                cb.append(wseq[i])
+            else:
+                blks.append(cb); cb = [wseq[i]]
+        blks.append(cb)
+
+    mblks = [b for b in blks if b[-1][0] >= ms and b[0][0] <= me]
+
+    cycle_blocks = []
+    for b in mblks:
+        total_ot = int(sum(x[1] for x in b))
+        cycle_blocks.append({
+            "start": b[0][0].strftime("%m/%d"),
+            "end": b[-1][0].strftime("%m/%d"),
+            "total_ot": total_ot,
+            "remaining": max(0, 12 - total_ot),
+            "exceeded": total_ot >= 12,
+            "warning": total_ot >= 10,
+        })
+
+    # 월합계
+    totals = {c: sum(r[c] for r in salary_rows) for c in SCOLS}
+    totals["일별합계"] = sum(r["일별합계"] for r in salary_rows)
+
+    return {
+        "salary_rows": salary_rows,
+        "totals": totals,
+        "cycle_blocks": cycle_blocks,
+        "scols": SCOLS,
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

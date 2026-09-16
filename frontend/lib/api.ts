@@ -205,6 +205,33 @@ export async function saveScheduleNote(name: string, date: string, note: string)
   return data;
 }
 
+// ── Attendance Month Stats ──
+export interface SalaryRow {
+  날짜: string;
+  정상근로: number; 유휴근로: number; 휴일근로: number; 연장근로: number; 휴일연장: number;
+  야간근로: number; 휴일비근로: number; 휴가비근로: number; 스틸아카데미: number; 항군교육: number;
+  "사내교육(1)": number; "사내교육(1.5)": number; "사외교육(1)": number; "사외교육(1.5)": number;
+  공가: number; 일별합계: number;
+}
+
+export interface CycleBlock {
+  start: string; end: string;
+  total_ot: number; remaining: number;
+  exceeded: boolean; warning: boolean;
+}
+
+export interface MonthStatsResult {
+  salary_rows: SalaryRow[];
+  totals: SalaryRow;
+  cycle_blocks: CycleBlock[];
+  scols: string[];
+}
+
+export async function getAttendanceMonthStats(year: number, month: number, name: string): Promise<MonthStatsResult> {
+  const { data } = await api.get("/api/attendance/month-stats", { params: { year, month, name } });
+  return data;
+}
+
 // ── Daily Inventory ──
 export async function getDailyInventory(date: string) {
   const { data } = await api.get("/api/daily-inventory", { params: { date } });
