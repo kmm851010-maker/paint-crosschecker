@@ -1171,6 +1171,7 @@ class SendEmailRequest(BaseModel):
     to: str       # 쉼표 구분 이메일
     subject: str
     body: str
+    extra_files: list = []  # [{name: str, data: str(base64)}]
 
 
 @app.post("/api/worklog/send-email")
@@ -1260,6 +1261,17 @@ async def send_worklog_email(req: SendEmailRequest):
     encoders.encode_base64(part)
     part.add_header("Content-Disposition", "attachment", filename=("utf-8", "", filename))
     msg.attach(part)
+
+    # ── 추가 첨부파일 ──
+    for ef in req.extra_files:
+        ef_name = ef.get("name", "file") if isinstance(ef, dict) else getattr(ef, "name", "file")
+        ef_data = ef.get("data", "") if isinstance(ef, dict) else getattr(ef, "data", "")
+        ef_bytes = _b64.b64decode(ef_data)
+        part2 = MIMEBase("application", "octet-stream")
+        part2.set_payload(ef_bytes)
+        encoders.encode_base64(part2)
+        part2.add_header("Content-Disposition", "attachment", filename=("utf-8", "", ef_name))
+        msg.attach(part2)
 
     # ── Gmail API 전송 ──
     creds = _goauth.Credentials(

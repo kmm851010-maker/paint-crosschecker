@@ -101,10 +101,11 @@ export default function WorklogPage() {
 
   // 이메일 전송 모달
   const [showMailModal, setShowMailModal] = useState(false);
-  const [mailTo, setMailTo] = useState("");
+  const [mailTo, setMailTo] = useState("lks202@kggroup.co.kr, kdy8481@kggroup.co.kr");
   const [mailSubject, setMailSubject] = useState("");
   const [mailBody, setMailBody] = useState("");
   const [mailSending, setMailSending] = useState(false);
+  const [mailExtraFiles, setMailExtraFiles] = useState<{ name: string; data: string }[]>([]);
 
   // 업무현황: text 셀 맵
   const [cells, setCells] = useState<CellMap>(() => initCells(null, false));
@@ -593,10 +594,10 @@ export default function WorklogPage() {
             <div style={{ marginTop: 8, borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
               <button
                 onClick={() => {
-                  const [y, m] = date.split("-").map(Number);
-                  const team = "";
-                  setMailSubject(`${y}년 ${m}월 칼라지게차 작업일지`);
-                  setMailBody(`안녕하세요? ${m}월 작업일지 첨부하였습니다. 고생하십쇼!`);
+                  const [y, m, d] = date.split("-").map(Number);
+                  setMailSubject(`${y}년 ${m}월 ${d}일 칼라지게차 작업일지`);
+                  setMailBody(`안녕하세요?\n${m}월 ${d}일 작업일지 첨부하였습니다.\n고생하십쇼!`);
+                  setMailExtraFiles([]);
                   setShowMailModal(true);
                 }}
                 style={{
@@ -615,14 +616,34 @@ export default function WorklogPage() {
       {/* ── 메일 전송 모달 ── */}
       {showMailModal && (() => {
         const [y, m] = date.split("-").map(Number);
-        const [my, mm] = date.split("-").map(Number);
-        const fname = `${my}년${mm}월_작업일지.xlsx`;
+        const team = (date.split("-")[0] ? "" : "");
+        const fname = `${y}${String(m).padStart(2,"0")}칼라지게차_작업일지.xlsx`;
+
+        async function handleExtraFiles(files: FileList | null) {
+          if (!files) return;
+          const MAX = 10 * 1024 * 1024;
+          const results: { name: string; data: string }[] = [];
+          for (const file of Array.from(files)) {
+            if (file.size > MAX) { toast.error(`${file.name}: 10MB 초과`); continue; }
+            const data = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve((reader.result as string).split(",")[1] ?? "");
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            });
+            results.push({ name: file.name, data });
+          }
+          setMailExtraFiles(prev => [...prev, ...results]);
+        }
 
         async function handleSendMail() {
           if (!mailTo.trim()) { toast.error("받는 사람 이메일을 입력하세요."); return; }
           setMailSending(true);
           try {
-            const res = await sendWorklogEmail({ year: y, month: m, to: mailTo, subject: mailSubject, body: mailBody });
+            const res = await sendWorklogEmail({
+              year: y, month: m, to: mailTo, subject: mailSubject, body: mailBody,
+              extra_files: mailExtraFiles,
+            });
             toast.success(res.message || "메일 전송 완료");
             setShowMailModal(false);
           } catch (e: unknown) {
@@ -639,34 +660,51 @@ export default function WorklogPage() {
                 <button onClick={() => setShowMailModal(false)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280" }}>×</button>
               </div>
 
-              {[
-                { label: "받는 사람", note: "쉼표로 여러 명 입력 가능", el: (
-                  <input value={mailTo} onChange={e => setMailTo(e.target.value)}
-                    placeholder="example@kggroup.co.kr, other@kggroup.co.kr"
-                    style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 10px", fontSize: 13, boxSizing: "border-box" }} />
-                )},
-                { label: "제목", el: (
-                  <input value={mailSubject} onChange={e => setMailSubject(e.target.value)}
-                    style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 10px", fontSize: 13, boxSizing: "border-box" }} />
-                )},
-                { label: "본문", el: (
-                  <textarea value={mailBody} onChange={e => setMailBody(e.target.value)} rows={4}
-                    style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 10px", fontSize: 13, boxSizing: "border-box", resize: "vertical" }} />
-                )},
-              ].map(({ label, note, el }) => (
-                <div key={label} style={{ marginBottom: 12 }}>
-                  <label style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, display: "block", marginBottom: 4 }}>
-                    {label}{note && <span style={{ fontWeight: 400, marginLeft: 6 }}>({note})</span>}
-                  </label>
-                  {el}
-                </div>
-              ))}
+              {/* 받는 사람 */}
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, display: "block", marginBottom: 4 }}>
+                  받는 사람 <span style={{ fontWeight: 400 }}>(쉼표로 여러 명 입력 가능)</span>
+                </label>
+                <input value={mailTo} onChange={e => setMailTo(e.target.value)}
+                  style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 10px", fontSize: 13, boxSizing: "border-box" }} />
+              </div>
 
+              {/* 제목 */}
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, display: "block", marginBottom: 4 }}>제목</label>
+                <input value={mailSubject} onChange={e => setMailSubject(e.target.value)}
+                  style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 10px", fontSize: 13, boxSizing: "border-box" }} />
+              </div>
+
+              {/* 본문 */}
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, display: "block", marginBottom: 4 }}>본문</label>
+                <textarea value={mailBody} onChange={e => setMailBody(e.target.value)} rows={4}
+                  style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 10px", fontSize: 13, boxSizing: "border-box", resize: "vertical" }} />
+              </div>
+
+              {/* 첨부파일 */}
               <div style={{ marginBottom: 16 }}>
-                <p style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", margin: "0 0 6px" }}>첨부파일</p>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#374151" }}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", margin: "0 0 8px" }}>첨부파일</p>
+                {/* 자동 첨부 Excel */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#374151", padding: "6px 10px", background: "#f9fafb", borderRadius: 8, marginBottom: 6 }}>
                   <input type="checkbox" checked readOnly style={{ accentColor: "#4B2D8E" }} />
-                  {fname} (통합 Excel)
+                  <span>{fname} (통합 Excel)</span>
+                </div>
+                {/* 추가 첨부 목록 */}
+                {mailExtraFiles.map((f, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#374151", padding: "4px 10px", background: "#f0fdf4", borderRadius: 8, marginBottom: 4 }}>
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📎 {f.name}</span>
+                    <button onClick={() => setMailExtraFiles(prev => prev.filter((_, j) => j !== i))}
+                      style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 16, padding: "0 2px" }}>×</button>
+                  </div>
+                ))}
+                {/* 추가 첨부 버튼 */}
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 4, padding: "7px 14px", border: "1px dashed #d1d5db", borderRadius: 8, cursor: "pointer", fontSize: 13, color: "#6b7280" }}>
+                  <input type="file" multiple style={{ display: "none" }}
+                    onChange={e => handleExtraFiles(e.target.files)}
+                    onClick={e => { (e.target as HTMLInputElement).value = ""; }} />
+                  ＋ 추가 첨부 <span style={{ fontSize: 11, color: "#9ca3af" }}>(파일당 10MB 이하)</span>
                 </label>
               </div>
 
@@ -676,8 +714,7 @@ export default function WorklogPage() {
                   style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: mailSending ? "#9ca3af" : "#4B2D8E", color: "#fff", fontSize: 14, fontWeight: 700, cursor: mailSending ? "not-allowed" : "pointer" }}>
                   {mailSending ? "전송 중..." : "전송"}
                 </button>
-                <button
-                  onClick={() => setShowMailModal(false)}
+                <button onClick={() => setShowMailModal(false)}
                   style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", fontSize: 14, cursor: "pointer" }}>
                   취소
                 </button>

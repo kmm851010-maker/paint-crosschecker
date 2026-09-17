@@ -205,6 +205,7 @@ export async function exportWorklogExcel(year: number, month: number, day?: numb
 
 export async function sendWorklogEmail(payload: {
   year: number; month: number; to: string; subject: string; body: string;
+  extra_files?: { name: string; data: string }[];
 }): Promise<{ success: boolean; message: string }> {
   const { data } = await api.post("/api/worklog/send-email", payload, { timeout: 120000 });
   return data;
