@@ -143,12 +143,21 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
     if (lotMatch) lot = normalizeLot(lotMatch[0]);
   }
 
-  // 2. 품명 추출 — 전체 매칭 후 승인목록 우선 선택
-  // 여러 후보 중 APPROVED_PRODUCTS에 있는 것 우선, 없으면 첫 번째
+  // 2. 품명 추출 — 블록을 폰트 크기(frame.height) 내림차순 정렬 후 ITEM_RE 매칭
+  // 제품코드는 라벨에서 가장 큰 글씨이므로 height가 가장 큰 블록에서 추출
   let product = "";
-  const allItemMatches = [...flat.matchAll(ITEM_RE)].map(m => normalizeProduct(m[0]));
-  if (allItemMatches.length > 0) {
-    product = allItemMatches.find(p => APPROVED_PRODUCTS.has(p)) ?? allItemMatches[0];
+  const blocksByFont = [...blocks].sort((a, b) => {
+    const aH = (a.frame?.height ?? 0) / Math.max(a.lines?.length ?? 1, 1);
+    const bH = (b.frame?.height ?? 0) / Math.max(b.lines?.length ?? 1, 1);
+    return bH - aH;
+  });
+  for (const block of blocksByFont) {
+    const bf = block.text.replace(/[-\s]/g, "").toUpperCase();
+    const matches = [...bf.matchAll(ITEM_RE)].map(m => normalizeProduct(m[0]));
+    if (matches.length > 0) {
+      product = matches.find(p => APPROVED_PRODUCTS.has(p)) ?? matches[0];
+      break;
+    }
   }
 
   const maker = lot ? (MAKER_MAP[lot[0]] ?? lot[0]) : "";
