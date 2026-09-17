@@ -507,11 +507,9 @@ export default function InventoryScreen() {
         Vibration.vibrate(80);
         _setScanError(null);
       } else {
-        // 재고에 없는 신규 LOT — 최근 2년 입고 이력 대비 유사 LOT 체크
-        const similarLot = [...knownLotsRef.current].find(l => l !== parsed.lot && levenshtein(l, parsed.lot) <= 2);
+        const drumItem: DrumItem = { lot: parsed.lot, product: parsed.product, maker: parsed.maker };
 
-        const doAdd = () => {
-          const drumItem: DrumItem = { lot: parsed.lot, product: parsed.product, maker: parsed.maker };
+        const addDrum = () => {
           if (!APPROVED_PRODUCTS.has(parsed.product) && !localApprovedRef.current.has(parsed.product) && !serverWhitelistRef.current.has(parsed.product)) {
             // 미등록 품목 — 사용자 확인 후 저장
             _setScanError(null);
@@ -546,20 +544,20 @@ export default function InventoryScreen() {
           }
         };
 
-        if (similarLot) {
-          // 유사 LOT 경고
+        // 입고 이력이 없는 처음 보는 LOT → 확인 경고
+        if (!knownLotsRef.current.has(parsed.lot)) {
           cooldownRef.current = true;
           alertActiveRef.current = true;
           Alert.alert(
-            "LOT번호 확인 필요",
-            `재고에 유사한 LOT번호가 등록되어 있습니다.\n\n등록된 LOT: ${similarLot}\n스캔한 LOT: ${parsed.lot}\n\n제품 라벨의 LOT번호를 다시 한 번 확인하세요.`,
+            "LOT번호 확인",
+            `입고된 내역이 없는 LOT번호입니다.\n\nLOT: ${parsed.lot}\n\n제품 라벨의 LOT번호를 확인 후 계속하시겠습니까?`,
             [
               { text: "취소", style: "cancel", onPress: () => { alertActiveRef.current = false; cooldownRef.current = false; } },
-              { text: "확인", onPress: () => { alertActiveRef.current = false; cooldownRef.current = false; doAdd(); } },
+              { text: "확인", onPress: () => { alertActiveRef.current = false; cooldownRef.current = false; addDrum(); } },
             ]
           );
         } else {
-          doAdd();
+          addDrum();
         }
       }
     } catch (e: any) {
@@ -591,14 +589,8 @@ export default function InventoryScreen() {
       setIngoScanDisabled(false);
       if (sector === CHECKOUT) {
         _alert("저장 완료", `${count}드럼 라인입고 처리 완료`);
-      } else if (result.already_same.length > 0 && result.moved === 0) {
-        _alert("이미 등록된 장소", `이미 ${sector}에 등록되어 있습니다.`);
-      } else if (result.already_same.length > 0) {
-        _alert("등록 완료", `${result.moved}드럼 → ${sector} 등록 완료
-이미 ${sector}에 등록된 드럼: ${result.already_same.join(", ")}`);
       } else {
-        _alert("저장 완료", `${result.moved}드럼 → ${sector} 등록 완료
-계속 스캔할 수 있습니다.`);
+        _alert("저장 완료", `${count}드럼 → ${sector} 등록 완료\n계속 스캔할 수 있습니다.`);
       }
     } catch (e: any) {
       _alert("저장 실패", e.message);
