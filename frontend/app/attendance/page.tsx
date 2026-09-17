@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { getLeaves, saveLeaves, getMembers, getAttendanceMonthStats, getHolidays, type LeaveItem, type MonthStatsResult } from "@/lib/api";
-import { isAdmin, getAuth } from "@/lib/auth";
+import { isAttendanceManager, getAuth } from "@/lib/auth";
 import toast from "react-hot-toast";
 
 // ── 근무형태 타입 ──
@@ -335,7 +335,7 @@ export default function AttendancePage() {
   const [members, setMembers] = useState<Record<string, string>>({});
   const [leaves, setLeaves] = useState<LeaveItem[]>([]);
   const [selName, setSelName] = useState("");
-  const [admin] = useState(isAdmin);
+  const [admin] = useState(isAttendanceManager);
   const currentUser = getAuth();
   const [shiftType, setShiftType] = useState<ShiftType>("4조3교대");
 

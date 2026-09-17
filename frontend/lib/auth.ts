@@ -26,5 +26,11 @@ export function clearAuth() {
 
 export function isAdmin(): boolean {
   const u = getAuth();
+  return u?.employee_id === "admin";
+}
+
+/** 관리자 또는 반장(kg) — 근태 관련 전원 편집 권한 */
+export function isAttendanceManager(): boolean {
+  const u = getAuth();
   return u?.employee_id === "admin" || u?.employee_id === "kg";
 }
