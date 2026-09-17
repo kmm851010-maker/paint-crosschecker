@@ -33,7 +33,7 @@ const ADMIN_GROUP = {
 const MOBILE_URL =
   "https://expo.dev/accounts/sergekang/projects/kg-steel-paint-checker/builds/6d287fc7-d867-4d12-aa8b-e5a82f0df369";
 
-export default function Sidebar() {
+export default function Sidebar({ onToggle }: { onToggle?: () => void }) {
   const pathname = usePathname();
   const router   = useRouter();
   const user     = getAuth();
@@ -79,6 +79,25 @@ export default function Sidebar() {
         borderRight: "1px solid #3A2270",
       }}
     >
+      {/* 닫기 버튼 */}
+      {onToggle && (
+        <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 10px 0" }}>
+          <button
+            onClick={onToggle}
+            style={{
+              width: 32, height: 32, borderRadius: "50%",
+              background: "rgba(255,255,255,0.15)", color: "#fff",
+              border: "1px solid rgba(255,255,255,0.25)", cursor: "pointer",
+              fontSize: 14, fontWeight: 700,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+            title="사이드바 닫기"
+          >
+            ❮❮
+          </button>
+        </div>
+      )}
+
       {/* 로고 + 캡션 */}
       <div
         className="flex flex-col items-center py-5 px-3"

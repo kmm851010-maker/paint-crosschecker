@@ -78,6 +78,11 @@ const SHIFT_COLOR: Record<string, string> = {
   "주간": "#E65100", "야간": "#4A148C", "휴무": "#9E9E9E",
 };
 
+// ── 교대명 축약 ──
+const SHIFT_ABBR: Record<string, string> = {
+  "주간": "주", "야간": "야", "1근": "1", "2근": "2", "3근": "3",
+};
+
 // ── 다른 교대형 달력 셀 빌드 ──
 interface AltSlot { team: string; shift: string; }
 interface AltCell { type: "dim" | "curr"; day: number; isToday?: boolean; slots: AltSlot[]; }
@@ -464,6 +469,10 @@ export default function AttendancePage() {
   const weeks: CalCell[][] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
+  const altCells = shiftType !== "4조3교대" ? buildCellsAlt(year, month, shiftType, todayStr) : [];
+  const altWeeks: AltCell[][] = [];
+  for (let i = 0; i < altCells.length; i += 7) altWeeks.push(altCells.slice(i, i + 7));
+
   const btnStyle = (variant: "primary" | "secondary"): React.CSSProperties => ({
     width: "100%", border: variant === "primary" ? "none" : "2px solid #4B2D8E",
     borderRadius: 8, padding: "7px 0", fontSize: 13, fontWeight: 700, cursor: "pointer",
@@ -495,64 +504,8 @@ export default function AttendancePage() {
           </button>
         </div>
 
-        {/* ── 다른 교대형 달력 ── */}
-        {shiftType !== "4조3교대" && (() => {
-          const altCells = buildCellsAlt(year, month, shiftType, todayStr);
-          const altWeeks: AltCell[][] = [];
-          for (let i = 0; i < altCells.length; i += 7) altWeeks.push(altCells.slice(i, i + 7));
-          const teams = SHIFT_TYPE_TEAMS[shiftType];
-          return (
-            <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", padding: 16, marginBottom: 20 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 16, fontWeight: 700, color: "#4B2D8E" }}>{shiftType} 교대 달력</span>
-                {/* 범례 */}
-                {Object.entries(SHIFT_COLOR).map(([label, color]) => (
-                  <span key={label} style={{ fontSize: 11, background: color, color: "#fff", borderRadius: 4, padding: "2px 7px", fontWeight: 700 }}>{label}</span>
-                ))}
-              </div>
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 500 }}>
-                  <thead>
-                    <tr>
-                      {["일","월","화","수","목","금","토"].map(d => (
-                        <th key={d} style={{ padding: "6px 4px", textAlign: "center", fontSize: 12, fontWeight: 700, color: d === "일" ? "#ef4444" : d === "토" ? "#3b82f6" : "#374151", borderBottom: "2px solid #e5e7eb", width: "14.28%" }}>{d}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {altWeeks.map((week, wi) => (
-                      <tr key={wi}>
-                        {week.map((cell, ci) => (
-                          <td key={ci} style={{ padding: "4px 3px", verticalAlign: "top", border: "1px solid #f3f4f6", background: cell.isToday ? "#fef3c7" : cell.type === "dim" ? "#f9fafb" : "#fff", minHeight: 60 }}>
-                            {cell.type === "dim" ? (
-                              <span style={{ fontSize: 12, color: "#d1d5db" }}>{cell.day}</span>
-                            ) : (
-                              <>
-                                <div style={{ fontSize: 12, fontWeight: cell.isToday ? 800 : 600, color: cell.isToday ? "#d97706" : ci === 0 ? "#ef4444" : ci === 6 ? "#3b82f6" : "#374151", marginBottom: 3 }}>
-                                  {cell.day}
-                                </div>
-                                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                                  {cell.slots.map(({ team, shift }) => (
-                                    <span key={team} style={{ fontSize: 10, background: SHIFT_COLOR[shift] ?? "#9E9E9E", color: "#fff", borderRadius: 3, padding: "1px 4px", fontWeight: 700, whiteSpace: "nowrap" }}>
-                                      {team}조 {shift}
-                                    </span>
-                                  ))}
-                                </div>
-                              </>
-                            )}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* ── 2컬럼 레이아웃 (4조3교대 전용) ── */}
-        {shiftType === "4조3교대" && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "start" }}>
+        {/* ── 2컬럼 레이아웃 ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "start" }}>
 
           {/* ── 좌: 근무 통계 ── */}
           <div style={{
@@ -562,6 +515,14 @@ export default function AttendancePage() {
             <span style={{ fontSize: 18, fontWeight: 700, color: "#7B2FBE" }}>
               {year}년 {month + 1}월 근무 통계
             </span>
+            {shiftType !== "4조3교대" && (
+              <div style={{ marginTop: 20, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "16px 18px" }}>
+                <p style={{ fontSize: 14, color: "#1d4ed8", fontWeight: 600, margin: 0 }}>
+                  ℹ️ 상세 통계는 4조3교대 근무 형태에서만 지원됩니다.
+                </p>
+              </div>
+            )}
+            {shiftType === "4조3교대" && <>
 
             {/* 근무자 선택 */}
             {allNames.length > 0 && (
@@ -674,6 +635,7 @@ export default function AttendancePage() {
                 교대주기별 연장 시간
               </button>
             </div>
+            </>}
           </div>
 
           {/* ── 우: 달력 ── */}
@@ -718,7 +680,7 @@ export default function AttendancePage() {
 
             {/* 달력 */}
             <div style={{ borderLeft: "1px solid #e5e7eb" }}>
-              {weeks.map((week, wi) => (
+              {shiftType === "4조3교대" ? weeks.map((week, wi) => (
                 <div key={wi} style={{ display: "flex" }}>
                   {week.map((cell, ci) => {
                     if (cell.type === "dim") {
@@ -734,7 +696,6 @@ export default function AttendancePage() {
                     const isHol = !!holName;
                     const dateColor = (dow === 0 || isHol) ? "#E53935" : dow === 6 ? "#1565C0" : "#1f2937";
                     const bg = cell.isToday ? "#EFF6FF" : "#fff";
-
                     return (
                       <div key={ci} style={{ flex: 1, minHeight: 115, padding: "4px 2px 3px", background: bg, borderRight: "1px solid #e5e7eb", borderBottom: "1px solid #e5e7eb", textAlign: "center" }}>
                         <div style={{ lineHeight: 1, marginBottom: 2 }}>
@@ -770,10 +731,52 @@ export default function AttendancePage() {
                     );
                   })}
                 </div>
+              )) : altWeeks.map((week, wi) => (
+                <div key={wi} style={{ display: "flex" }}>
+                  {week.map((cell, ci) => {
+                    if (cell.type === "dim") {
+                      return (
+                        <div key={ci} style={{ flex: 1, minHeight: 90, padding: "5px 6px", background: "#f9fafb", borderRight: "1px solid #e5e7eb", borderBottom: "1px solid #e5e7eb" }}>
+                          <div style={{ fontSize: 16, fontWeight: 600, color: "#d1d5db" }}>{cell.day}</div>
+                        </div>
+                      );
+                    }
+                    const ds = dateStr(year, month, cell.day);
+                    const holName = holidays[ds] ?? "";
+                    const isHol = !!holName;
+                    const dateColor = (ci === 0 || isHol) ? "#E53935" : ci === 6 ? "#1565C0" : "#1f2937";
+                    const bg = cell.isToday ? "#EFF6FF" : "#fff";
+                    const workSlots = cell.slots.filter(s => s.shift !== "휴무");
+                    const text = workSlots.map(s => `${s.team}${SHIFT_ABBR[s.shift] ?? s.shift}`).join(" ");
+                    return (
+                      <div key={ci} style={{ flex: 1, minHeight: 90, padding: "4px 2px 3px", background: bg, borderRight: "1px solid #e5e7eb", borderBottom: "1px solid #e5e7eb", textAlign: "center" }}>
+                        <div style={{ lineHeight: 1, marginBottom: 2 }}>
+                          {cell.isToday ? (
+                            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#1f2937", color: "#fff", borderRadius: "50%", width: 28, height: 28, fontSize: 14, fontWeight: 900 }}>
+                              {cell.day}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 22, color: dateColor, fontWeight: 800, lineHeight: 1 }}>{cell.day}</span>
+                          )}
+                        </div>
+                        {holName && (
+                          <div style={{ fontSize: 9, fontWeight: 600, color: "#EF4444", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, marginBottom: 2 }}>
+                            {holName}
+                          </div>
+                        )}
+                        {text && (
+                          <div style={{ fontSize: 11, color: "#374151", fontWeight: 700, lineHeight: 1.4, marginTop: 2 }}>
+                            {text}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               ))}
             </div>
           </div>
-        </div>}
+        </div>
 
         {/* ── 휴가/연장 신청서 다이얼로그 ── */}
         {showLvDlg && (
