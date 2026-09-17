@@ -5,6 +5,9 @@ import { getLeaves, saveLeaves, getMembers, getAttendanceMonthStats, getHolidays
 import { isAdmin, getAuth } from "@/lib/auth";
 import toast from "react-hot-toast";
 
+// ── 근무형태 타입 ──
+type ShiftType = "4조3교대" | "3조3교대" | "2조2교대" | "4조2교대";
+
 // ── 4조3교대 로테이션 (BASE: 2026-03-01) ──
 const CYCLE_20: [string, string, string, string][] = [
   ["B","C","D","A"],["B","C","A","D"],["B","C","A","D"],
@@ -16,6 +19,93 @@ const CYCLE_20: [string, string, string, string][] = [
   ["A","C","D","B"],["A","C","D","B"],
 ];
 const BASE_MS = Date.UTC(2026, 2, 1);
+
+// ── 3조3교대 (3팀 주중만, 3주 사이클) ──
+const _3S3_REF = Date.UTC(2026, 6, 27); // 2026-07-27 기준 월요일
+const _3S3_SHIFTS: Record<string, string>[] = [
+  { A: "3근", B: "1근", C: "2근" },
+  { A: "2근", B: "3근", C: "1근" },
+  { A: "1근", B: "2근", C: "3근" },
+];
+function shift3s3(dateMs: number, team: string): string {
+  const d = new Date(dateMs);
+  const wd = d.getUTCDay(); // 0=일, 6=토
+  if (wd === 0 || wd === 6) return "휴무";
+  const monOffset = wd === 0 ? -6 : 1 - wd;
+  const monMs = dateMs + monOffset * 86400000;
+  const phase = (Math.floor((monMs - _3S3_REF) / (7 * 86400000)) % 3 + 3) % 3;
+  return _3S3_SHIFTS[phase][team] ?? "?";
+}
+
+// ── 2조2교대 (2팀 주중만, 2주 사이클) ──
+const _2S2_REF = Date.UTC(2026, 6, 27);
+const _2S2_SHIFTS: Record<string, string>[] = [
+  { A: "2근", B: "1근" },
+  { A: "1근", B: "2근" },
+];
+function shift2s2(dateMs: number, team: string): string {
+  const d = new Date(dateMs);
+  const wd = d.getUTCDay();
+  if (wd === 0 || wd === 6) return "휴무";
+  const monOffset = wd === 0 ? -6 : 1 - wd;
+  const monMs = dateMs + monOffset * 86400000;
+  const phase = (Math.floor((monMs - _2S2_REF) / (7 * 86400000)) % 2 + 2) % 2;
+  return _2S2_SHIFTS[phase][team] ?? "?";
+}
+
+// ── 4조2교대 (4팀 연속, 8일 사이클: 주주→휴휴→야야→휴휴) ──
+const _4S2_REF = Date.UTC(2026, 6, 27);
+const _4S2_CYCLE = ["주간", "주간", "휴무", "휴무", "야간", "야간", "휴무", "휴무"];
+const _4S2_OFFSET: Record<string, number> = { A: 1, B: 5, C: 7, D: 3 };
+function shift4s2(dateMs: number, team: string): string {
+  const daysSince = Math.floor((dateMs - _4S2_REF) / 86400000);
+  const offset = _4S2_OFFSET[team] ?? 0;
+  const phase = ((daysSince + offset) % 8 + 8) % 8;
+  return _4S2_CYCLE[phase];
+}
+
+// ── 교대형별 팀 목록 ──
+const SHIFT_TYPE_TEAMS: Record<ShiftType, string[]> = {
+  "4조3교대": ["A", "B", "C", "D"],
+  "3조3교대": ["A", "B", "C"],
+  "2조2교대": ["A", "B"],
+  "4조2교대": ["A", "B", "C", "D"],
+};
+
+// ── 교대명 색상 ──
+const SHIFT_COLOR: Record<string, string> = {
+  "1근": "#1565C0", "2근": "#2E7D32", "3근": "#C62828",
+  "주간": "#E65100", "야간": "#4A148C", "휴무": "#9E9E9E",
+};
+
+// ── 다른 교대형 달력 셀 빌드 ──
+interface AltSlot { team: string; shift: string; }
+interface AltCell { type: "dim" | "curr"; day: number; isToday?: boolean; slots: AltSlot[]; }
+
+function buildCellsAlt(year: number, month: number, shiftType: ShiftType, today: string): AltCell[] {
+  const teams = SHIFT_TYPE_TEAMS[shiftType];
+  const total = daysInMonth(year, month);
+  const fwd = firstDow(year, month);
+  const prevDays = new Date(year, month, 0).getDate();
+  const cells: AltCell[] = [];
+
+  for (let i = 0; i < fwd; i++) cells.push({ type: "dim", day: prevDays - fwd + 1 + i, slots: [] });
+
+  for (let d = 1; d <= total; d++) {
+    const ds = dateStr(year, month, d);
+    const ms = Date.UTC(year, month, d);
+    const slots: AltSlot[] = teams.map(team => {
+      let shift = "?";
+      if (shiftType === "3조3교대") shift = shift3s3(ms, team);
+      else if (shiftType === "2조2교대") shift = shift2s2(ms, team);
+      else if (shiftType === "4조2교대") shift = shift4s2(ms, team);
+      return { team, shift };
+    });
+    cells.push({ type: "curr", day: d, isToday: ds === today, slots });
+  }
+  while (cells.length % 7 !== 0) cells.push({ type: "dim", day: cells.length % 7, slots: [] });
+  return cells;
+}
 
 const LEAVE_TYPES = [
   "정기휴가","연차","특별휴가","명휴","생일휴가","공가","공상휴업","산재",
@@ -242,6 +332,7 @@ export default function AttendancePage() {
   const [selName, setSelName] = useState("");
   const [admin] = useState(isAdmin);
   const currentUser = getAuth();
+  const [shiftType, setShiftType] = useState<ShiftType>("4조3교대");
 
   // 모달 상태
   const [showLvDlg, setShowLvDlg] = useState(false);
@@ -387,17 +478,81 @@ export default function AttendancePage() {
         {/* ── 헤더 행 ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
           <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>근태관리</h2>
-          <button onClick={() => setShowLvDlg(true)} style={{ ...btnStyle("secondary"), width: "auto", padding: "5px 14px" }}>
-            휴가/연장 신청서
-          </button>
+          {shiftType === "4조3교대" && (
+            <button onClick={() => setShowLvDlg(true)} style={{ ...btnStyle("secondary"), width: "auto", padding: "5px 14px" }}>
+              휴가/연장 신청서
+            </button>
+          )}
+          <select value={shiftType} onChange={e => setShiftType(e.target.value as ShiftType)}
+            style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "5px 10px", fontSize: 13, background: "#fff" }}>
+            {(["4조3교대","3조3교대","2조2교대","4조2교대"] as ShiftType[]).map(t => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
           <button onClick={() => loadData()}
             style={{ background: "#fff", border: "1px solid #d1d5db", borderRadius: 8, padding: "5px 10px", fontSize: 13, cursor: "pointer" }}>
             🔄
           </button>
         </div>
 
-        {/* ── 2컬럼 레이아웃 ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "start" }}>
+        {/* ── 다른 교대형 달력 ── */}
+        {shiftType !== "4조3교대" && (() => {
+          const altCells = buildCellsAlt(year, month, shiftType, todayStr);
+          const altWeeks: AltCell[][] = [];
+          for (let i = 0; i < altCells.length; i += 7) altWeeks.push(altCells.slice(i, i + 7));
+          const teams = SHIFT_TYPE_TEAMS[shiftType];
+          return (
+            <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", padding: 16, marginBottom: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 16, fontWeight: 700, color: "#4B2D8E" }}>{shiftType} 교대 달력</span>
+                {/* 범례 */}
+                {Object.entries(SHIFT_COLOR).map(([label, color]) => (
+                  <span key={label} style={{ fontSize: 11, background: color, color: "#fff", borderRadius: 4, padding: "2px 7px", fontWeight: 700 }}>{label}</span>
+                ))}
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 500 }}>
+                  <thead>
+                    <tr>
+                      {["일","월","화","수","목","금","토"].map(d => (
+                        <th key={d} style={{ padding: "6px 4px", textAlign: "center", fontSize: 12, fontWeight: 700, color: d === "일" ? "#ef4444" : d === "토" ? "#3b82f6" : "#374151", borderBottom: "2px solid #e5e7eb", width: "14.28%" }}>{d}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {altWeeks.map((week, wi) => (
+                      <tr key={wi}>
+                        {week.map((cell, ci) => (
+                          <td key={ci} style={{ padding: "4px 3px", verticalAlign: "top", border: "1px solid #f3f4f6", background: cell.isToday ? "#fef3c7" : cell.type === "dim" ? "#f9fafb" : "#fff", minHeight: 60 }}>
+                            {cell.type === "dim" ? (
+                              <span style={{ fontSize: 12, color: "#d1d5db" }}>{cell.day}</span>
+                            ) : (
+                              <>
+                                <div style={{ fontSize: 12, fontWeight: cell.isToday ? 800 : 600, color: cell.isToday ? "#d97706" : ci === 0 ? "#ef4444" : ci === 6 ? "#3b82f6" : "#374151", marginBottom: 3 }}>
+                                  {cell.day}
+                                </div>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                  {cell.slots.map(({ team, shift }) => (
+                                    <span key={team} style={{ fontSize: 10, background: SHIFT_COLOR[shift] ?? "#9E9E9E", color: "#fff", borderRadius: 3, padding: "1px 4px", fontWeight: 700, whiteSpace: "nowrap" }}>
+                                      {team}조 {shift}
+                                    </span>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── 2컬럼 레이아웃 (4조3교대 전용) ── */}
+        {shiftType === "4조3교대" && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "start" }}>
 
           {/* ── 좌: 근무 통계 ── */}
           <div style={{
@@ -618,7 +773,7 @@ export default function AttendancePage() {
               ))}
             </div>
           </div>
-        </div>
+        </div>}
 
         {/* ── 휴가/연장 신청서 다이얼로그 ── */}
         {showLvDlg && (

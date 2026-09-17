@@ -70,6 +70,7 @@ export default function Sidebar() {
   const groups = admin ? [...NAV_GROUPS, ADMIN_GROUP] : NAV_GROUPS;
 
   return (
+    <>
     <aside
       className="flex flex-col h-full shrink-0 overflow-y-auto"
       style={{
@@ -221,5 +222,6 @@ export default function Sidebar() {
         </div>
       </div>
     )}
+    </>
   );
 }
