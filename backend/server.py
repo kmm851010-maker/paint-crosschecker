@@ -833,12 +833,17 @@ async def reset_employee_password(employee_id: str, req: ResetPasswordRequest):
     return {"success": True}
 
 
+class ChangePasswordRequest(BaseModel):
+    employee_id: str
+    current_password: str
+    new_password: str
+
 @app.post("/api/auth/change-password")
-async def change_password(req: dict):
+async def change_password(req: ChangePasswordRequest):
     from utils.supabase_db import authenticate_app_user, reset_app_user_password
-    employee_id = req.get("employee_id", "").strip()
-    current_pw  = req.get("current_password", "")
-    new_pw      = req.get("new_password", "").strip()
+    employee_id = req.employee_id.strip()
+    current_pw  = req.current_password
+    new_pw      = req.new_password.strip()
     if not employee_id or not current_pw or not new_pw:
         raise HTTPException(status_code=400, detail="필수 항목이 누락되었습니다.")
     if len(new_pw) < 4:
