@@ -224,6 +224,7 @@ export default function InventoryScreen() {
   const [scanManual, setScanManual] = useState(false);
   const [ingoScanDisabled, setIngoScanDisabled] = useState(false);
   const [showIngoPrompt, setShowIngoPrompt] = useState(false);
+  const [showBatchMoveModal, setShowBatchMoveModal] = useState(false);
   const [expandedSectors, setExpandedSectors] = useState<Set<string>>(new Set());
   const [statusTab, setStatusTab] = useState<"sector"|"history">("sector");
   const [histFromDate, setHistFromDate] = useState(() => {
@@ -1435,9 +1436,46 @@ export default function InventoryScreen() {
                   </TouchableOpacity>
                 </>
               )}
+              {/* 섹터 이동 버튼 */}
+              <TouchableOpacity
+                style={[styles.checkoutBarBtn, { backgroundColor: "#374151", width: "100%" }]}
+                disabled={loading}
+                onPress={() => setShowBatchMoveModal(true)}
+              >
+                <Text style={styles.checkoutBarBtnText}>📦 섹터 이동 ({selectedLots.size}드럼)</Text>
+              </TouchableOpacity>
               {loading && <ActivityIndicator color="#fff" size="small" />}
             </View>
           )}
+
+          {/* 섹터 일괄 이동 모달 */}
+          <Modal visible={showBatchMoveModal} animationType="slide" transparent>
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalCard}>
+                <Text style={styles.modalTitle}>이동할 섹터 선택</Text>
+                <ScrollView>
+                  {SECTORS.map(s => (
+                    <TouchableOpacity key={s} style={styles.sectorBtn} onPress={async () => {
+                      setShowBatchMoveModal(false);
+                      setLoading(true);
+                      try {
+                        await registerDrums(selectedDrums, s);
+                        setSelectedLots(new Set());
+                        setSectorData(await getSectorInventory());
+                        Alert.alert("완료", `${selectedDrums.length}드럼 → ${s} 이동 완료`);
+                      } catch (e: any) { Alert.alert("실패", e.message); }
+                      finally { setLoading(false); }
+                    }}>
+                      <Text style={styles.sectorBtnText}>{s}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <TouchableOpacity style={[styles.modalCancelBtn, { paddingBottom: 14 + insets.bottom }]} onPress={() => setShowBatchMoveModal(false)}>
+                  <Text style={styles.modalCancelText}>취소</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
         </View>
       </>
     );
