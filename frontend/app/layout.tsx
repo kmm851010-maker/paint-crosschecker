@@ -10,6 +10,7 @@ const notoSans = Noto_Sans_KR({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://kg-work-assistant-eer0kiotz-serge-makers-projects.vercel.app"),
   title: "KG스틸 업무도우미",
   description: "KG스틸 당진생산지원팀 전용 시스템",
   icons: {
