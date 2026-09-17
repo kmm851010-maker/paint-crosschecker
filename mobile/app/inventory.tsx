@@ -544,21 +544,7 @@ export default function InventoryScreen() {
           }
         };
 
-        // 입고 이력이 없는 처음 보는 LOT → 확인 경고
-        if (!knownLotsRef.current.has(parsed.lot)) {
-          cooldownRef.current = true;
-          alertActiveRef.current = true;
-          Alert.alert(
-            "LOT번호 확인",
-            `입고된 내역이 없는 LOT번호입니다.\n\nLOT: ${parsed.lot}\n\n제품 라벨의 LOT번호를 확인 후 계속하시겠습니까?`,
-            [
-              { text: "취소", style: "cancel", onPress: () => { alertActiveRef.current = false; cooldownRef.current = false; } },
-              { text: "확인", onPress: () => { alertActiveRef.current = false; cooldownRef.current = false; addDrum(); } },
-            ]
-          );
-        } else {
-          addDrum();
-        }
+        addDrum();
       }
     } catch (e: any) {
       _setScanError({ type: "error", detail: `카메라/OCR 오류: ${e?.message ?? "알 수 없는 오류"}` });
