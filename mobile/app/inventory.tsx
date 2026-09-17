@@ -164,17 +164,12 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
     }
   }
 
-  // 우선순위 3: 폰트 크기 + 라벨 상단 위치 복합 정렬
-  // score = 평균줄높이 ÷ √(top+1) → 크고 위에 있는 블록 우선
+  // 우선순위 3: 폰트 크기 내림차순 정렬 (회전 촬영 무관)
   if (!product) {
     const blocksByFont = [...blocks].sort((a, b) => {
       const aH = (a.frame?.height ?? 0) / Math.max(a.lines?.length ?? 1, 1);
       const bH = (b.frame?.height ?? 0) / Math.max(b.lines?.length ?? 1, 1);
-      const aTop = a.frame?.top ?? 9999;
-      const bTop = b.frame?.top ?? 9999;
-      const aScore = aH / Math.sqrt(aTop + 1);
-      const bScore = bH / Math.sqrt(bTop + 1);
-      return bScore - aScore;
+      return bH - aH;
     });
     for (const block of blocksByFont) {
       const bf = block.text.replace(/[-\s]/g, "").toUpperCase();
