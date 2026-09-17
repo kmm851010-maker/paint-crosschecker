@@ -747,7 +747,7 @@ export default function AttendancePage() {
                     const dateColor = (ci === 0 || isHol) ? "#E53935" : ci === 6 ? "#1565C0" : "#1f2937";
                     const bg = cell.isToday ? "#EFF6FF" : "#fff";
                     const workSlots = cell.slots.filter(s => s.shift !== "휴무");
-                    const text = workSlots.map(s => `${s.team}${SHIFT_ABBR[s.shift] ?? s.shift}`).join(" ");
+                    const text = workSlots.map(s => s.team).join(" ");
                     return (
                       <div key={ci} style={{ flex: 1, minHeight: 90, padding: "4px 2px 3px", background: bg, borderRight: "1px solid #e5e7eb", borderBottom: "1px solid #e5e7eb", textAlign: "center" }}>
                         <div style={{ lineHeight: 1, marginBottom: 2 }}>
