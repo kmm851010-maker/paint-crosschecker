@@ -737,12 +737,16 @@ async def get_inventory_history_endpoint(from_dt: str = "", to_dt: str = ""):
 
 @app.get("/api/inventory/known-lots")
 async def get_known_lots():
-    """최근 2년간 입고된 적 있는 LOT 목록 반환 (유사 LOT 비교용)."""
+    """최근 2년간 입고된 적 있는 LOT 목록 반환. 2년 초과 이력은 자동 삭제."""
     from utils.inventory_supabase import _sb
     import datetime as _dt
-    cutoff = (_dt.datetime.utcnow() + _dt.timedelta(hours=9) - _dt.timedelta(days=730)).strftime("%Y-%m-%d")
+    now_kst = _dt.datetime.utcnow() + _dt.timedelta(hours=9)
+    cutoff = (now_kst - _dt.timedelta(days=730)).strftime("%Y-%m-%d")
     sb = _sb()
-    res = sb.table("inventory_history").select("lot").gte("recorded_at", cutoff).execute()
+    # 2년 초과 이력 삭제
+    sb.table("inventory_history").delete().lt("recorded_at", cutoff).execute()
+    # 나머지 LOT 목록 반환
+    res = sb.table("inventory_history").select("lot").execute()
     lots = list({r["lot"] for r in res.data if r.get("lot")})
     return {"lots": lots}
 
