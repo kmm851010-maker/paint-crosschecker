@@ -56,7 +56,7 @@ function exportHistoryExcel(items: HistoryItem[], sectorKey: string, filename: s
 function exportInventoryExcel(drums: DrumItem[], filename: string) {
   const rows = drums.map((d, i) => [
     i + 1, d.product, d.lot, d.maker, d.sector ?? "",
-    d.registered?.slice(0, 16).replace("T", " ") ?? "", d.remark ?? "",
+    (d.updated || d.registered)?.slice(0, 16).replace("T", " ") ?? "", d.remark ?? "",
   ]);
   const ws = XLSX.utils.aoa_to_sheet([["번호", "품명", "LOT번호", "제조사", "섹터", "등록시간", "비고"], ...rows]);
   const wb = XLSX.utils.book_new();
@@ -166,7 +166,8 @@ function DrumTable({ drums, selectedLots, onToggle, onToggleAll, showSector = fa
             {sorted.map(d => {
               const sel = selectedLots.has(d.lot);
               const emoji = retEmoji(d.returnStatus ?? "");
-              const recent = isRecentlyRegistered(d.registered);
+              const timeVal = d.updated || d.registered;
+              const recent = isRecentlyRegistered(timeVal);
               return (
                 <tr key={d.lot} onClick={() => onToggle(d.lot)} className={cn("border-t border-gray-100 hover:bg-purple-50 cursor-pointer transition-colors", sel && "bg-purple-50")}>
                   <td className="py-1.5 px-2 text-center" onClick={e => e.stopPropagation()}>
@@ -182,7 +183,7 @@ function DrumTable({ drums, selectedLots, onToggle, onToggleAll, showSector = fa
                   {showSector && <td className="py-1.5 px-3 text-gray-600 text-xs">{d.sector}</td>}
                   <td className="py-1.5 px-3">
                     <span className={cn("text-xs", recent ? "text-red-600 font-semibold" : "text-gray-400")}>
-                      {d.registered ? d.registered.slice(0, 16).replace("T", " ") : ""}
+                      {timeVal ? timeVal.slice(0, 16).replace("T", " ") : ""}
                     </span>
                   </td>
                   <td className="py-1.5 px-3 text-xs text-gray-400">{d.remark}</td>
@@ -277,11 +278,12 @@ export default function InventoryPage() {
       const fromTs = new Date(`${dtFrom}T${dtFromTime}:00`).getTime();
       const toTs = new Date(`${dtTo}T${dtToTime}:00`).getTime();
       drums = drums.filter(d => {
-        if (!d.registered) return true;
-        const t = new Date(d.registered.replace("T", " ").slice(0, 19)).getTime();
+        const tv = d.updated || d.registered;
+        if (!tv) return true;
+        const t = new Date(tv.replace("T", " ").slice(0, 19)).getTime();
         return t >= fromTs && t <= toTs;
       });
-      const sorted = [...drums].sort((a, b) => (b.registered ?? "").localeCompare(a.registered ?? ""));
+      const sorted = [...drums].sort((a, b) => ((b.updated || b.registered) ?? "").localeCompare((a.updated || a.registered) ?? ""));
       return { "전체 (등록시간순)": sorted };
     }
     if (sortMode === "LOT순") {

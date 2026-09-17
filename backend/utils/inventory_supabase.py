@@ -119,9 +119,9 @@ def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existi
                 "prev_sector": "", "new_sector": sector, "recorded_at": now,
             })
 
-    # 2) 동일 섹터 재등록 — updated_at만 갱신
+    # 2) 동일 섹터 재등록 — registered_at / updated_at 모두 갱신
     if to_refresh_ts:
-        sb.table("inventory").update({"updated_at": now}).in_("lot", to_refresh_ts).execute()
+        sb.table("inventory").update({"registered_at": now, "updated_at": now}).in_("lot", to_refresh_ts).execute()
 
     # 3) 기존 드럼 일괄 업데이트 (섹터 변경)
     if to_update_clear:
