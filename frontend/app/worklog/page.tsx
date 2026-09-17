@@ -640,8 +640,9 @@ export default function WorklogPage() {
           if (!mailTo.trim()) { toast.error("받는 사람 이메일을 입력하세요."); return; }
           setMailSending(true);
           try {
+            const d = Number(date.split("-")[2]);
             const res = await sendWorklogEmail({
-              year: y, month: m, to: mailTo, subject: mailSubject, body: mailBody,
+              year: y, month: m, day: d, to: mailTo, subject: mailSubject, body: mailBody,
               extra_files: mailExtraFiles,
             });
             toast.success(res.message || "메일 전송 완료");

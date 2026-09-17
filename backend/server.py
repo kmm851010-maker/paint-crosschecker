@@ -1168,7 +1168,8 @@ async def export_worklog_excel(year: int, month: int, day: int = 0):
 class SendEmailRequest(BaseModel):
     year: int
     month: int
-    to: str       # 쉼표 구분 이메일
+    day: int = 0  # active 시트 날짜 (0이면 마지막 시트)
+    to: str
     subject: str
     body: str
     extra_files: list = []  # [{name: str, data: str(base64)}]
@@ -1253,7 +1254,10 @@ async def send_worklog_email(req: SendEmailRequest):
 
     if not wb.sheetnames:
         wb.create_sheet(title="데이터없음")["A1"] = "저장된 작업일지가 없습니다."
-    if wb.sheetnames:
+    target_title = f"{month}월{req.day}일" if req.day else None
+    if target_title and target_title in wb.sheetnames:
+        wb.active = wb[target_title]
+    elif wb.sheetnames:
         wb.active = wb[wb.sheetnames[-1]]
 
     buf = io.BytesIO()
