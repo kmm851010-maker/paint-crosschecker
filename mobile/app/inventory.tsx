@@ -457,8 +457,12 @@ export default function InventoryScreen() {
       } else if (batchRef.current.some(d => d.lot === parsed.lot)) {
         _setScanError({ type: "duplicate", detail: `중복 스캔: ${parsed.lot}` });
       } else if (Object.entries(sectorDataRef.current).find(([, drums]) => (drums as any[]).some(d => d.lot === parsed.lot))) {
-        const sector = (Object.entries(sectorDataRef.current).find(([, drums]) => (drums as any[]).some(d => d.lot === parsed.lot)) ?? ["미확인"])[0];
-        _setScanError({ type: "duplicate", detail: `이미 위치가 저장된 제품입니다 — ${sector}: ${parsed.lot}` });
+        const existingEntry = Object.entries(sectorDataRef.current).find(([, drums]) => (drums as any[]).some(d => d.lot === parsed.lot));
+        const existingDrum = existingEntry ? (existingEntry[1] as any[]).find((d: any) => d.lot === parsed.lot) : parsed;
+        setBatch(prev => [...prev, { lot: existingDrum.lot, product: existingDrum.product, maker: existingDrum.maker }]);
+        triggerFeedback();
+        Vibration.vibrate(80);
+        _setScanError(null);
       } else if (!APPROVED_PRODUCTS.has(parsed.product) && !localApprovedRef.current.has(parsed.product) && !serverWhitelistRef.current.has(parsed.product)) {
         // 미등록 품목 — 사용자 확인 후 저장
         _setScanError(null);
@@ -1302,7 +1306,7 @@ export default function InventoryScreen() {
                             {sortMode !== "sector" && sortMode !== "lot" && (
                               <Text style={[styles.drumMaker, { flex: 1.2, color: COLORS.primary }]}>{drum.sector}</Text>
                             )}
-                            <Text style={[styles.drumMaker, { flex: 1.8, fontSize: 10 }]}>{drum.registered}</Text>
+                            <Text style={[styles.drumMaker, { flex: 1.8, fontSize: 10 }]}>{(drum as any).updated || drum.registered}</Text>
                           </TouchableOpacity>
                         );
                       })}
