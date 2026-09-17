@@ -356,7 +356,7 @@ export default function AttendancePage() {
   const [lvFilterMonth, setLvFilterMonth] = useState(kstNow.getUTCMonth() + 1);
 
   // 휴가 등록 폼
-  const [lvName, setLvName] = useState("");
+  const [lvName, setLvName] = useState(() => (!isAdmin() && getAuth()?.name) ? getAuth()!.name : "");
   const [lvType, setLvType] = useState(LEAVE_TYPES[0]);
   const [lvStart, setLvStart] = useState("");
   const [lvEnd, setLvEnd] = useState("");
@@ -408,6 +408,7 @@ export default function AttendancePage() {
     e.preventDefault();
     if (!lvName || !lvStart || !lvEnd) { toast.error("항목을 모두 입력하세요."); return; }
     if (lvStart > lvEnd) { toast.error("종료일이 시작일보다 빠릅니다."); return; }
+    if (!admin && currentUser && lvName !== currentUser.name) { toast.error("본인의 일정만 등록할 수 있습니다."); return; }
     setLvSaving(true);
     const next = [...leaves, { name: lvName, type: lvType, start: lvStart, end: lvEnd }];
     try {
@@ -784,12 +785,16 @@ export default function AttendancePage() {
             <form onSubmit={handleAddLeave}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
                 {[
-                  { label: "대상자", el: (
+                  { label: "대상자", el: admin ? (
                     <select value={lvName} onChange={e => setLvName(e.target.value)}
                       style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 13 }}>
                       <option value="">선택</option>
                       {allNames.map(n => <option key={n}>{n}</option>)}
                     </select>
+                  ) : (
+                    <div style={{ width: "100%", border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 8px", fontSize: 13, background: "#f9fafb", color: "#374151", fontWeight: 600 }}>
+                      {currentUser?.name ?? ""}
+                    </div>
                   )},
                   { label: "구분", el: (
                     <select value={lvType} onChange={e => setLvType(e.target.value)}
@@ -862,7 +867,7 @@ export default function AttendancePage() {
                               {lv.start}{lv.start !== lv.end ? ` ~ ${lv.end}` : ""}
                               {lv.sub ? ` | 대근: ${lv.sub}` : ""}
                             </span>
-                            {admin && (
+                            {(admin || lv.name === currentUser?.name) && (
                               <button onClick={() => handleDeleteLeave(lv)}
                                 style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 16, fontWeight: 700, padding: "0 2px" }}>
                                 ×
