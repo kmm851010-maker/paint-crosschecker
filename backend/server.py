@@ -1212,13 +1212,19 @@ async def send_worklog_email(req: SendEmailRequest):
             "client_secret": os.environ.get("GMAIL_CLIENT_SECRET", ""),
         }
 
-    if not cfg.get("refresh_token") or not cfg.get("client_id") or not cfg.get("client_secret"):
-        detail = "Gmail 설정이 없습니다."
+    missing = [k for k in ("refresh_token", "client_id", "client_secret") if not cfg.get(k)]
+    if missing:
+        parts = [f"누락된 설정: {missing}"]
         if sheet_err:
-            detail += f" (시트 오류: {sheet_err})"
-        if not ws_id:
-            detail += " WORKLOG_SPREADSHEET_ID 환경변수 없음."
-        raise HTTPException(status_code=500, detail=detail)
+            parts.append(f"시트 오류: {sheet_err}")
+        env_check = {
+            "WORKLOG_SPREADSHEET_ID": bool(ws_id),
+            "GMAIL_REFRESH_TOKEN": bool(os.environ.get("GMAIL_REFRESH_TOKEN")),
+            "GMAIL_CLIENT_ID": bool(os.environ.get("GMAIL_CLIENT_ID")),
+            "GMAIL_CLIENT_SECRET": bool(os.environ.get("GMAIL_CLIENT_SECRET")),
+        }
+        parts.append(f"환경변수 확인: {env_check}")
+        raise HTTPException(status_code=500, detail=" | ".join(parts))
 
     recipients = [r.strip() for r in req.to.split(",") if r.strip()]
     if not recipients:
