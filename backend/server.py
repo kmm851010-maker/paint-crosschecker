@@ -1192,27 +1192,33 @@ async def send_worklog_email(req: SendEmailRequest):
     )
 
     # ── Gmail OAuth 설정 읽기 (워크로그 스프레드시트 gmail_config 시트) ──
-    def _get_gmail_cfg() -> dict:
-        ws_id = os.environ.get("WORKLOG_SPREADSHEET_ID", "")
-        if ws_id:
-            try:
-                from utils.inventory_sheets import _get_client
-                client = _get_client()
-                sp = client.open_by_key(ws_id)
-                ws = sp.worksheet("gmail_config")
-                return {r[0]: r[1] for r in ws.get_all_values() if len(r) >= 2}
-            except Exception:
-                pass
-        # 환경변수 fallback
-        return {
+    sheet_err = ""
+    cfg: dict = {}
+    ws_id = os.environ.get("WORKLOG_SPREADSHEET_ID", "")
+    if ws_id:
+        try:
+            from utils.inventory_sheets import _get_client
+            client = _get_client()
+            sp = client.open_by_key(ws_id)
+            ws_cfg = sp.worksheet("gmail_config")
+            cfg = {r[0]: r[1] for r in ws_cfg.get_all_values() if len(r) >= 2}
+        except Exception as _e:
+            sheet_err = str(_e)
+    # 환경변수 fallback
+    if not cfg.get("refresh_token"):
+        cfg = {
             "refresh_token": os.environ.get("GMAIL_REFRESH_TOKEN", ""),
             "client_id": os.environ.get("GMAIL_CLIENT_ID", ""),
             "client_secret": os.environ.get("GMAIL_CLIENT_SECRET", ""),
         }
 
-    cfg = _get_gmail_cfg()
     if not cfg.get("refresh_token") or not cfg.get("client_id") or not cfg.get("client_secret"):
-        raise HTTPException(status_code=500, detail="Gmail 설정이 없습니다. WORKLOG_SPREADSHEET_ID 또는 GMAIL_* 환경변수를 확인하세요.")
+        detail = "Gmail 설정이 없습니다."
+        if sheet_err:
+            detail += f" (시트 오류: {sheet_err})"
+        if not ws_id:
+            detail += " WORKLOG_SPREADSHEET_ID 환경변수 없음."
+        raise HTTPException(status_code=500, detail=detail)
 
     recipients = [r.strip() for r in req.to.split(",") if r.strip()]
     if not recipients:
