@@ -85,7 +85,7 @@ async function extractDrumsFromExcel(file: File): Promise<ExtractedDrum[]> {
       for (let c = 0; c < row.length; c++) {
         const cell = String(row[c] ?? "").toLowerCase();
         if (cell.includes("lot") && lotCol === -1) lotCol = c;
-        if ((cell.includes("품명") || cell.includes("제품") || cell.includes("product")) && prodCol === -1) prodCol = c;
+        if ((cell.includes("품명") || cell.includes("제품") || cell.includes("product") || cell.includes("clrcd")) && prodCol === -1) prodCol = c;
         if (WEIGHT_KW.some(k => cell.includes(k)) && weightCol === -1) weightCol = c;
       }
       if (lotCol !== -1) break;
