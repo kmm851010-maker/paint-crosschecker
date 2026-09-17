@@ -31,7 +31,7 @@ const ADMIN_GROUP = {
 };
 
 const MOBILE_URL =
-  "https://expo.dev/accounts/sergekang/projects/kg-steel-paint-checker/builds/6d287fc7-d867-4d12-aa8b-e5a82f0df369";
+  "https://expo.dev/artifacts/eas/u5zhqFUZ_j00PXWjfRsp58HrpwCaQeq-tO0Q34ZTzvE.apk";
 
 export default function Sidebar({ onToggle }: { onToggle?: () => void }) {
   const pathname = usePathname();
