@@ -680,19 +680,17 @@ export default function InventoryPage() {
           </Button>
         </div>
 
-        {/* 같은 품목 일괄 이동 */}
-        {allSameProduct && (
-          <div className="flex items-center gap-2 flex-wrap mb-3">
-            <span className="text-xs font-medium text-gray-600">📦 {selectedDrums[0].product} 일괄 이동</span>
-            <select value={batchMoveSector} onChange={e => setBatchMoveSector(e.target.value)}
-              className="border border-gray-300 rounded px-2 py-1.5 text-sm">
-              {SECTORS.map(s => <option key={s}>{s}</option>)}
-            </select>
-            <Button size="sm" onClick={doBatchMove} loading={actionLoading}>
-              이동 ({selectedLots.size}드럼)
-            </Button>
-          </div>
-        )}
+        {/* 일괄 이동 */}
+        <div className="flex items-center gap-2 flex-wrap mb-3">
+          <span className="text-xs font-medium text-gray-600">📦 일괄 이동</span>
+          <select value={batchMoveSector} onChange={e => setBatchMoveSector(e.target.value)}
+            className="border border-gray-300 rounded px-2 py-1.5 text-sm">
+            {SECTORS.map(s => <option key={s}>{s}</option>)}
+          </select>
+          <Button size="sm" onClick={doBatchMove} loading={actionLoading}>
+            이동 ({selectedLots.size}드럼)
+          </Button>
+        </div>
 
         {/* 스캔불가 버튼 (입고존 선택 시) */}
         {ingoSelected.length > 0 && (
