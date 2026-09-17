@@ -237,6 +237,7 @@ export default function InventoryPage() {
   const [moveItems, setMoveItems] = useState<DrumItem[]>([]);
   const [moveSector, setMoveSector] = useState("창고");
   const [moveLoading, setMoveLoading] = useState(false);
+  const [batchMoveSector, setBatchMoveSector] = useState("창고");
 
   useEffect(() => { setAdmin(isAdmin()); }, []);
   useEffect(() => { fetchSectors(); }, []);
@@ -374,6 +375,20 @@ export default function InventoryPage() {
       fetchSectors();
     } catch {
       toast.error("처리 실패");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function doBatchMove() {
+    setActionLoading(true);
+    try {
+      const result = await registerDrums(selectedDrums, batchMoveSector, "");
+      toast.success(`${result.moved ?? selectedDrums.length}드럼 [${batchMoveSector}]으로 이동!`);
+      clearSelection();
+      fetchSectors();
+    } catch {
+      toast.error("이동 실패");
     } finally {
       setActionLoading(false);
     }
@@ -596,6 +611,7 @@ export default function InventoryPage() {
     if (selectedLots.size === 0) return null;
     const ingoSelected = selectedDrums.filter(d => d.sector === "입고존");
     const ingoDisabled = ingoSelected.filter(d => d.scanDisabled === "Y");
+    const allSameProduct = selectedDrums.length > 1 && new Set(selectedDrums.map(d => d.product)).size === 1;
 
     // Inline edit form
     if (editDrum) {
@@ -704,6 +720,18 @@ export default function InventoryPage() {
                 setEditFields({ lot: d.lot, product: d.product, maker: d.maker, sector: d.sector ?? SECTORS[0], remark: d.remark === "신규" ? "" : (d.remark ?? "") });
               }}>✏️ 정보 수정</Button>
             )}
+          </div>
+        )}
+        {allSameProduct && (
+          <div className="mt-3 flex items-center gap-2 flex-wrap pt-3 border-t border-gray-100">
+            <span className="text-xs font-medium text-gray-600">📦 {selectedDrums[0].product} 일괄 이동</span>
+            <select value={batchMoveSector} onChange={e => setBatchMoveSector(e.target.value)}
+              className="border border-gray-300 rounded px-2 py-1.5 text-sm">
+              {SECTORS.map(s => <option key={s}>{s}</option>)}
+            </select>
+            <Button size="sm" onClick={doBatchMove} loading={actionLoading}>
+              이동 ({selectedLots.size}드럼)
+            </Button>
           </div>
         )}
       </div>
