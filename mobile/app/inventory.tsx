@@ -30,7 +30,7 @@ import { VolumeManager } from "react-native-volume-manager";
 import { APPROVED_PRODUCTS } from "../src/constants/approvedProducts";
 
 const ASYNC_KEY_APPROVED = "user_approved_products_v1";
-import { registerDrums, getSectorInventory, setDrumReturnStatus, getProductWhitelist, type DrumItem } from "../src/services/api";
+import { registerDrums, getSectorInventory, setDrumReturnStatus, getProductWhitelist, getKnownLots, type DrumItem } from "../src/services/api";
 
 // ── 제조사 코드 ──
 const MAKER_MAP: Record<string, string> = {
@@ -302,8 +302,9 @@ export default function InventoryScreen() {
   const alertActiveRef = useRef(false); // Alert 팝업 표시 중 여부 (runOcr 내 클로저용)
   const localApprovedRef = useRef<Set<string>>(new Set()); // 사용자 승인 신규 품목 (AsyncStorage 연동)
   const serverWhitelistRef = useRef<Set<string>>(new Set()); // 서버 ERP 화이트리스트
+  const knownLotsRef = useRef<Set<string>>(new Set()); // 최근 2년 입고 이력 LOT (유사 LOT 경고용)
 
-  // 앱 시작 시 사용자 승인 품목 + 서버 화이트리스트 로드
+  // 앱 시작 시 사용자 승인 품목 + 서버 화이트리스트 + 이력 LOT 로드
   useEffect(() => {
     AsyncStorage.getItem(ASYNC_KEY_APPROVED).then(val => {
       if (val) {
@@ -315,6 +316,9 @@ export default function InventoryScreen() {
     });
     getProductWhitelist().then(products => {
       products.forEach(p => serverWhitelistRef.current.add(p));
+    });
+    getKnownLots().then(lots => {
+      lots.forEach(l => knownLotsRef.current.add(l));
     });
   }, []);
 
@@ -503,9 +507,8 @@ export default function InventoryScreen() {
         Vibration.vibrate(80);
         _setScanError(null);
       } else {
-        // 재고에 없는 신규 LOT — 유사 LOT 체크 후 등록
-        const allInventoryLots = (Object.values(sectorDataRef.current) as any[][]).flatMap(arr => arr.map((d: any) => d.lot as string));
-        const similarLot = allInventoryLots.find(l => l !== parsed.lot && levenshtein(l, parsed.lot) <= 2);
+        // 재고에 없는 신규 LOT — 최근 2년 입고 이력 대비 유사 LOT 체크
+        const similarLot = [...knownLotsRef.current].find(l => l !== parsed.lot && levenshtein(l, parsed.lot) <= 2);
 
         const doAdd = () => {
           const drumItem: DrumItem = { lot: parsed.lot, product: parsed.product, maker: parsed.maker };
