@@ -356,7 +356,7 @@ export default function AttendancePage() {
   const [lvFilterMonth, setLvFilterMonth] = useState(kstNow.getUTCMonth() + 1);
 
   // 휴가 등록 폼
-  const [lvName, setLvName] = useState(() => (!isAdmin() && getAuth()?.name) ? getAuth()!.name : "");
+  const [lvName, setLvName] = useState(() => (!isAttendanceManager() && getAuth()?.name) ? getAuth()!.name : "");
   const [lvType, setLvType] = useState(LEAVE_TYPES[0]);
   const [lvStart, setLvStart] = useState("");
   const [lvEnd, setLvEnd] = useState("");
