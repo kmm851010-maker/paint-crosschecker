@@ -16,6 +16,14 @@ export const metadata: Metadata = {
     icon: "/favicon.png",
     apple: "/favicon.png",
   },
+  openGraph: {
+    title: "KG스틸 업무도우미",
+    description: "KG스틸 당진생산지원팀 전용 시스템",
+    siteName: "KG스틸 업무도우미",
+    images: [{ url: "/kg.jpg", width: 512, height: 512, alt: "KG스틸" }],
+    locale: "ko_KR",
+    type: "website",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
