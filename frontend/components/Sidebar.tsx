@@ -121,35 +121,43 @@ export default function Sidebar({ onToggle }: { onToggle?: () => void }) {
       </div>
 
       {/* 메뉴 그룹 */}
-      <nav className="flex-1 py-3 px-2 space-y-0.5">
+      <nav className="flex-1 py-4 px-3">
         {groups.map((group) => (
-          <div key={group.label} className="mb-1">
-            <p
-              className="px-2 pt-2 pb-1 text-xs font-bold tracking-wide"
-              style={{ color: "#D4C5F0" }}
-            >
+          <div key={group.label} style={{ marginBottom: 20 }}>
+            {/* 그룹 레이블 */}
+            <p style={{
+              fontSize: 11, fontWeight: 800, letterSpacing: "0.08em",
+              textTransform: "uppercase", color: "rgba(212,197,240,0.7)",
+              padding: "0 6px", marginBottom: 8,
+            }}>
               {group.label}
             </p>
-            {group.items.map(({ href, label }) => {
-              const active = pathname.startsWith(href);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className="flex items-center w-full rounded-lg text-sm font-medium mb-0.5 transition-all"
-                  style={{
-                    padding: "8px 12px",
-                    background: active
-                      ? "linear-gradient(135deg, #F5A623 0%, #E8951A 100%)"
-                      : "rgba(255,255,255,0.07)",
-                    color: active ? "#1A1A2E" : "rgba(255,255,255,0.85)",
-                    border: active ? "none" : "1px solid rgba(255,255,255,0.12)",
-                  }}
-                >
-                  {label}
-                </Link>
-              );
-            })}
+            {/* 메뉴 아이템 */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {group.items.map(({ href, label }) => {
+                const active = pathname.startsWith(href);
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    style={{
+                      display: "flex", alignItems: "center",
+                      borderRadius: 10, padding: "10px 14px",
+                      fontSize: 13, fontWeight: active ? 700 : 500,
+                      textDecoration: "none",
+                      background: active
+                        ? "linear-gradient(135deg, #F5A623 0%, #E8951A 100%)"
+                        : "rgba(255,255,255,0.07)",
+                      color: active ? "#1A1A2E" : "rgba(255,255,255,0.82)",
+                      border: active ? "none" : "1px solid rgba(255,255,255,0.10)",
+                      transition: "background 0.15s, color 0.15s",
+                    }}
+                  >
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
           </div>
         ))}
       </nav>
