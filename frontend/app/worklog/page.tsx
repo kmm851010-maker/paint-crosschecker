@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
-import { getWorklog, saveWorklog, exportWorklogExcel, type WorkItem } from "@/lib/api";
+import { getWorklog, saveWorklog, exportWorklogExcel, sendWorklogEmail, type WorkItem } from "@/lib/api";
 import toast from "react-hot-toast";
 
 // ── 상수 ──
@@ -98,6 +98,13 @@ export default function WorklogPage() {
   const [shiftAuto, setShiftAuto] = useState<ShiftInfo | null>(null);
   const [shiftData, setShiftData] = useState<ShiftInfo | null>(null);
   const [monthlyTotals, setMonthlyTotals] = useState<Record<string, number>>({});
+
+  // 이메일 전송 모달
+  const [showMailModal, setShowMailModal] = useState(false);
+  const [mailTo, setMailTo] = useState("");
+  const [mailSubject, setMailSubject] = useState("");
+  const [mailBody, setMailBody] = useState("");
+  const [mailSending, setMailSending] = useState(false);
 
   // 업무현황: text 셀 맵
   const [cells, setCells] = useState<CellMap>(() => initCells(null, false));
@@ -581,9 +588,104 @@ export default function WorklogPage() {
                 {downloading ? "생성 중..." : `📥 ${date.slice(0,7).replace("-","년 ")}월 통합 엑셀 다운로드`}
               </button>
             </div>
+
+            {/* ── 통합일지 메일 전송 ── */}
+            <div style={{ marginTop: 8, borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
+              <button
+                onClick={() => {
+                  const [y, m] = date.split("-").map(Number);
+                  const team = "";
+                  setMailSubject(`${y}년 ${m}월 칼라지게차 작업일지`);
+                  setMailBody(`안녕하세요? ${m}월 작업일지 첨부하였습니다. 고생하십쇼!`);
+                  setShowMailModal(true);
+                }}
+                style={{
+                  width: "100%", background: "#fff", border: "1px solid #d1d5db",
+                  borderRadius: 10, padding: "9px 0", fontSize: 14, fontWeight: 600,
+                  cursor: "pointer", color: "#374151",
+                }}
+              >
+                ✉️ 통합일지 메일 전송
+              </button>
+            </div>
           </>
         )}
       </div>
+
+      {/* ── 메일 전송 모달 ── */}
+      {showMailModal && (() => {
+        const [y, m] = date.split("-").map(Number);
+        const [my, mm] = date.split("-").map(Number);
+        const fname = `${my}년${mm}월_작업일지.xlsx`;
+
+        async function handleSendMail() {
+          if (!mailTo.trim()) { toast.error("받는 사람 이메일을 입력하세요."); return; }
+          setMailSending(true);
+          try {
+            const res = await sendWorklogEmail({ year: y, month: m, to: mailTo, subject: mailSubject, body: mailBody });
+            toast.success(res.message || "메일 전송 완료");
+            setShowMailModal(false);
+          } catch (e: unknown) {
+            const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "전송 실패";
+            toast.error(msg);
+          } finally { setMailSending(false); }
+        }
+
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ background: "#fff", borderRadius: 14, padding: 24, width: 560, maxWidth: "95vw", boxShadow: "0 8px 32px rgba(0,0,0,0.18)", maxHeight: "90vh", overflowY: "auto" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, borderBottom: "1px solid #e5e7eb", paddingBottom: 10 }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>✉️ 메일 작성 및 미리보기</h3>
+                <button onClick={() => setShowMailModal(false)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280" }}>×</button>
+              </div>
+
+              {[
+                { label: "받는 사람", note: "쉼표로 여러 명 입력 가능", el: (
+                  <input value={mailTo} onChange={e => setMailTo(e.target.value)}
+                    placeholder="example@kggroup.co.kr, other@kggroup.co.kr"
+                    style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 10px", fontSize: 13, boxSizing: "border-box" }} />
+                )},
+                { label: "제목", el: (
+                  <input value={mailSubject} onChange={e => setMailSubject(e.target.value)}
+                    style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 10px", fontSize: 13, boxSizing: "border-box" }} />
+                )},
+                { label: "본문", el: (
+                  <textarea value={mailBody} onChange={e => setMailBody(e.target.value)} rows={4}
+                    style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 10px", fontSize: 13, boxSizing: "border-box", resize: "vertical" }} />
+                )},
+              ].map(({ label, note, el }) => (
+                <div key={label} style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, display: "block", marginBottom: 4 }}>
+                    {label}{note && <span style={{ fontWeight: 400, marginLeft: 6 }}>({note})</span>}
+                  </label>
+                  {el}
+                </div>
+              ))}
+
+              <div style={{ marginBottom: 16 }}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", margin: "0 0 6px" }}>첨부파일</p>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#374151" }}>
+                  <input type="checkbox" checked readOnly style={{ accentColor: "#4B2D8E" }} />
+                  {fname} (통합 Excel)
+                </label>
+              </div>
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={handleSendMail} disabled={mailSending}
+                  style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: mailSending ? "#9ca3af" : "#4B2D8E", color: "#fff", fontSize: 14, fontWeight: 700, cursor: mailSending ? "not-allowed" : "pointer" }}>
+                  {mailSending ? "전송 중..." : "전송"}
+                </button>
+                <button
+                  onClick={() => setShowMailModal(false)}
+                  style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", fontSize: 14, cursor: "pointer" }}>
+                  취소
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </AppShell>
   );
 }

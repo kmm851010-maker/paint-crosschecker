@@ -1165,6 +1165,117 @@ async def export_worklog_excel(year: int, month: int, day: int = 0):
     return {"success": True, "data": encoded, "count": added, "filename": filename}
 
 
+class SendEmailRequest(BaseModel):
+    year: int
+    month: int
+    to: str       # 쉼표 구분 이메일
+    subject: str
+    body: str
+
+
+@app.post("/api/worklog/send-email")
+async def send_worklog_email(req: SendEmailRequest):
+    """월간 작업일지 Excel을 첨부해 Gmail API로 메일 전송."""
+    import io, base64 as _b64, calendar as _cal, datetime as _dt, os
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.mime.base import MIMEBase
+    from email import encoders
+    from email.header import Header
+    import google.oauth2.credentials as _goauth
+    import googleapiclient.discovery as _gdisco
+    import openpyxl
+    from utils.supabase_db import (
+        load_daily_detail_month, load_work_items_month,
+        get_members_dict, get_shift_info, apply_leaves, load_leaves,
+    )
+
+    # ── Gmail OAuth 설정 읽기 (워크로그 스프레드시트 gmail_config 시트) ──
+    def _get_gmail_cfg() -> dict:
+        ws_id = os.environ.get("WORKLOG_SPREADSHEET_ID", "")
+        if ws_id:
+            try:
+                from utils.inventory_sheets import _get_client
+                client = _get_client()
+                sp = client.open_by_key(ws_id)
+                ws = sp.worksheet("gmail_config")
+                return {r[0]: r[1] for r in ws.get_all_values() if len(r) >= 2}
+            except Exception:
+                pass
+        # 환경변수 fallback
+        return {
+            "refresh_token": os.environ.get("GMAIL_REFRESH_TOKEN", ""),
+            "client_id": os.environ.get("GMAIL_CLIENT_ID", ""),
+            "client_secret": os.environ.get("GMAIL_CLIENT_SECRET", ""),
+        }
+
+    cfg = _get_gmail_cfg()
+    if not cfg.get("refresh_token") or not cfg.get("client_id") or not cfg.get("client_secret"):
+        raise HTTPException(status_code=500, detail="Gmail 설정이 없습니다. WORKLOG_SPREADSHEET_ID 또는 GMAIL_* 환경변수를 확인하세요.")
+
+    recipients = [r.strip() for r in req.to.split(",") if r.strip()]
+    if not recipients:
+        raise HTTPException(status_code=400, detail="받는 사람 이메일을 입력하세요.")
+
+    # ── Excel 생성 ──
+    year, month = req.year, req.month
+    detail_by_date = load_daily_detail_month(year, month)
+    work_by_date   = load_work_items_month(year, month)
+    members        = get_members_dict()
+    leave_list     = load_leaves()
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    last_day = _cal.monthrange(year, month)[1]
+    for d in range(1, last_day + 1):
+        date_obj = _dt.date(year, month, d)
+        date_str = date_obj.strftime("%Y-%m-%d")
+        detail   = detail_by_date.get(date_str) or {}
+        shift    = detail.get("shift") or {}
+        if not shift:
+            shift = get_shift_info(date_obj, members)
+        shift = apply_leaves(shift, date_obj, leave_list)
+        ws_new = wb.create_sheet(title=f"{month}월{d}일")
+        _build_worklog_sheet(ws_new, date_obj, shift, work_by_date.get(date_str, []), detail.get("safety") or [], detail.get("note") or "")
+
+    if not wb.sheetnames:
+        wb.create_sheet(title="데이터없음")["A1"] = "저장된 작업일지가 없습니다."
+    if wb.sheetnames:
+        wb.active = wb[wb.sheetnames[-1]]
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    excel_bytes = buf.getvalue()
+    team     = os.environ.get("TEAM_NAME", "")
+    filename = f"{year}{month:02d}{team}_작업일지.xlsx"
+
+    # ── 메일 구성 ──
+    msg = MIMEMultipart("mixed")
+    msg["To"]      = ", ".join(recipients)
+    msg["Subject"] = Header(req.subject, "utf-8").encode()
+    msg.attach(MIMEText(req.body, "plain", "utf-8"))
+
+    part = MIMEBase("application", "octet-stream")
+    part.set_payload(excel_bytes)
+    encoders.encode_base64(part)
+    part.add_header("Content-Disposition", "attachment", filename=("utf-8", "", filename))
+    msg.attach(part)
+
+    # ── Gmail API 전송 ──
+    creds = _goauth.Credentials(
+        token=None,
+        refresh_token=cfg["refresh_token"],
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=cfg["client_id"],
+        client_secret=cfg["client_secret"],
+    )
+    svc = _gdisco.build("gmail", "v1", credentials=creds)
+    raw = _b64.urlsafe_b64encode(msg.as_bytes()).decode()
+    svc.users().messages().send(userId="me", body={"raw": raw}).execute()
+
+    return {"success": True, "message": f"메일 전송 완료 → {req.to}"}
+
+
 # ═══════════════════════════════════════════════════════════════════
 # 휴가/대근
 # ═══════════════════════════════════════════════════════════════════

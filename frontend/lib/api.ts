@@ -203,6 +203,13 @@ export async function exportWorklogExcel(year: number, month: number, day?: numb
   return data;
 }
 
+export async function sendWorklogEmail(payload: {
+  year: number; month: number; to: string; subject: string; body: string;
+}): Promise<{ success: boolean; message: string }> {
+  const { data } = await api.post("/api/worklog/send-email", payload, { timeout: 120000 });
+  return data;
+}
+
 // ── Leaves ──
 export async function getLeaves() {
   const { data } = await api.get("/api/leaves");
