@@ -227,6 +227,8 @@ export default function InventoryPage() {
   const [histLoading, setHistLoading] = useState(false);
   const [histSearch, setHistSearch] = useState("");
   const [histTab, setHistTab] = useState<"신규등록" | "라인입고" | "반품완료">("신규등록");
+  const [histSortCol, setHistSortCol] = useState<string | null>(null);
+  const [histSortAsc, setHistSortAsc] = useState(true);
 
   // ── 대량 등록 state ──
   const [bulkItems, setBulkItems] = useState<BulkItem[]>([]);
@@ -716,6 +718,13 @@ export default function InventoryPage() {
     const tabData = { "신규등록": actNew, "라인입고": actLine, "반품완료": actRet };
     const sectorKey = histTab === "신규등록" ? "to_sector" : "from_sector";
     const items = tabData[histTab];
+    const sortedItems = histSortCol
+      ? [...items].sort((a, b) => {
+          const av = String((a as unknown as Record<string, unknown>)[histSortCol] ?? "");
+          const bv = String((b as unknown as Record<string, unknown>)[histSortCol] ?? "");
+          return histSortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+        })
+      : items;
     const fromDate = histFrom.replace(/-/g, "");
     const toDate = histTo.replace(/-/g, "");
 
@@ -774,17 +783,29 @@ export default function InventoryPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">일시</th>
-                        <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">LOT</th>
-                        <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">품명</th>
-                        <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">제조사</th>
-                        <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">
-                          {histTab === "신규등록" ? "섹터" : "이전섹터"}
-                        </th>
+                        {[
+                          { col: "timestamp", label: "일시" },
+                          { col: "lot", label: "LOT" },
+                          { col: "product", label: "품명" },
+                          { col: "maker", label: "제조사" },
+                          { col: sectorKey, label: histTab === "신규등록" ? "섹터" : "이전섹터" },
+                        ].map(({ col, label }) => {
+                          const active = histSortCol === col;
+                          return (
+                            <th key={col} className="py-2 px-3 text-left">
+                              <button
+                                onClick={() => { if (histSortCol === col) setHistSortAsc(a => !a); else { setHistSortCol(col); setHistSortAsc(true); } }}
+                                className={cn("text-xs font-semibold hover:text-purple-700 whitespace-nowrap", active ? "text-purple-700" : "text-gray-500")}
+                              >
+                                {label}{active ? (histSortAsc ? " ▲" : " ▼") : ""}
+                              </button>
+                            </th>
+                          );
+                        })}
                       </tr>
                     </thead>
                     <tbody>
-                      {items.map((h, i) => (
+                      {sortedItems.map((h, i) => (
                         <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
                           <td className="py-1.5 px-3 text-xs text-gray-500">{h.timestamp?.slice(0, 16)}</td>
                           <td className="py-1.5 px-3 font-mono text-xs">{h.lot}</td>
