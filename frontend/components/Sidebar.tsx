@@ -1,8 +1,10 @@
 "use client";
+import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { clearAuth, getAuth, isAdmin } from "@/lib/auth";
+import { changePassword } from "@/lib/api";
 
 const NAV_GROUPS = [
   {
@@ -36,6 +38,29 @@ export default function Sidebar() {
   const router   = useRouter();
   const user     = getAuth();
   const admin    = isAdmin();
+
+  const [showPwModal, setShowPwModal] = useState(false);
+  const [curPw, setCurPw]   = useState("");
+  const [newPw, setNewPw]   = useState("");
+  const [newPw2, setNewPw2] = useState("");
+  const [pwMsg, setPwMsg]   = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [pwSaving, setPwSaving] = useState(false);
+
+  function openPwModal() { setCurPw(""); setNewPw(""); setNewPw2(""); setPwMsg(null); setShowPwModal(true); }
+
+  async function handlePwChange() {
+    if (!newPw || newPw.length < 4) { setPwMsg({ type: "err", text: "비밀번호는 4자 이상이어야 합니다." }); return; }
+    if (newPw !== newPw2) { setPwMsg({ type: "err", text: "새 비밀번호가 일치하지 않습니다." }); return; }
+    setPwSaving(true); setPwMsg(null);
+    try {
+      await changePassword(user!.employee_id, curPw, newPw);
+      setPwMsg({ type: "ok", text: "비밀번호가 변경되었습니다." });
+      setTimeout(() => setShowPwModal(false), 1200);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "변경 실패";
+      setPwMsg({ type: "err", text: msg });
+    } finally { setPwSaving(false); }
+  }
 
   function logout() {
     clearAuth();
@@ -119,6 +144,15 @@ export default function Sidebar() {
             {admin ? `👑 관리자: ${user.name}` : `👤 ${user.name}`}
           </p>
         )}
+        {!admin && (
+          <button
+            onClick={openPwModal}
+            className="w-full rounded-lg text-sm font-medium text-left transition-all"
+            style={{ padding: "7px 12px", background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.75)", border: "1px solid rgba(255,255,255,0.12)" }}
+          >
+            🔑 비밀번호 변경
+          </button>
+        )}
         <button
           onClick={logout}
           className="w-full rounded-lg text-sm font-medium text-left transition-all"
@@ -151,5 +185,41 @@ export default function Sidebar() {
         </a>
       </div>
     </aside>
+
+    {/* 비밀번호 변경 모달 */}
+    {showPwModal && (
+      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ background: "#fff", borderRadius: 14, padding: 28, width: 340, boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+          <h3 style={{ margin: "0 0 18px", fontSize: 16, fontWeight: 700, color: "#1f2937" }}>🔑 비밀번호 변경</h3>
+          {(["현재 비밀번호", "새 비밀번호", "새 비밀번호 확인"] as const).map((label, i) => {
+            const val  = i === 0 ? curPw  : i === 1 ? newPw  : newPw2;
+            const setter = i === 0 ? setCurPw : i === 1 ? setNewPw : setNewPw2;
+            return (
+              <div key={label} style={{ marginBottom: 12 }}>
+                <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 4 }}>{label}</label>
+                <input type="password" value={val} onChange={e => setter(e.target.value)}
+                  placeholder={i === 1 ? "4자 이상" : ""}
+                  style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px", fontSize: 14, boxSizing: "border-box" }} />
+              </div>
+            );
+          })}
+          {pwMsg && (
+            <div style={{ fontSize: 13, marginBottom: 12, color: pwMsg.type === "ok" ? "#166534" : "#dc2626", background: pwMsg.type === "ok" ? "#f0fdf4" : "#fef2f2", borderRadius: 6, padding: "6px 10px" }}>
+              {pwMsg.text}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setShowPwModal(false)}
+              style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", fontSize: 14, cursor: "pointer" }}>
+              취소
+            </button>
+            <button onClick={handlePwChange} disabled={pwSaving}
+              style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: pwSaving ? "#9ca3af" : "#4B2D8E", color: "#fff", fontSize: 14, fontWeight: 700, cursor: pwSaving ? "not-allowed" : "pointer" }}>
+              {pwSaving ? "변경 중..." : "변경"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   );
 }

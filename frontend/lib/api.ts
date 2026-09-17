@@ -21,6 +21,11 @@ export async function login(employee_id: string, password: string) {
   return data;
 }
 
+export async function changePassword(employee_id: string, current_password: string, new_password: string) {
+  const { data } = await api.post("/api/auth/change-password", { employee_id, current_password, new_password });
+  return data;
+}
+
 // ── Inventory ──
 export async function getSectors() {
   const { data } = await api.get("/api/inventory/sectors");

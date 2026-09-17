@@ -833,6 +833,23 @@ async def reset_employee_password(employee_id: str, req: ResetPasswordRequest):
     return {"success": True}
 
 
+@app.post("/api/auth/change-password")
+async def change_password(req: dict):
+    from utils.supabase_db import authenticate_app_user, reset_app_user_password
+    employee_id = req.get("employee_id", "").strip()
+    current_pw  = req.get("current_password", "")
+    new_pw      = req.get("new_password", "").strip()
+    if not employee_id or not current_pw or not new_pw:
+        raise HTTPException(status_code=400, detail="필수 항목이 누락되었습니다.")
+    if len(new_pw) < 4:
+        raise HTTPException(status_code=400, detail="비밀번호는 4자 이상이어야 합니다.")
+    user = authenticate_app_user(employee_id, current_pw)
+    if not user:
+        raise HTTPException(status_code=401, detail="현재 비밀번호가 올바르지 않습니다.")
+    reset_app_user_password(employee_id, new_pw)
+    return {"success": True}
+
+
 @app.get("/api/members")
 async def get_members(department: str = "칼라반지게차"):
     from utils.supabase_db import get_members_dict
