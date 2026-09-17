@@ -143,20 +143,49 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
     if (lotMatch) lot = normalizeLot(lotMatch[0]);
   }
 
-  // 2. 품명 추출 — 블록을 폰트 크기(frame.height) 내림차순 정렬 후 ITEM_RE 매칭
-  // 제품코드는 라벨에서 가장 큰 글씨이므로 height가 가장 큰 블록에서 추출
+  // 2. 품명 추출 — 다단계 우선순위
   let product = "";
-  const blocksByFont = [...blocks].sort((a, b) => {
-    const aH = (a.frame?.height ?? 0) / Math.max(a.lines?.length ?? 1, 1);
-    const bH = (b.frame?.height ?? 0) / Math.max(b.lines?.length ?? 1, 1);
-    return bH - aH;
-  });
-  for (const block of blocksByFont) {
-    const bf = block.text.replace(/[-\s]/g, "").toUpperCase();
-    const matches = [...bf.matchAll(ITEM_RE)].map(m => normalizeProduct(m[0]));
-    if (matches.length > 0) {
-      product = matches.find(p => APPROVED_PRODUCTS.has(p)) ?? matches[0];
-      break;
+
+  // 우선순위 1: 대시 포함 라벨 패턴 (예: P-7Y61-2Y → P7Y612Y)
+  // 이 형식은 라벨 대형 인쇄 텍스트에만 나타남 — false positive 거의 없음
+  const LABEL_DASH_RE = /([A-Z])-([0-9][A-Z][0-9]{2})-([0-9][A-Z])/;
+  const dashMatch = allText.toUpperCase().match(LABEL_DASH_RE);
+  if (dashMatch) {
+    product = normalizeProduct(dashMatch[1] + dashMatch[2] + dashMatch[3]);
+  }
+
+  // 우선순위 2: "CODE NO" / "CODE" 키워드 직후 패턴 (삼화 등)
+  if (!product) {
+    const codeIdx = flat.indexOf("CODENO");
+    const after = codeIdx !== -1 ? flat.slice(codeIdx + 6) : "";
+    if (after) {
+      const m = after.match(ITEM_RE);
+      if (m) product = normalizeProduct(m[0]);
+    }
+  }
+
+  // 우선순위 3: 블록 폰트 크기(frame.height) 기준 내림차순
+  if (!product) {
+    const blocksByFont = [...blocks].sort((a, b) => {
+      const aH = (a.frame?.height ?? 0) / Math.max(a.lines?.length ?? 1, 1);
+      const bH = (b.frame?.height ?? 0) / Math.max(b.lines?.length ?? 1, 1);
+      return bH - aH;
+    });
+    for (const block of blocksByFont) {
+      const bf = block.text.replace(/[-\s]/g, "").toUpperCase();
+      const matches = [...bf.matchAll(ITEM_RE)].map(m => normalizeProduct(m[0]));
+      if (matches.length > 0) {
+        product = matches.find(p => APPROVED_PRODUCTS.has(p)) ?? matches[0];
+        break;
+      }
+    }
+  }
+
+  // 우선순위 4: 승인목록 퍼지 매칭 폴백 (전체 텍스트)
+  if (!product) {
+    const allItemMatches = [...flat.matchAll(ITEM_RE)].map(m => normalizeProduct(m[0]));
+    if (allItemMatches.length > 0) {
+      product = allItemMatches.find(p => APPROVED_PRODUCTS.has(p)) ?? allItemMatches[0];
     }
   }
 

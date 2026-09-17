@@ -77,6 +77,7 @@ def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existi
     existing_map = {r["lot"]: r for r in existing_res.data}
 
     already_same = []
+    to_refresh_ts = []    # 같은 섹터 재등록 → updated_at만 갱신
     skipped = []          # skip_existing=True 시 기존 드럼 건너뜀 목록
     to_update_clear = []  # 기존 존재 + 섹터 다름 + remark=="신규" → 초기화
     to_update_keep  = []  # 기존 존재 + 섹터 다름 + remark!="신규" → 유지
@@ -90,6 +91,7 @@ def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existi
             prev_sector = prev["sector"]
             if prev_sector == sector:
                 already_same.append(lot)
+                to_refresh_ts.append(lot)  # 동일 섹터라도 재스캔 시 updated_at 갱신
                 continue
             if skip_existing:
                 skipped.append({
@@ -117,7 +119,11 @@ def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existi
                 "prev_sector": "", "new_sector": sector, "recorded_at": now,
             })
 
-    # 2) 기존 드럼 일괄 업데이트
+    # 2) 동일 섹터 재등록 — updated_at만 갱신
+    if to_refresh_ts:
+        sb.table("inventory").update({"updated_at": now}).in_("lot", to_refresh_ts).execute()
+
+    # 3) 기존 드럼 일괄 업데이트 (섹터 변경)
     if to_update_clear:
         sb.table("inventory").update({
             "sector": sector, "registered_at": now, "updated_at": now, "remark": "",
@@ -127,15 +133,15 @@ def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existi
             "sector": sector, "registered_at": now, "updated_at": now,
         }).in_("lot", to_update_keep).execute()
 
-    # 3) 신규 드럼 일괄 삽입 (500개 청크)
+    # 4) 신규 드럼 일괄 삽입 (500개 청크)
     for i in range(0, len(to_insert), 500):
         sb.table("inventory").insert(to_insert[i:i + 500]).execute()
 
-    # 4) 이력 일괄 삽입 (500개 청크)
+    # 5) 이력 일괄 삽입 (500개 청크)
     for i in range(0, len(history_rows), 500):
         sb.table("inventory_history").insert(history_rows[i:i + 500]).execute()
 
-    # 5) ERP 입고(remark=="신규") 시 품명 화이트리스트 자동 등록
+    # 6) ERP 입고(remark=="신규") 시 품명 화이트리스트 자동 등록
     if remark == "신규":
         all_products = {d["product"] for d in drums if d.get("product")}
         if all_products:
