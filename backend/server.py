@@ -737,7 +737,7 @@ async def get_inventory_history_endpoint(from_dt: str = "", to_dt: str = ""):
 
 @app.get("/api/inventory/known-lots")
 async def get_known_lots():
-    """최근 2년간 입고된 적 있는 LOT 목록 반환. 2년 초과 이력은 자동 삭제."""
+    """알려진 LOT 목록 반환: 현재 재고 + 최근 2년 이력. 2년 초과 이력은 자동 삭제."""
     from utils.inventory_supabase import _sb
     import datetime as _dt
     now_kst = _dt.datetime.utcnow() + _dt.timedelta(hours=9)
@@ -745,10 +745,12 @@ async def get_known_lots():
     sb = _sb()
     # 2년 초과 이력 삭제
     sb.table("inventory_history").delete().lt("recorded_at", cutoff).execute()
-    # 나머지 LOT 목록 반환
-    res = sb.table("inventory_history").select("lot").execute()
-    lots = list({r["lot"] for r in res.data if r.get("lot")})
-    return {"lots": lots}
+    # 현재 재고 LOT + 이력 LOT 합산
+    hist_res = sb.table("inventory_history").select("lot").execute()
+    inv_res = sb.table("inventory").select("lot").execute()
+    lots = {r["lot"] for r in hist_res.data if r.get("lot")} | \
+           {r["lot"] for r in inv_res.data if r.get("lot")}
+    return {"lots": list(lots)}
 
 
 class ParseReturnListRequest(BaseModel):
