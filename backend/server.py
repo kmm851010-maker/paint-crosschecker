@@ -618,7 +618,8 @@ async def inventory_register(req: InventoryRegisterRequest):
             result = save_drums_to_sector(drums, req.sector, remark=req.remark, skip_existing=req.skip_existing)
             return {"success": True, "count": len(drums), "sector": req.sector,
                     "already_same": result["already_same"], "moved": result["moved"],
-                    "skipped": result.get("skipped", [])}
+                    "skipped": result.get("skipped", []),
+                    "checkout_skipped": result.get("checkout_skipped", [])}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

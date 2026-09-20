@@ -498,6 +498,9 @@ export default function IncomingPage() {
       if (result.already_same?.length > 0) {
         toast(`이미 재고에 있어 건너뛴 드럼: ${result.already_same.length}개`, { icon: "ℹ️" });
       }
+      if (result.checkout_skipped?.length > 0) {
+        toast(`라인입고 처리된 드럼 재등록 차단: ${result.checkout_skipped.length}개`, { icon: "🚫" });
+      }
       setNewRegDrums([]);
       setShowNewReg(false);
     } catch {

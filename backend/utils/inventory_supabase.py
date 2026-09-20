@@ -79,6 +79,7 @@ def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existi
     already_same = []
     to_refresh_ts = []    # 같은 섹터 재등록 → updated_at만 갱신
     skipped = []          # skip_existing=True 시 기존 드럼 건너뜀 목록
+    checkout_skipped = [] # skip_existing=True 시 이미 라인입고된 드럼 건너뜀 목록
     to_update_clear = []  # 기존 존재 + 섹터 다름 + remark=="신규" → 초기화
     to_update_keep  = []  # 기존 존재 + 섹터 다름 + remark!="신규" → 유지
     to_insert = []
@@ -133,15 +134,26 @@ def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existi
             "sector": sector, "registered_at": now, "updated_at": now,
         }).in_("lot", to_update_keep).execute()
 
-    # 4) 신규 드럼 일괄 삽입 (500개 청크)
+    # 4) skip_existing 시 이미 라인입고된 LOT 차단 (재고에서 사라진 뒤 재등록 방지)
+    if skip_existing and to_insert:
+        insert_lots = [r["lot"] for r in to_insert]
+        co_res = sb.table("inventory_history").select("lot") \
+            .eq("new_sector", CHECKOUT_SECTOR).in_("lot", insert_lots).execute()
+        co_lots = {r["lot"] for r in co_res.data}
+        if co_lots:
+            checkout_skipped = [r for r in to_insert if r["lot"] in co_lots]
+            to_insert    = [r for r in to_insert    if r["lot"] not in co_lots]
+            history_rows = [r for r in history_rows if r["lot"] not in co_lots]
+
+    # 5) 신규 드럼 일괄 삽입 (500개 청크)
     for i in range(0, len(to_insert), 500):
         sb.table("inventory").insert(to_insert[i:i + 500]).execute()
 
-    # 5) 이력 일괄 삽입 (500개 청크)
+    # 6) 이력 일괄 삽입 (500개 청크)
     for i in range(0, len(history_rows), 500):
         sb.table("inventory_history").insert(history_rows[i:i + 500]).execute()
 
-    # 6) ERP 입고(remark=="신규") 시 품명 화이트리스트 자동 등록
+    # 7) ERP 입고(remark=="신규") 시 품명 화이트리스트 자동 등록
     if remark == "신규":
         all_products = {d["product"] for d in drums if d.get("product")}
         if all_products:
@@ -149,7 +161,8 @@ def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existi
 
     registered = len(to_insert)
     moved = len(to_update_clear) + len(to_update_keep)
-    return {"already_same": already_same, "moved": registered + moved, "skipped": skipped}
+    return {"already_same": already_same, "moved": registered + moved, "skipped": skipped,
+            "checkout_skipped": checkout_skipped}
 
 
 def checkout_drums(drums: list):
