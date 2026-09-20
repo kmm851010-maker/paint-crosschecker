@@ -239,8 +239,8 @@ function filterAndProceed(
 }
 
 const SECTORS = [
-  "입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리",
-  "8번자리", "9번자리", "반품자리", "창고주위", "창고",
+  "창고", "창고주위", "입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리",
+  "8번자리", "9번자리", "반품자리",
 ];
 const CHECKOUT = "라인입고";
 type Mode = "idle" | "scanning" | "sectorPick" | "status";
@@ -302,9 +302,10 @@ export default function InventoryScreen() {
   const alertActiveRef = useRef(false); // Alert 팝업 표시 중 여부 (runOcr 내 클로저용)
   const localApprovedRef = useRef<Set<string>>(new Set()); // 사용자 승인 신규 품목 (AsyncStorage 연동)
   const serverWhitelistRef = useRef<Set<string>>(new Set()); // 서버 ERP 화이트리스트
-  const knownLotsRef = useRef<Set<string>>(new Set()); // 최근 2년 입고 이력 LOT (유사 LOT 경고용)
+  const knownLotsRef = useRef<Set<string>>(new Set()); // 입고 기준 LOT (OCR 경고용)
+  const [knownLotsError, setKnownLotsError] = useState(false); // 기준 LOT 로드 실패
 
-  // 앱 시작 시 사용자 승인 품목 + 서버 화이트리스트 + 이력 LOT 로드
+  // 앱 시작 시 사용자 승인 품목 + 서버 화이트리스트 + 기준 LOT 로드
   useEffect(() => {
     AsyncStorage.getItem(ASYNC_KEY_APPROVED).then(val => {
       if (val) {
@@ -318,7 +319,14 @@ export default function InventoryScreen() {
       products.forEach(p => serverWhitelistRef.current.add(p));
     });
     getKnownLots().then(lots => {
-      lots.forEach(l => knownLotsRef.current.add(l));
+      if (lots.length > 0) {
+        lots.forEach(l => knownLotsRef.current.add(l));
+        setKnownLotsError(false);
+      } else {
+        setKnownLotsError(true);
+      }
+    }).catch(() => {
+      setKnownLotsError(true);
     });
   }, []);
 
@@ -544,7 +552,21 @@ export default function InventoryScreen() {
           }
         };
 
-        addDrum();
+        // 기준 LOT 로드됐고 처음 보는 LOT이면 경고
+        if (knownLotsRef.current.size > 0 && !knownLotsRef.current.has(parsed.lot)) {
+          cooldownRef.current = true;
+          alertActiveRef.current = true;
+          Alert.alert(
+            "LOT번호 확인",
+            `입고된 내역이 없는 LOT번호입니다.\n\nLOT: ${parsed.lot}\n\n제품 라벨의 LOT번호를 확인 후 계속하시겠습니까?`,
+            [
+              { text: "취소", style: "cancel", onPress: () => { alertActiveRef.current = false; cooldownRef.current = false; } },
+              { text: "확인", onPress: () => { alertActiveRef.current = false; cooldownRef.current = false; addDrum(); } },
+            ]
+          );
+        } else {
+          addDrum();
+        }
       }
     } catch (e: any) {
       _setScanError({ type: "error", detail: `카메라/OCR 오류: ${e?.message ?? "알 수 없는 오류"}` });
@@ -1514,6 +1536,11 @@ export default function InventoryScreen() {
   return (
     <>
       <Stack.Screen options={{ title: "KG OPS — 재고 관리" }} />
+      {knownLotsError && (
+        <View style={styles.knownLotsErrorBanner}>
+          <Text style={styles.knownLotsErrorText}>⚠ 입고 기준 LOT 로드 실패 — LOT 검증 없이 동작 중</Text>
+        </View>
+      )}
       <SectorModal />
 
       <Modal visible={editingItem !== null} animationType="fade" transparent>
@@ -1629,6 +1656,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: "#b45309",
   },
   scanErrorText: { color: "#FEF3C7", fontSize: 12, fontWeight: "600" },
+  knownLotsErrorBanner: {
+    backgroundColor: "#7f1d1d", paddingHorizontal: 14, paddingVertical: 8,
+    borderBottomWidth: 1, borderBottomColor: "#ef4444",
+  },
+  knownLotsErrorText: { color: "#fee2e2", fontSize: 12, fontWeight: "700", textAlign: "center" },
 
   cancelBtnText: { color: "#fff", fontSize: 16, fontWeight: "600" },
 

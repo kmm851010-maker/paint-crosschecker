@@ -478,7 +478,7 @@ export default function InventoryPage() {
     setBulkLoading(true);
     try {
       const drums = selected.map(i => ({ lot: i.lot, product: i.product, maker: i.maker }));
-      const result = await registerDrums(drums as DrumItem[], bulkSector, "");
+      const result = await registerDrums(drums as DrumItem[], bulkSector, "신규");
       toast.success(`${result.moved ?? selected.length}개 등록 완료!`);
       setBulkItems([]);
       fetchSectors();

@@ -737,20 +737,27 @@ async def get_inventory_history_endpoint(from_dt: str = "", to_dt: str = ""):
 
 @app.get("/api/inventory/known-lots")
 async def get_known_lots():
-    """알려진 LOT 목록 반환: 현재 재고 + 최근 2년 이력. 2년 초과 이력은 자동 삭제."""
+    """알려진 LOT 목록 반환: 현재 재고 전체 + 신규 등록 이력(prev_sector='') 합산."""
     from utils.inventory_supabase import _sb
-    import datetime as _dt
-    now_kst = _dt.datetime.utcnow() + _dt.timedelta(hours=9)
-    cutoff = (now_kst - _dt.timedelta(days=730)).strftime("%Y-%m-%d")
     sb = _sb()
-    # 2년 초과 이력 삭제
-    sb.table("inventory_history").delete().lt("recorded_at", cutoff).execute()
-    # 현재 재고 LOT + 이력 LOT 합산
-    hist_res = sb.table("inventory_history").select("lot").execute()
+    all_lots: set = set()
+    # 현재 재고 전체
     inv_res = sb.table("inventory").select("lot").execute()
-    lots = {r["lot"] for r in hist_res.data if r.get("lot")} | \
-           {r["lot"] for r in inv_res.data if r.get("lot")}
-    return {"lots": list(lots)}
+    for r in inv_res.data:
+        if r.get("lot"):
+            all_lots.add(r["lot"])
+    # 신규 등록 이력 (페이지네이션)
+    page_size = 1000
+    offset = 0
+    while True:
+        res = sb.table("inventory_history").select("lot").eq("prev_sector", "").range(offset, offset + page_size - 1).execute()
+        for r in res.data:
+            if r.get("lot"):
+                all_lots.add(r["lot"])
+        if len(res.data) < page_size:
+            break
+        offset += page_size
+    return {"lots": list(all_lots)}
 
 
 class ParseReturnListRequest(BaseModel):
