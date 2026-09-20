@@ -65,7 +65,7 @@ function normalizeLot(raw: string): string {
 // 영어 자리(1,3,7번째)는 [A-Z] 유지 — 확장 시 false positive 폭증
 const ITEM_RE = /[A-Z][0-9IO][A-Z][A-Z0-9][0-9IO]{2}[A-Z]/g;
 // OCR에서 브랜드명이 품명으로 오인식되는 것을 차단하는 블랙리스트
-const BRAND_BLACKLIST = ["NOROO", "PAINT", "COLOR", "KOREA", "JEBEE", "KCC"];
+const BRAND_BLACKLIST = ["NOROO", "SAMHWA", "KCC"];
 function isBrandText(text: string): boolean {
   return BRAND_BLACKLIST.some(b => text.toUpperCase().includes(b));
 }
