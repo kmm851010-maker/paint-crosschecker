@@ -30,10 +30,6 @@ const ADMIN_GROUP = {
   items: [{ href: "/employees", label: "직원 관리" }],
 };
 
-const KG_GROUP = {
-  label: "재고 관리도구",
-  items: [{ href: "/lot-check", label: "재고 LOT 대조" }],
-};
 
 const MOBILE_URL =
   "https://expo.dev/artifacts/eas/u5zhqFUZ_j00PXWjfRsp58HrpwCaQeq-tO0Q34ZTzvE.apk";
@@ -75,7 +71,6 @@ export default function Sidebar({ onToggle }: { onToggle?: () => void }) {
 
   const groups = [
     ...NAV_GROUPS,
-    ...(isKgOrAdmin ? [KG_GROUP] : []),
     ...(admin ? [ADMIN_GROUP] : []),
   ];
 
