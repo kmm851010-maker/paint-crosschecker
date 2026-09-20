@@ -190,17 +190,18 @@ function computePersonDays(year: number, month: number, members: Record<string, 
     else if (memberTeam === s3) shift = "3근";
 
     let leaveType: string | undefined;
+    let subReason: string | undefined;
     for (const lv of leaves) {
       if (lv.start <= ds && ds <= lv.end) {
         if (lv.name === name) { shift = "휴가"; leaveType = lv.type; break; }
         if (lv.type === "명휴") continue; // 명휴는 전원 휴무 — 대근 없음
         const absentTeam = Object.entries(members).find(([, v]) => v === lv.name)?.[0];
         if (absentTeam && memberTeam && [s1, s2, s3].includes(memberTeam) && [s1, s2, s3].includes(absentTeam) && absentTeam !== memberTeam) {
-          shift = "대근"; break;
+          shift = "대근"; subReason = `${lv.name} (${lv.type})`; break;
         }
       }
     }
-    result.push({ shift, ds, leaveType });
+    result.push({ shift, ds, leaveType, subReason });
   }
   return result;
 }
@@ -435,11 +436,11 @@ export default function AttendancePage() {
   const personDays = selName ? computePersonDays(year, month, members, leaves, selName) : [];
 
   // 통계 계산
-  const subDetail: { ds: string }[] = [];
+  const subDetail: { ds: string; reason?: string }[] = [];
   let subHours = 0;
 
-  for (const { shift, ds } of personDays) {
-    if (shift === "대근") { subDetail.push({ ds }); subHours += 4; }
+  for (const { shift, ds, subReason } of personDays) {
+    if (shift === "대근") { subDetail.push({ ds, reason: subReason }); subHours += 4; }
   }
 
   // 이번 달 휴가 내역 (일별 확장)
@@ -563,8 +564,10 @@ export default function AttendancePage() {
                   </button>
                   {expSub && (
                     <div style={{ paddingLeft: 16, marginTop: 4 }}>
-                      {subDetail.map(({ ds }) => (
-                        <p key={ds} style={{ fontSize: 12, color: "#374151", margin: "2px 0" }}>{ds}</p>
+                      {subDetail.map(({ ds, reason }) => (
+                        <p key={ds} style={{ fontSize: 12, color: "#374151", margin: "2px 0" }}>
+                          {ds}{reason ? <span style={{ color: "#6b7280", marginLeft: 6 }}>— {reason}</span> : null}
+                        </p>
                       ))}
                     </div>
                   )}
