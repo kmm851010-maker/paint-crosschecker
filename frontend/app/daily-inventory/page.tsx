@@ -1,22 +1,34 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
-import { getDailyInventory, upsertDailyInventoryRemark, exportDailyInventoryExcel } from "@/lib/api";
+import {
+  getDailyInventory, upsertDailyInventoryRemark, exportDailyInventoryExcel,
+  hideDailyInventoryEntry, getHiddenDailyInventory,
+} from "@/lib/api";
 import { downloadBase64 } from "@/lib/utils";
 import toast from "react-hot-toast";
-import { Download } from "lucide-react";
+import { Download, History, X } from "lucide-react";
 
-interface InventoryRow {
+interface EntryItem {
+  lot: string;
   product: string;
-  qty: number;
-  lots: string[];
-  remark: string;
+  recorded_at: string;
 }
 
 interface ShiftGroup {
   shift: string;
   worker: string;
-  rows: InventoryRow[];
+  entries: EntryItem[];
+  remarks: Record<string, string>;
+}
+
+interface HiddenItem {
+  date: string;
+  shift: string;
+  lot: string;
+  product: string;
+  recorded_at: string;
+  hidden_at: string;
 }
 
 function todayKST(): string {
@@ -26,16 +38,31 @@ function todayKST(): string {
   return now.toISOString().slice(0, 10);
 }
 
+// entries를 product 기준으로 그룹화
+function groupByProduct(entries: EntryItem[]): { product: string; lots: EntryItem[] }[] {
+  const map = new Map<string, EntryItem[]>();
+  for (const e of entries) {
+    if (!map.has(e.product)) map.set(e.product, []);
+    map.get(e.product)!.push(e);
+  }
+  return [...map.entries()].map(([product, lots]) => ({ product, lots }));
+}
+
 export default function DailyInventoryPage() {
   const [date, setDate] = useState(todayKST);
   const [loading, setLoading] = useState(false);
   const [shiftData, setShiftData] = useState<Record<string, unknown> | null>(null);
   const [groups, setGroups] = useState<ShiftGroup[]>([]);
-  // remarks: { "shift|product": string }
   const [remarks, setRemarks] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
-  // selected LOT per row: { "shift|rowIdx": string }
-  const [selectedLots, setSelectedLots] = useState<Record<string, string>>({});
+  const [downloading, setDownloading] = useState(false);
+  // 삭제 확인 다이얼로그
+  const [confirmTarget, setConfirmTarget] = useState<{ shift: string; entry: EntryItem } | null>(null);
+  const [hiding, setHiding] = useState(false);
+  // 수정기록 팝업
+  const [showHidden, setShowHidden] = useState(false);
+  const [hiddenList, setHiddenList] = useState<HiddenItem[]>([]);
+  const [hiddenLoading, setHiddenLoading] = useState(false);
 
   const loadData = useCallback(async (d: string) => {
     setLoading(true);
@@ -44,15 +71,13 @@ export default function DailyInventoryPage() {
       setShiftData(res.shift_data || null);
       const grps: ShiftGroup[] = res.shift_groups || [];
       setGroups(grps);
-      // init remarks from loaded data
       const rm: Record<string, string> = {};
       for (const g of grps) {
-        for (const row of g.rows) {
-          rm[`${g.shift}|${row.product}`] = row.remark ?? "";
+        for (const [product, remark] of Object.entries(g.remarks ?? {})) {
+          rm[`${g.shift}|${product}`] = remark as string;
         }
       }
       setRemarks(rm);
-      setSelectedLots({});
     } catch {
       toast.error("일일 재고기록 로드 실패");
     } finally {
@@ -75,21 +100,54 @@ export default function DailyInventoryPage() {
     }
   }
 
-  const [downloading, setDownloading] = useState(false);
+  async function handleHideConfirm() {
+    if (!confirmTarget) return;
+    setHiding(true);
+    try {
+      await hideDailyInventoryEntry(
+        date, confirmTarget.shift,
+        confirmTarget.entry.lot, confirmTarget.entry.product, confirmTarget.entry.recorded_at,
+      );
+      setGroups(prev => prev.map(g =>
+        g.shift !== confirmTarget.shift ? g :
+        { ...g, entries: g.entries.filter(e => !(e.lot === confirmTarget.entry.lot && e.recorded_at === confirmTarget.entry.recorded_at)) }
+      ));
+      toast.success("기록에서 제외됐습니다.");
+    } catch {
+      toast.error("처리 실패");
+    } finally {
+      setHiding(false);
+      setConfirmTarget(null);
+    }
+  }
+
+  async function handleShowHidden() {
+    setShowHidden(true);
+    setHiddenLoading(true);
+    try {
+      const res = await getHiddenDailyInventory(date);
+      setHiddenList(res.hidden || []);
+    } catch {
+      toast.error("수정기록 로드 실패");
+    } finally {
+      setHiddenLoading(false);
+    }
+  }
 
   async function handleDownload() {
     if (!hasData) return;
     setDownloading(true);
     try {
-      // remarks를 현재 편집 상태로 반영
-      const groupsWithRemarks = groups.map(g => ({
-        ...g,
-        rows: g.rows.map(row => ({
-          ...row,
-          remark: remarks[`${g.shift}|${row.product}`] ?? row.remark ?? "",
+      // 엑셀용: product 그룹화 구조로 변환
+      const exportGroups = groups.map(g => ({
+        shift: g.shift, worker: g.worker,
+        rows: groupByProduct(g.entries).map(({ product, lots }) => ({
+          product, qty: lots.length,
+          lots: lots.map(e => e.lot).sort(),
+          remark: remarks[`${g.shift}|${product}`] ?? "",
         })),
       }));
-      const res = await exportDailyInventoryExcel(date, groupsWithRemarks);
+      const res = await exportDailyInventoryExcel(date, exportGroups);
       downloadBase64(res.excel_base64, `${date.replace(/-/g, "")}일일재고기록.xlsx`);
     } catch {
       toast.error("엑셀 생성 실패");
@@ -99,7 +157,7 @@ export default function DailyInventoryPage() {
   }
 
   const noShift = !loading && !shiftData;
-  const hasData = groups.some(g => g.rows.length > 0);
+  const hasData = groups.some(g => g.entries.length > 0);
 
   return (
     <AppShell>
@@ -112,6 +170,10 @@ export default function DailyInventoryPage() {
           <button onClick={() => loadData(date)}
             className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 hover:bg-gray-50 text-gray-600">
             새로고침
+          </button>
+          <button onClick={handleShowHidden}
+            className="flex items-center gap-1.5 text-sm border border-gray-300 rounded-lg px-3 py-1.5 hover:bg-gray-50 text-gray-600">
+            <History size={14} /> 수정기록
           </button>
           {hasData && (
             <button onClick={handleDownload} disabled={downloading}
@@ -134,73 +196,146 @@ export default function DailyInventoryPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {groups.map((group) => (
-              <div key={group.shift} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
-                  <span className="font-bold text-gray-800 text-sm">{group.shift}</span>
-                  {group.worker && <span className="text-xs text-gray-500">({group.worker})</span>}
-                  <span className="ml-auto text-xs text-gray-400">{group.rows.length}개 품목</span>
-                </div>
-
-                {group.rows.length === 0 ? (
-                  <div className="px-4 py-3 text-sm text-gray-400">등록된 재고 없음</div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          {["품명", "수량", "LOT번호", "비고"].map((h) => (
-                            <th key={h} className="px-3 py-2 text-left text-xs text-gray-600 font-semibold">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {group.rows.map((row, ri) => {
-                          const rmKey = `${group.shift}|${row.product}`;
-                          const lotKey = `${group.shift}|${ri}`;
-                          const remark = remarks[rmKey] ?? "";
-                          const lotVal = selectedLots[lotKey] ?? row.lots[0] ?? "";
-                          return (
-                            <tr key={row.product} className="border-t border-gray-50 hover:bg-gray-50">
-                              <td className="px-3 py-2 text-xs text-gray-700 font-medium">{row.product}</td>
-                              <td className="px-3 py-2 text-xs text-center tabular-nums font-semibold text-gray-800">
-                                {row.qty}
-                              </td>
-                              <td className="px-3 py-2 text-xs">
-                                {row.lots.length > 1 ? (
-                                  <select
-                                    value={lotVal}
-                                    onChange={(e) => setSelectedLots((prev) => ({ ...prev, [lotKey]: e.target.value }))}
-                                    className="border border-gray-200 rounded px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#4B2D8E] max-w-[140px]"
-                                  >
-                                    {row.lots.map((l) => <option key={l}>{l}</option>)}
-                                  </select>
-                                ) : (
-                                  <span className="font-mono text-gray-600">{row.lots[0] ?? "-"}</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-2">
-                                <input
-                                  value={remark}
-                                  onChange={(e) => setRemarks((prev) => ({ ...prev, [rmKey]: e.target.value }))}
-                                  onBlur={() => handleRemarkSave(group.shift, row.product, remark)}
-                                  onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
-                                  placeholder="비고 입력 후 Enter"
-                                  className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#4B2D8E] min-w-[100px]"
-                                />
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+            {groups.map((group) => {
+              const productGroups = groupByProduct(group.entries);
+              return (
+                <div key={group.shift} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
+                    <span className="font-bold text-gray-800 text-sm">{group.shift}</span>
+                    {group.worker && <span className="text-xs text-gray-500">({group.worker})</span>}
+                    <span className="ml-auto text-xs text-gray-400">{group.entries.length}건</span>
                   </div>
-                )}
-              </div>
-            ))}
+                  {productGroups.length === 0 ? (
+                    <div className="px-4 py-3 text-sm text-gray-400">등록된 재고 없음</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            {["품명", "LOT번호", "시간", "비고", ""].map((h, i) => (
+                              <th key={i} className="px-3 py-2 text-left text-xs text-gray-600 font-semibold">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {productGroups.map(({ product, lots }) => {
+                            const rmKey = `${group.shift}|${product}`;
+                            const remark = remarks[rmKey] ?? "";
+                            return lots.map((entry, ei) => (
+                              <tr key={`${entry.lot}|${entry.recorded_at}`}
+                                className="border-t border-gray-50 hover:bg-gray-50">
+                                {ei === 0 && (
+                                  <td className="px-3 py-2 text-xs text-gray-700 font-medium align-top" rowSpan={lots.length}>
+                                    <div className="flex items-center gap-1">
+                                      <span>{product}</span>
+                                      <span className="text-gray-400">({lots.length})</span>
+                                    </div>
+                                  </td>
+                                )}
+                                <td className="px-3 py-2 text-xs font-mono text-gray-600">{entry.lot}</td>
+                                <td className="px-3 py-2 text-xs text-gray-400 whitespace-nowrap">
+                                  {entry.recorded_at.slice(11, 16)}
+                                </td>
+                                {ei === 0 && (
+                                  <td className="px-3 py-2 align-top" rowSpan={lots.length}>
+                                    <input
+                                      value={remark}
+                                      onChange={(e) => setRemarks((prev) => ({ ...prev, [rmKey]: e.target.value }))}
+                                      onBlur={() => handleRemarkSave(group.shift, product, remark)}
+                                      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                                      placeholder="비고"
+                                      className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#4B2D8E] min-w-[80px]"
+                                    />
+                                  </td>
+                                )}
+                                <td className="px-2 py-2 text-center">
+                                  <button
+                                    onClick={() => setConfirmTarget({ shift: group.shift, entry })}
+                                    className="text-gray-300 hover:text-red-400 transition-colors"
+                                    title="기록에서 제외">
+                                    <X size={14} />
+                                  </button>
+                                </td>
+                              </tr>
+                            ));
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
+
+      {/* 삭제 확인 다이얼로그 */}
+      {confirmTarget && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4">
+            <h3 className="font-bold text-gray-800 text-base">기록 제외 확인</h3>
+            <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-700 space-y-1">
+              <p><span className="text-gray-400">LOT</span> <span className="font-mono font-semibold">{confirmTarget.entry.lot}</span></p>
+              <p><span className="text-gray-400">품명</span> <span className="font-semibold">{confirmTarget.entry.product}</span></p>
+              <p><span className="text-gray-400">시간</span> {confirmTarget.entry.recorded_at.slice(0, 16)}</p>
+            </div>
+            <p className="text-xs text-gray-500">일일 재고기록에서 제외됩니다. 실제 스캔 이력은 보존되며 수정기록에서 확인할 수 있습니다.</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirmTarget(null)}
+                className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600">
+                취소
+              </button>
+              <button onClick={handleHideConfirm} disabled={hiding}
+                className="px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50">
+                {hiding ? "처리 중..." : "제외"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 수정기록 팝업 */}
+      {showHidden && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-800 text-base">수정기록 — {date}</h3>
+              <button onClick={() => setShowHidden(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+            {hiddenLoading ? (
+              <div className="text-center text-gray-400 py-8">불러오는 중...</div>
+            ) : hiddenList.length === 0 ? (
+              <div className="text-center text-gray-400 py-8 text-sm">제외된 기록이 없습니다.</div>
+            ) : (
+              <div className="overflow-y-auto flex-1">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      {["근무", "품명", "LOT번호", "시간", "제외시각"].map(h => (
+                        <th key={h} className="px-3 py-2 text-left text-gray-600 font-semibold">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hiddenList.map((h, i) => (
+                      <tr key={i} className="border-t border-gray-50">
+                        <td className="px-3 py-2 text-gray-500">{h.shift}</td>
+                        <td className="px-3 py-2 font-medium text-gray-700">{h.product}</td>
+                        <td className="px-3 py-2 font-mono text-gray-600">{h.lot}</td>
+                        <td className="px-3 py-2 text-gray-400">{h.recorded_at.slice(11, 16)}</td>
+                        <td className="px-3 py-2 text-gray-400">{h.hidden_at.slice(11, 16)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }

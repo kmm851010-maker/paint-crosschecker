@@ -377,3 +377,40 @@ def upsert_daily_inventory_remark(date_str: str, shift: str, product: str, remar
          "remark": remark, "updated_at": _kst_now()},
         on_conflict="record_date,shift,product",
     ).execute()
+
+
+def get_history_in_range(start_kst: str, end_kst: str) -> list:
+    """recorded_at 범위로 inventory_history 전체 조회 (페이지네이션)."""
+    sb = _sb()
+    PAGE = 500
+    results = []
+    offset = 0
+    while True:
+        res = sb.table("inventory_history") \
+            .select("lot,product,maker,prev_sector,new_sector,recorded_at") \
+            .gte("recorded_at", start_kst) \
+            .lt("recorded_at", end_kst) \
+            .order("recorded_at") \
+            .range(offset, offset + PAGE - 1) \
+            .execute()
+        batch = res.data or []
+        results.extend(batch)
+        if len(batch) < PAGE:
+            break
+        offset += PAGE
+    return results
+
+
+def hide_daily_inventory_entry(date: str, shift: str, lot: str, product: str, recorded_at: str):
+    """일일 재고기록 특정 항목 숨김 처리 (soft delete)."""
+    _sb().table("daily_inventory_hidden").upsert({
+        "date": date, "shift": shift, "lot": lot,
+        "product": product, "recorded_at": recorded_at, "hidden_at": _kst_now(),
+    }, on_conflict="date,lot,recorded_at").execute()
+
+
+def get_daily_inventory_hidden(date: str) -> list:
+    """해당 날짜의 숨김 처리된 항목 목록 반환."""
+    res = _sb().table("daily_inventory_hidden").select("*").eq("date", date) \
+        .order("hidden_at").execute()
+    return res.data or []

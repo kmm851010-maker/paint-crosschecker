@@ -281,6 +281,16 @@ export async function exportDailyInventoryExcel(date: string, shift_groups: unkn
   return data;
 }
 
+export async function hideDailyInventoryEntry(date: string, shift: string, lot: string, product: string, recorded_at: string) {
+  const { data } = await api.post("/api/daily-inventory/hide", { date, shift, lot, product, recorded_at });
+  return data;
+}
+
+export async function getHiddenDailyInventory(date: string) {
+  const { data } = await api.get("/api/daily-inventory/hidden", { params: { date } });
+  return data;
+}
+
 // ── Additional Types ──
 export interface Employee {
   department: string;

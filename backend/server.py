@@ -1399,10 +1399,11 @@ class UpsertRemarkRequest(BaseModel):
 
 @app.get("/api/daily-inventory")
 async def get_daily_inventory(date: str):
-    """date=YYYY-MM-DD. 근별 입고 품목 + 비고 반환."""
+    """date=YYYY-MM-DD. 근별 스캔/이동 이력 항목 + 비고 반환. 소스: inventory_history."""
     import datetime as _dt
     from utils.supabase_db import (
-        load_daily_detail, get_inventory_registered_in_range, get_daily_inventory_remarks,
+        load_daily_detail, get_history_in_range, get_daily_inventory_remarks,
+        get_daily_inventory_hidden,
     )
     try:
         d = _dt.date.fromisoformat(date)
@@ -1432,21 +1433,33 @@ async def get_daily_inventory(date: str):
     remarks_raw = get_daily_inventory_remarks(date)
     remarks_map = {(r["shift"], r["product"]): r["remark"] for r in remarks_raw}
 
+    hidden_raw = get_daily_inventory_hidden(date)
+    hidden_set = {(r["lot"], r["recorded_at"]) for r in hidden_raw}
+
+    EXCLUDE_SECTORS = {"라인입고", "반품완료"}
+
     shift_groups = []
     for sname, sstart, send, sworker in shifts:
-        items = get_inventory_registered_in_range(sstart, send)
-        pmap: dict = {}
+        items = get_history_in_range(sstart, send)
+        entries = []
         for it in items:
-            if (it.get("remark") or "") == "신규":
+            if (it.get("new_sector") or "") in EXCLUDE_SECTORS:
                 continue
-            prod = (it.get("product") or "").strip() or "미상"
-            pmap.setdefault(prod, []).append((it.get("lot") or "").strip())
-        rows = [
-            {"product": p, "qty": len(ls), "lots": sorted(ls),
-             "remark": remarks_map.get((sname, p), "")}
-            for p, ls in pmap.items()
-        ]
-        shift_groups.append({"shift": sname, "worker": sworker, "rows": rows})
+            lot = (it.get("lot") or "").strip()
+            recorded_at = (it.get("recorded_at") or "").strip()
+            if (lot, recorded_at) in hidden_set:
+                continue
+            product = (it.get("product") or "").strip() or "미상"
+            entries.append({"lot": lot, "product": product, "recorded_at": recorded_at})
+        # remarks: product → remark (for this shift)
+        shift_remarks = {
+            p: remarks_map.get((sname, p), "")
+            for p in {e["product"] for e in entries}
+        }
+        shift_groups.append({
+            "shift": sname, "worker": sworker,
+            "entries": entries, "remarks": shift_remarks,
+        })
 
     return {"success": True, "date": date, "shift_data": shift_data, "shift_groups": shift_groups}
 
@@ -1459,6 +1472,36 @@ async def upsert_remark(req: UpsertRemarkRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"success": True}
+
+
+class HideDailyInventoryRequest(BaseModel):
+    date: str
+    shift: str
+    lot: str
+    product: str
+    recorded_at: str
+
+
+@app.post("/api/daily-inventory/hide")
+async def hide_daily_inventory(req: HideDailyInventoryRequest):
+    """일일 재고기록 항목 숨김 처리 (soft delete — 실제 이력은 보존)."""
+    from utils.supabase_db import hide_daily_inventory_entry
+    try:
+        hide_daily_inventory_entry(req.date, req.shift, req.lot, req.product, req.recorded_at)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True}
+
+
+@app.get("/api/daily-inventory/hidden")
+async def get_hidden_daily_inventory(date: str):
+    """해당 날짜의 숨김 처리된 항목 목록 반환."""
+    from utils.supabase_db import get_daily_inventory_hidden
+    try:
+        hidden = get_daily_inventory_hidden(date)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, "hidden": hidden}
 
 
 class DailyInventoryExportRequest(BaseModel):
