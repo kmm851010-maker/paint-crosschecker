@@ -56,6 +56,16 @@ export default function DailyInventoryPage() {
   const [remarks, setRemarks] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  // 품목별 LOT 드롭다운 열림 상태: "shift|product"
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  function toggleExpand(shift: string, product: string) {
+    const key = `${shift}|${product}`;
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
   // 삭제 확인 다이얼로그
   const [confirmTarget, setConfirmTarget] = useState<{ shift: string; entry: EntryItem } | null>(null);
   const [hiding, setHiding] = useState(false);
@@ -212,8 +222,8 @@ export default function DailyInventoryPage() {
                       <table className="w-full text-sm">
                         <thead className="bg-gray-50">
                           <tr>
-                            {["품명", "LOT번호", "시간", "비고", ""].map((h, i) => (
-                              <th key={i} className="px-3 py-2 text-left text-xs text-gray-600 font-semibold">{h}</th>
+                            {["품명", "수량", "LOT번호", "비고"].map((h) => (
+                              <th key={h} className="px-3 py-2 text-left text-xs text-gray-600 font-semibold">{h}</th>
                             ))}
                           </tr>
                         </thead>
@@ -221,23 +231,24 @@ export default function DailyInventoryPage() {
                           {productGroups.map(({ product, lots }) => {
                             const rmKey = `${group.shift}|${product}`;
                             const remark = remarks[rmKey] ?? "";
-                            return lots.map((entry, ei) => (
-                              <tr key={`${entry.lot}|${entry.recorded_at}`}
-                                className="border-t border-gray-50 hover:bg-gray-50">
-                                {ei === 0 && (
-                                  <td className="px-3 py-2 text-xs text-gray-700 font-medium align-top" rowSpan={lots.length}>
-                                    <div className="flex items-center gap-1">
-                                      <span>{product}</span>
-                                      <span className="text-gray-400">({lots.length})</span>
-                                    </div>
+                            const expKey = `${group.shift}|${product}`;
+                            const isOpen = expandedRows.has(expKey);
+                            return (
+                              <>
+                                <tr key={product} className="border-t border-gray-50 hover:bg-gray-50">
+                                  <td className="px-3 py-2 text-xs text-gray-700 font-medium">{product}</td>
+                                  <td className="px-3 py-2 text-xs text-center font-semibold text-gray-800 tabular-nums">
+                                    {lots.length}
                                   </td>
-                                )}
-                                <td className="px-3 py-2 text-xs font-mono text-gray-600">{entry.lot}</td>
-                                <td className="px-3 py-2 text-xs text-gray-400 whitespace-nowrap">
-                                  {entry.recorded_at.slice(11, 16)}
-                                </td>
-                                {ei === 0 && (
-                                  <td className="px-3 py-2 align-top" rowSpan={lots.length}>
+                                  <td className="px-3 py-2 text-xs">
+                                    <button
+                                      onClick={() => toggleExpand(group.shift, product)}
+                                      className="flex items-center gap-1 font-mono text-gray-600 hover:text-[#4B2D8E] transition-colors">
+                                      <span>{lots[0]?.lot ?? "-"}{lots.length > 1 ? ` 외 ${lots.length - 1}개` : ""}</span>
+                                      <span className={`text-gray-400 text-[10px] transition-transform ${isOpen ? "rotate-180" : ""}`}>▾</span>
+                                    </button>
+                                  </td>
+                                  <td className="px-3 py-2">
                                     <input
                                       value={remark}
                                       onChange={(e) => setRemarks((prev) => ({ ...prev, [rmKey]: e.target.value }))}
@@ -247,17 +258,30 @@ export default function DailyInventoryPage() {
                                       className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#4B2D8E] min-w-[80px]"
                                     />
                                   </td>
+                                </tr>
+                                {isOpen && (
+                                  <tr key={`${product}-lots`} className="bg-gray-50/70">
+                                    <td colSpan={4} className="px-4 pb-2 pt-1">
+                                      <div className="flex flex-col gap-0.5">
+                                        {lots.map((entry) => (
+                                          <div key={`${entry.lot}|${entry.recorded_at}`}
+                                            className="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-100 group">
+                                            <span className="font-mono text-xs text-gray-600 flex-1">{entry.lot}</span>
+                                            <span className="text-xs text-gray-400">{entry.recorded_at.slice(11, 16)}</span>
+                                            <button
+                                              onClick={() => setConfirmTarget({ shift: group.shift, entry })}
+                                              className="text-gray-300 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                                              title="기록에서 제외">
+                                              <X size={13} />
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </td>
+                                  </tr>
                                 )}
-                                <td className="px-2 py-2 text-center">
-                                  <button
-                                    onClick={() => setConfirmTarget({ shift: group.shift, entry })}
-                                    className="text-gray-300 hover:text-red-400 transition-colors"
-                                    title="기록에서 제외">
-                                    <X size={14} />
-                                  </button>
-                                </td>
-                              </tr>
-                            ));
+                              </>
+                            );
                           })}
                         </tbody>
                       </table>
