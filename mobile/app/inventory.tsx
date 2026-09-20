@@ -278,6 +278,7 @@ export default function InventoryScreen() {
   const [scanManual, setScanManual] = useState(false);
   const [ingoScanDisabled, setIngoScanDisabled] = useState(false);
   const [showIngoPrompt, setShowIngoPrompt] = useState(false);
+  const [returnType, setReturnType] = useState<"불량"|"기술"|"무상"|"">(""); // 섹터 선택 시 반품 종류
   const [showBatchMoveModal, setShowBatchMoveModal] = useState(false);
   const [expandedSectors, setExpandedSectors] = useState<Set<string>>(new Set());
   const [statusTab, setStatusTab] = useState<"sector"|"history">("sector");
@@ -603,16 +604,23 @@ export default function InventoryScreen() {
     setShowIngoPrompt(false);
     setMode("scanning");
     setLoading(true);
+    const savedReturnType = returnType;
+    setReturnType("");
     try {
       const drumsToSend = sector === "입고존"
         ? batch.map(d => ({ ...d, scanDisabled: scanDis ?? false }))
         : batch;
       const result = await registerDrums(drumsToSend, sector);
       const count = batch.length;
+      if (savedReturnType && sector !== CHECKOUT) {
+        await setDrumReturnStatus(drumsToSend, savedReturnType);
+      }
       setBatch([]);
       setIngoScanDisabled(false);
       if (sector === CHECKOUT) {
         _alert("저장 완료", `${count}드럼 라인입고 처리 완료`);
+      } else if (savedReturnType) {
+        _alert("저장 완료", `${count}드럼 → ${sector} 등록\n반품유형: ${savedReturnType}`);
       } else {
         _alert("저장 완료", `${count}드럼 → ${sector} 등록 완료\n계속 스캔할 수 있습니다.`);
       }
@@ -805,6 +813,32 @@ export default function InventoryScreen() {
           ) : (
             <>
               <Text style={styles.modalTitle}>{batch.length}드럼 → 섹터 선택</Text>
+              {/* 반품 종류 선택 (1행 라디오) */}
+              <View style={{ flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 12 }}>
+                {(["불량", "기술", "무상"] as const).map(t => {
+                  const color = t === "불량" ? "#EF4444" : t === "기술" ? "#F59E0B" : "#3B82F6";
+                  const selected = returnType === t;
+                  return (
+                    <TouchableOpacity
+                      key={t}
+                      onPress={() => setReturnType(selected ? "" : t)}
+                      style={{
+                        flexDirection: "row", alignItems: "center", gap: 4,
+                        paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+                        borderWidth: 1.5,
+                        borderColor: selected ? color : "#4B5563",
+                        backgroundColor: selected ? color + "22" : "transparent",
+                      }}>
+                      <View style={{
+                        width: 14, height: 14, borderRadius: 7, borderWidth: 1.5,
+                        borderColor: selected ? color : "#6B7280",
+                        backgroundColor: selected ? color : "transparent",
+                      }} />
+                      <Text style={{ color: selected ? color : "#9CA3AF", fontSize: 13, fontWeight: "600" }}>{t}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
               <ScrollView>
                 {SECTORS.map((s) => (
                   <TouchableOpacity key={s} style={styles.sectorBtn} onPress={() => handleSectorSelect(s)}>
