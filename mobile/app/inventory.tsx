@@ -64,6 +64,11 @@ function normalizeLot(raw: string): string {
 // 숫자 자리(2,5,6번째)에만 I/O 허용 — B,S는 화학명(KOCOSOL 등) 오매칭 유발로 제외
 // 영어 자리(1,3,7번째)는 [A-Z] 유지 — 확장 시 false positive 폭증
 const ITEM_RE = /[A-Z][0-9IO][A-Z][A-Z0-9][0-9IO]{2}[A-Z]/g;
+// OCR에서 브랜드명이 품명으로 오인식되는 것을 차단하는 블랙리스트
+const BRAND_BLACKLIST = ["NOROO", "PAINT", "COLOR", "KOREA", "JEBEE", "KCC"];
+function isBrandText(text: string): boolean {
+  return BRAND_BLACKLIST.some(b => text.toUpperCase().includes(b));
+}
 function normalizeProduct(raw: string): string {
   const a = raw.split("");
   // 숫자 자리(index 1,4,5)만 정규화: I→1, O→0
@@ -172,6 +177,7 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
       return bH - aH;
     });
     for (const block of blocksByFont) {
+      if (isBrandText(block.text)) continue; // 브랜드명 블록 스킵
       const bf = block.text.replace(/[-\s]/g, "").toUpperCase();
       const matches = [...bf.matchAll(ITEM_RE)].map(m => normalizeProduct(m[0]));
       if (matches.length > 0) {
@@ -181,9 +187,11 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
     }
   }
 
-  // 우선순위 4: 승인목록 퍼지 매칭 폴백 (전체 텍스트)
+  // 우선순위 4: 승인목록 퍼지 매칭 폴백 (전체 텍스트, 브랜드명 제외)
   if (!product) {
-    const allItemMatches = [...flat.matchAll(ITEM_RE)].map(m => normalizeProduct(m[0]));
+    const allItemMatches = [...flat.matchAll(ITEM_RE)]
+      .map(m => normalizeProduct(m[0]))
+      .filter(p => !isBrandText(p));
     if (allItemMatches.length > 0) {
       product = allItemMatches.find(p => APPROVED_PRODUCTS.has(p)) ?? allItemMatches[0];
     }
@@ -656,8 +664,22 @@ export default function InventoryScreen() {
       const newItems: DrumItem[] = filledLots
         .filter(l => !batchRef.current.some(d => d.lot === l))
         .map(l => ({ lot: l, product, maker: MAKER_MAP[l[0]] ?? "미상" }));
-      setBatch(prev => [...prev, ...newItems]);
-      setManualBulk(null);
+      const finalSave = () => { setBatch(prev => [...prev, ...newItems]); setManualBulk(null); };
+      const unknownLots = knownLotsRef.current.size > 0
+        ? filledLots.filter(l => !knownLotsRef.current.has(l))
+        : [];
+      if (unknownLots.length > 0) {
+        Alert.alert(
+          "LOT번호 확인",
+          `입고된 내역이 없는 LOT번호입니다.\n\n${unknownLots.join("\n")}\n\n라벨의 LOT번호를 확인 후 계속하시겠습니까?`,
+          [
+            { text: "취소", style: "cancel" },
+            { text: "확인", onPress: finalSave },
+          ]
+        );
+      } else {
+        finalSave();
+      }
     };
 
     if (!APPROVED_PRODUCTS.has(product) && !localApprovedRef.current.has(product)) {
@@ -691,6 +713,19 @@ export default function InventoryScreen() {
     };
     if (editingItem.index === -1) {
       if (!editingItem.lot || !editingItem.product) return;
+      const finalAdd = () => {
+        setBatch(prev => prev.some(d => d.lot === editingItem.lot) ? prev : [...prev, newItem]);
+        setEditingItem(null);
+      };
+      const doLotCheck = (onOk: () => void) => {
+        if (knownLotsRef.current.size > 0 && !knownLotsRef.current.has(editingItem.lot)) {
+          Alert.alert(
+            "LOT번호 확인",
+            `입고된 내역이 없는 LOT번호입니다.\n\nLOT: ${editingItem.lot}\n\n라벨의 LOT번호를 확인 후 계속하시겠습니까?`,
+            [{ text: "취소", style: "cancel" }, { text: "확인", onPress: onOk }]
+          );
+        } else { onOk(); }
+      };
       // 수동등록 시 미등록 품목 확인
       if (!APPROVED_PRODUCTS.has(editingItem.product) && !localApprovedRef.current.has(editingItem.product)) {
         Alert.alert(
@@ -709,15 +744,15 @@ export default function InventoryScreen() {
                     AsyncStorage.setItem(ASYNC_KEY_APPROVED, JSON.stringify(arr));
                   }
                 }).catch(() => {});
-                setBatch(prev => prev.some(d => d.lot === editingItem.lot) ? prev : [...prev, newItem]);
-                setEditingItem(null);
+                doLotCheck(finalAdd);
               },
             },
           ]
         );
         return;
       }
-      setBatch(prev => prev.some(d => d.lot === editingItem.lot) ? prev : [...prev, newItem]);
+      doLotCheck(finalAdd);
+      return;
     } else {
       setBatch(prev => {
         const next = [...prev];
