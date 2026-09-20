@@ -49,13 +49,13 @@ const toLetter = (c: string) => LETTER_FIX[c] ?? c;
 // ── OCR 추출 패턴 ──
 // LOT: 영어(제조사) + 숫자2(년도) + 영어(월A-L) + 숫자5(일련번호)
 // - 제조사 자리: S↔5, G↔6 허용
-// - 월 자리: I↔1, B↔8, G↔6 허용
+// - 월 자리: I↔1, B↔8, G↔6 허용; 세리프 없는 I는 1/|/! 로 오인식 가능 → 모두 I로 정규화
 // - 일련번호: I↔1, O↔0 허용 (B/S는 오매칭 위험으로 제외)
-const LOT_RE = /[GDKSYP56][0-9]{2}[A-L1][0-9OI]{5}/;
+const LOT_RE = /[GDKSYP56][0-9]{2}[A-L1|!][0-9OI]{5}/;
 function normalizeLot(raw: string): string {
   const a = raw.split("");
-  a[0] = ({ "5": "S", "6": "G" }[a[0]] ?? a[0]);   // 제조사: 무조건 영어
-  a[3] = ({ "1": "I" }[a[3]] ?? a[3]);              // 월: I(9월)↔1만 처리
+  a[0] = ({ "5": "S", "6": "G" }[a[0]] ?? a[0]);          // 제조사: 무조건 영어
+  a[3] = ({ "1": "I", "|": "I", "!": "I" }[a[3]] ?? a[3]); // 월: 세로 1자 모양 → I
   for (let i = 4; i <= 8; i++) a[i] = a[i] === "I" ? "1" : a[i] === "O" ? "0" : a[i]; // 일련번호: I→1, O→0만
   return a.join("");
 }
@@ -74,7 +74,7 @@ const PRODUCT_CORRECTIONS: Record<string, string> = {
   "E7GZ31H": "E7G231H",
 };
 // 라벨에 존재하지 않으나 OCR이 오인식하는 품명 블랙리스트
-const PRODUCT_BLACKLIST = new Set(["S0L150P"]);
+const PRODUCT_BLACKLIST = new Set(["S0L150P", "L1AX00H"]);
 function normalizeProduct(raw: string): string {
   const a = raw.split("");
   // 숫자 자리(index 1,4,5)만 정규화: I→1, O→0
