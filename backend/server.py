@@ -1484,6 +1484,7 @@ async def get_daily_inventory(date: str):
     for sname, sstart, send, sworker in shifts:
         items = get_history_in_range(sstart, send)
         entries = []
+        seen_lots: set[str] = set()
         for it in items:
             if (it.get("new_sector") or "") in EXCLUDE_SECTORS:
                 continue
@@ -1491,6 +1492,9 @@ async def get_daily_inventory(date: str):
             recorded_at = (it.get("recorded_at") or "").strip()
             if (lot, recorded_at) in hidden_set:
                 continue
+            if lot in seen_lots:
+                continue
+            seen_lots.add(lot)
             product = (it.get("product") or "").strip() or "미상"
             entries.append({"lot": lot, "product": product, "recorded_at": recorded_at})
         # remarks: product → remark (for this shift)
