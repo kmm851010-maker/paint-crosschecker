@@ -737,20 +737,26 @@ async def get_inventory_history_endpoint(from_dt: str = "", to_dt: str = ""):
 
 @app.get("/api/inventory/known-lots")
 async def get_known_lots():
-    """알려진 LOT 목록 반환: 현재 재고 전체 + 신규 등록 이력(prev_sector='') 합산."""
+    """알려진 LOT 목록 반환: 현재 재고 전체 + 최근 2년 신규 등록 이력(prev_sector='').
+    2년 초과 이력은 자동 삭제 (라인입고해도 기준에서 제거되지 않음)."""
     from utils.inventory_supabase import _sb
+    import datetime as _dt
+    now_kst = _dt.datetime.utcnow() + _dt.timedelta(hours=9)
+    cutoff = (now_kst - _dt.timedelta(days=730)).strftime("%Y-%m-%d")
     sb = _sb()
+    # 2년 초과 신규 등록 이력 순차 폐기
+    sb.table("inventory_history").delete().eq("prev_sector", "").lt("recorded_at", cutoff).execute()
     all_lots: set = set()
-    # 현재 재고 전체
+    # 현재 재고 전체 (라인입고 여부 무관)
     inv_res = sb.table("inventory").select("lot").execute()
     for r in inv_res.data:
         if r.get("lot"):
             all_lots.add(r["lot"])
-    # 신규 등록 이력 (페이지네이션)
+    # 최근 2년 신규 등록 이력 (페이지네이션)
     page_size = 1000
     offset = 0
     while True:
-        res = sb.table("inventory_history").select("lot").eq("prev_sector", "").range(offset, offset + page_size - 1).execute()
+        res = sb.table("inventory_history").select("lot").eq("prev_sector", "").gte("recorded_at", cutoff).range(offset, offset + page_size - 1).execute()
         for r in res.data:
             if r.get("lot"):
                 all_lots.add(r["lot"])
