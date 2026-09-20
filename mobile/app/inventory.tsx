@@ -69,6 +69,10 @@ const BRAND_BLACKLIST = ["NOROO", "SAMHWA", "KCC"];
 function isBrandText(text: string): boolean {
   return BRAND_BLACKLIST.some(b => text.toUpperCase().includes(b));
 }
+// 알려진 OCR 오인식 품명 교정 (정규화 후 적용)
+const PRODUCT_CORRECTIONS: Record<string, string> = {
+  "E7GZ31H": "E7G231H",
+};
 function normalizeProduct(raw: string): string {
   const a = raw.split("");
   // 숫자 자리(index 1,4,5)만 정규화: I→1, O→0
@@ -76,7 +80,8 @@ function normalizeProduct(raw: string): string {
   a[1] = fixDigit(a[1]);
   a[4] = fixDigit(a[4]);
   a[5] = fixDigit(a[5]);
-  return a.join("");
+  const result = a.join("");
+  return PRODUCT_CORRECTIONS[result] ?? result;
 }
 const LOT_KEYWORDS = ["DRUM LOT", "LOT.NO", "DRUM NO", "LOT NO", "LOT", "롯트번호"];
 
