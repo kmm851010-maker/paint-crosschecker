@@ -8,7 +8,7 @@ import {
   setScanDisabled, getInventoryHistory, parsePdfLots,
   DrumItem, SECTORS, MAKERS, isRecentlyRegistered,
 } from "@/lib/api";
-import { isAdmin } from "@/lib/auth";
+import { isAdmin, isAttendanceManager } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { RefreshCw, Download } from "lucide-react";
 import { fileToBase64 } from "@/lib/utils";
@@ -572,8 +572,16 @@ export default function InventoryPage() {
             </div>
             {row.some(([k]) => k === activeGroup) && activeGroup && (
               <div className="mb-4 rounded-lg border-l-4 border-blue-500 bg-blue-50/50 p-3">
-                <div className="font-semibold text-blue-800 text-sm mb-3">
-                  {activeGroup} — {groupedDrums[activeGroup].length}드럼
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="font-semibold text-blue-800 text-sm">
+                    {activeGroup} — {groupedDrums[activeGroup].length}드럼
+                  </span>
+                  {activeGroup === "창고" && isAttendanceManager() && (
+                    <a href={`/lot-check?sector=창고`}
+                      className="text-xs px-2 py-0.5 rounded border border-blue-300 text-blue-600 hover:bg-blue-100 transition-colors">
+                      LOT 대조
+                    </a>
+                  )}
                 </div>
                 <DrumTable drums={groupedDrums[activeGroup]} selectedLots={selectedLots}
                   onToggle={toggleLot} onToggleAll={toggleAll} showSector={false} />

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { lotCheck } from "@/lib/api";
 import { isAttendanceManager } from "@/lib/auth";
@@ -22,8 +22,9 @@ interface CheckResult {
 
 export default function LotCheckPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [authorized, setAuthorized] = useState(false);
-  const [sector, setSector] = useState("창고");
+  const [sector, setSector] = useState(() => searchParams.get("sector") ?? "창고");
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<CheckResult | null>(null);
