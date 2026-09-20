@@ -73,6 +73,8 @@ function isBrandText(text: string): boolean {
 const PRODUCT_CORRECTIONS: Record<string, string> = {
   "E7GZ31H": "E7G231H",
 };
+// 라벨에 존재하지 않으나 OCR이 오인식하는 품명 블랙리스트
+const PRODUCT_BLACKLIST = new Set(["S0L150P"]);
 function normalizeProduct(raw: string): string {
   const a = raw.split("");
   // 숫자 자리(index 1,4,5)만 정규화: I→1, O→0
@@ -81,7 +83,8 @@ function normalizeProduct(raw: string): string {
   a[4] = fixDigit(a[4]);
   a[5] = fixDigit(a[5]);
   const result = a.join("");
-  return PRODUCT_CORRECTIONS[result] ?? result;
+  const corrected = PRODUCT_CORRECTIONS[result] ?? result;
+  return PRODUCT_BLACKLIST.has(corrected) ? "" : corrected;
 }
 const LOT_KEYWORDS = ["DRUM LOT", "LOT.NO", "DRUM NO", "LOT NO", "LOT", "롯트번호"];
 
@@ -101,7 +104,7 @@ function levenshtein(a: string, b: string): number {
 function extractProductCandidates(rawText: string): string[] {
   const flat = rawText.replace(/[-\s]/g, "").toUpperCase();
   const matches = flat.match(/[A-Z][A-Z0-9]{4,8}/g) ?? [];
-  return [...new Set(matches.map(m => normalizeProduct(m.slice(0, 7))))]; // 7자로 정규화
+  return [...new Set(matches.map(m => normalizeProduct(m.slice(0, 7))).filter(Boolean))]; // 7자로 정규화
 }
 
 // APPROVED_PRODUCTS + 사용자 승인 목록 대비 퍼지 매칭 (거리 ≤ 2)
@@ -184,7 +187,7 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
     for (const block of blocksByFont) {
       if (isBrandText(block.text)) continue; // 브랜드명 블록 스킵
       const bf = block.text.replace(/[-\s]/g, "").toUpperCase();
-      const matches = [...bf.matchAll(ITEM_RE)].map(m => normalizeProduct(m[0]));
+      const matches = [...bf.matchAll(ITEM_RE)].map(m => normalizeProduct(m[0])).filter(Boolean);
       if (matches.length > 0) {
         product = matches.find(p => APPROVED_PRODUCTS.has(p)) ?? matches[0];
         break;
@@ -196,7 +199,7 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
   if (!product) {
     const allItemMatches = [...flat.matchAll(ITEM_RE)]
       .map(m => normalizeProduct(m[0]))
-      .filter(p => !isBrandText(p));
+      .filter(p => p && !isBrandText(p));
     if (allItemMatches.length > 0) {
       product = allItemMatches.find(p => APPROVED_PRODUCTS.has(p)) ?? allItemMatches[0];
     }
