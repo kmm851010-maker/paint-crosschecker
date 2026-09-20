@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { lotCheck } from "@/lib/api";
@@ -34,7 +34,7 @@ interface CheckResult {
   only_in_actual: string[];
 }
 
-export default function LotCheckPage() {
+function LotCheckContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sector = searchParams.get("sector") ?? "창고";
@@ -200,5 +200,13 @@ export default function LotCheckPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+export default function LotCheckPage() {
+  return (
+    <Suspense>
+      <LotCheckContent />
+    </Suspense>
   );
 }
