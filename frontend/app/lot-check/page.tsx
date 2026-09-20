@@ -1,15 +1,29 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { lotCheck } from "@/lib/api";
 import { isAttendanceManager } from "@/lib/auth";
 import toast from "react-hot-toast";
+import * as XLSX from "xlsx";
 
-const SECTORS = [
-  "창고", "창고주위", "입고존", "신나자리", "0~3번자리", "4~6번자리",
-  "7A~C자리", "7D~Z자리", "8번자리", "9번자리", "반품자리",
-];
+const LOT_RE = /[A-Z]\d{2}[A-Z]\d{5}/g;
+
+function extractLotsFromWorkbook(wb: XLSX.WorkBook): string[] {
+  const lots = new Set<string>();
+  for (const sheetName of wb.SheetNames) {
+    const sheet = wb.Sheets[sheetName];
+    const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
+    for (const row of rows) {
+      for (const cell of row) {
+        const val = String(cell ?? "").trim().toUpperCase();
+        const matches = val.match(LOT_RE);
+        if (matches) matches.forEach(m => lots.add(m));
+      }
+    }
+  }
+  return [...lots];
+}
 
 interface CheckResult {
   sector: string;
@@ -23,25 +37,44 @@ interface CheckResult {
 export default function LotCheckPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const sector = searchParams.get("sector") ?? "창고";
   const [authorized, setAuthorized] = useState(false);
-  const [sector, setSector] = useState(() => searchParams.get("sector") ?? "창고");
-  const [input, setInput] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [extractedLots, setExtractedLots] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<CheckResult | null>(null);
   const [tab, setTab] = useState<"system" | "actual">("system");
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!isAttendanceManager()) { router.replace("/"); return; }
     setAuthorized(true);
   }, [router]);
 
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    setResult(null);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const lots = extractLotsFromWorkbook(wb);
+      setExtractedLots(lots);
+      if (lots.length === 0) toast.error("엑셀에서 LOT번호를 찾을 수 없습니다.");
+      else toast.success(`LOT ${lots.length}개 추출 완료`);
+    } catch {
+      toast.error("파일 파싱 실패");
+    }
+    e.target.value = "";
+  }
+
   async function handleCheck() {
-    const lots = input.split(/[\n,\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
-    if (lots.length === 0) { toast.error("LOT 목록을 입력해주세요."); return; }
+    if (extractedLots.length === 0) { toast.error("먼저 엑셀 파일을 첨부해주세요."); return; }
     setLoading(true);
     setResult(null);
     try {
-      const res = await lotCheck(sector, lots);
+      const res = await lotCheck(sector, extractedLots);
       setResult(res);
       setTab("system");
     } catch {
@@ -56,47 +89,39 @@ export default function LotCheckPage() {
   return (
     <AppShell>
       <div className="max-w-3xl mx-auto space-y-5 pb-10">
-        <h1 className="text-xl font-bold text-gray-800">재고 LOT 대조</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-bold text-gray-800">재고 LOT 대조</h1>
+          <span className="text-sm text-gray-400">— {sector} 섹터</span>
+        </div>
 
-        {/* 입력 영역 */}
+        {/* 파일 업로드 */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
-          <div className="flex items-center gap-3">
-            <label className="text-sm font-medium text-gray-700 whitespace-nowrap">섹터 선택</label>
-            <select value={sector} onChange={e => setSector(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4B2D8E]">
-              {SECTORS.map(s => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              실제 LOT 목록 붙여넣기
-              <span className="text-gray-400 font-normal ml-2">(줄바꿈·쉼표·공백 구분 모두 가능)</span>
-            </label>
-            <textarea
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              placeholder={"G26F21807\nG26C22502\n..."}
-              rows={10}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#4B2D8E] resize-y"
-            />
-            <p className="text-xs text-gray-400 mt-1">
-              입력된 LOT: {input.split(/[\n,\s]+/).filter(s => s.trim()).length}개
+          <div
+            onClick={() => fileRef.current?.click()}
+            className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:border-[#4B2D8E] hover:bg-purple-50/30 transition-colors">
+            <p className="text-sm font-medium text-gray-600">
+              {fileName ? `📄 ${fileName}` : "엑셀 파일 클릭하여 첨부"}
             </p>
+            <p className="text-xs text-gray-400 mt-1">.xlsx / .xls — 모든 시트에서 LOT 자동 추출</p>
+            {extractedLots.length > 0 && (
+              <p className="text-xs text-purple-600 font-semibold mt-2">추출된 LOT: {extractedLots.length}개</p>
+            )}
           </div>
-          <button onClick={handleCheck} disabled={loading}
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFile} />
+
+          <button onClick={handleCheck} disabled={loading || extractedLots.length === 0}
             className="w-full py-2.5 bg-[#4B2D8E] text-white rounded-lg text-sm font-semibold hover:bg-[#3b2070] disabled:opacity-50 transition-colors">
-            {loading ? "대조 중..." : "대조 실행"}
+            {loading ? "대조 중..." : `대조 실행 (시스템 ${sector} ↔ 엑셀 ${extractedLots.length}개)`}
           </button>
         </div>
 
         {/* 결과 */}
         {result && (
           <div className="space-y-4">
-            {/* 요약 */}
             <div className="grid grid-cols-4 gap-3">
               {[
                 { label: "시스템 등록", value: result.system_count, color: "text-gray-800" },
-                { label: "실제 제공", value: result.actual_count, color: "text-gray-800" },
+                { label: "엑셀 추출", value: result.actual_count, color: "text-gray-800" },
                 { label: "일치", value: result.match_count, color: "text-green-600" },
                 { label: "불일치", value: result.only_in_system.length + result.only_in_actual.length, color: "text-red-500" },
               ].map(({ label, value, color }) => (
@@ -107,17 +132,16 @@ export default function LotCheckPage() {
               ))}
             </div>
 
-            {/* 탭 */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="flex border-b border-gray-100">
                 <button onClick={() => setTab("system")}
                   className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${tab === "system" ? "bg-red-50 text-red-600 border-b-2 border-red-400" : "text-gray-500 hover:bg-gray-50"}`}>
                   🔴 시스템에만 있음 ({result.only_in_system.length}개)
-                  <span className="text-xs font-normal ml-1">— 실제 없는 드럼</span>
+                  <span className="text-xs font-normal ml-1">— 엑셀에 없는 드럼</span>
                 </button>
                 <button onClick={() => setTab("actual")}
                   className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${tab === "actual" ? "bg-amber-50 text-amber-600 border-b-2 border-amber-400" : "text-gray-500 hover:bg-gray-50"}`}>
-                  🟡 실제에만 있음 ({result.only_in_actual.length}개)
+                  🟡 엑셀에만 있음 ({result.only_in_actual.length}개)
                   <span className="text-xs font-normal ml-1">— 시스템 미등록</span>
                 </button>
               </div>
@@ -129,11 +153,9 @@ export default function LotCheckPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50">
-                        <tr>
-                          {["#", "LOT번호", "품명", "제조사"].map(h => (
-                            <th key={h} className="px-3 py-2 text-left text-xs text-gray-600 font-semibold">{h}</th>
-                          ))}
-                        </tr>
+                        <tr>{["#", "LOT번호", "품명", "제조사"].map(h => (
+                          <th key={h} className="px-3 py-2 text-left text-xs text-gray-600 font-semibold">{h}</th>
+                        ))}</tr>
                       </thead>
                       <tbody>
                         {result.only_in_system.map(({ lot, product, maker }, i) => (
@@ -152,16 +174,14 @@ export default function LotCheckPage() {
 
               {tab === "actual" && (
                 result.only_in_actual.length === 0 ? (
-                  <div className="px-5 py-8 text-center text-sm text-gray-400">실제에만 있는 LOT 없음 ✅</div>
+                  <div className="px-5 py-8 text-center text-sm text-gray-400">엑셀에만 있는 LOT 없음 ✅</div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50">
-                        <tr>
-                          {["#", "LOT번호"].map(h => (
-                            <th key={h} className="px-3 py-2 text-left text-xs text-gray-600 font-semibold">{h}</th>
-                          ))}
-                        </tr>
+                        <tr>{["#", "LOT번호"].map(h => (
+                          <th key={h} className="px-3 py-2 text-left text-xs text-gray-600 font-semibold">{h}</th>
+                        ))}</tr>
                       </thead>
                       <tbody>
                         {result.only_in_actual.map((lot, i) => (
