@@ -66,8 +66,10 @@ export default function DailyInventoryPage() {
       return next;
     });
   }
-  // 삭제 확인 다이얼로그
+  // 단일 삭제 확인 다이얼로그
   const [confirmTarget, setConfirmTarget] = useState<{ shift: string; entry: EntryItem } | null>(null);
+  // 품목 전체 삭제 확인 다이얼로그
+  const [confirmAllTarget, setConfirmAllTarget] = useState<{ shift: string; product: string; lots: EntryItem[] } | null>(null);
   const [hiding, setHiding] = useState(false);
   // 수정기록 팝업
   const [showHidden, setShowHidden] = useState(false);
@@ -128,6 +130,28 @@ export default function DailyInventoryPage() {
     } finally {
       setHiding(false);
       setConfirmTarget(null);
+    }
+  }
+
+  async function handleHideAllConfirm() {
+    if (!confirmAllTarget) return;
+    setHiding(true);
+    try {
+      await Promise.all(
+        confirmAllTarget.lots.map(e =>
+          hideDailyInventoryEntry(date, confirmAllTarget.shift, e.lot, e.product, e.recorded_at)
+        )
+      );
+      setGroups(prev => prev.map(g =>
+        g.shift !== confirmAllTarget.shift ? g :
+        { ...g, entries: g.entries.filter(e => e.product !== confirmAllTarget.product) }
+      ));
+      toast.success(`${confirmAllTarget.product} ${confirmAllTarget.lots.length}건 제외됐습니다.`);
+    } catch {
+      toast.error("처리 실패");
+    } finally {
+      setHiding(false);
+      setConfirmAllTarget(null);
     }
   }
 
@@ -262,6 +286,15 @@ export default function DailyInventoryPage() {
                                 {isOpen && (
                                   <tr key={`${product}-lots`} className="bg-gray-50/70">
                                     <td colSpan={4} className="px-4 pb-2 pt-1">
+                                      {lots.length > 1 && (
+                                        <div className="flex justify-end mb-1">
+                                          <button
+                                            onClick={() => setConfirmAllTarget({ shift: group.shift, product, lots })}
+                                            className="text-xs text-red-400 hover:text-red-600 border border-red-200 hover:border-red-400 rounded px-2 py-0.5 transition-colors">
+                                            전체 제외
+                                          </button>
+                                        </div>
+                                      )}
                                       <div className="flex flex-col gap-0.5">
                                         {lots.map((entry) => (
                                           <div key={`${entry.lot}|${entry.recorded_at}`}
@@ -313,6 +346,30 @@ export default function DailyInventoryPage() {
               <button onClick={handleHideConfirm} disabled={hiding}
                 className="px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50">
                 {hiding ? "처리 중..." : "제외"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 품목 전체 제외 확인 다이얼로그 */}
+      {confirmAllTarget && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4">
+            <h3 className="font-bold text-gray-800 text-base">품목 전체 제외 확인</h3>
+            <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-700 space-y-1">
+              <p><span className="text-gray-400">품명</span> <span className="font-semibold">{confirmAllTarget.product}</span></p>
+              <p><span className="text-gray-400">수량</span> <span className="font-semibold tabular-nums">{confirmAllTarget.lots.length}건</span></p>
+            </div>
+            <p className="text-xs text-gray-500">해당 품목의 모든 LOT를 일일 재고기록에서 제외합니다. 실제 스캔 이력은 보존되며 수정기록에서 확인할 수 있습니다.</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirmAllTarget(null)}
+                className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600">
+                취소
+              </button>
+              <button onClick={handleHideAllConfirm} disabled={hiding}
+                className="px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50">
+                {hiding ? "처리 중..." : "전체 제외"}
               </button>
             </div>
           </div>
