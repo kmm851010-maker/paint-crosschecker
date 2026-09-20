@@ -3,7 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { clearAuth, getAuth, isAdmin } from "@/lib/auth";
+import { clearAuth, getAuth, isAdmin, isAttendanceManager } from "@/lib/auth";
 import { changePassword } from "@/lib/api";
 
 const NAV_GROUPS = [
@@ -30,6 +30,11 @@ const ADMIN_GROUP = {
   items: [{ href: "/employees", label: "직원 관리" }],
 };
 
+const KG_GROUP = {
+  label: "재고 관리도구",
+  items: [{ href: "/lot-check", label: "재고 LOT 대조" }],
+};
+
 const MOBILE_URL =
   "https://expo.dev/artifacts/eas/u5zhqFUZ_j00PXWjfRsp58HrpwCaQeq-tO0Q34ZTzvE.apk";
 
@@ -38,6 +43,7 @@ export default function Sidebar({ onToggle }: { onToggle?: () => void }) {
   const router   = useRouter();
   const user     = getAuth();
   const admin    = isAdmin();
+  const isKgOrAdmin = isAttendanceManager();
 
   const [showPwModal, setShowPwModal] = useState(false);
   const [curPw, setCurPw]   = useState("");
@@ -67,7 +73,11 @@ export default function Sidebar({ onToggle }: { onToggle?: () => void }) {
     router.push("/login");
   }
 
-  const groups = admin ? [...NAV_GROUPS, ADMIN_GROUP] : NAV_GROUPS;
+  const groups = [
+    ...NAV_GROUPS,
+    ...(isKgOrAdmin ? [KG_GROUP] : []),
+    ...(admin ? [ADMIN_GROUP] : []),
+  ];
 
   return (
     <>

@@ -736,6 +736,48 @@ async def get_inventory_history_endpoint(from_dt: str = "", to_dt: str = ""):
     return {"success": True, "from_dt": from_dt, "to_dt": to_dt, "history": history}
 
 
+class LotCheckRequest(BaseModel):
+    sector: str
+    lots: list[str]
+
+
+@app.post("/api/inventory/lot-check")
+async def lot_check(req: LotCheckRequest):
+    """섹터 내 시스템 LOT와 제공 LOT 목록을 대조해 불일치 항목 반환."""
+    from utils.inventory_supabase import _sb
+    sb = _sb()
+    actual = {lot.strip().upper() for lot in req.lots if lot.strip()}
+
+    system_data = []
+    offset = 0
+    while True:
+        res = sb.table("inventory").select("lot,product,maker") \
+            .eq("sector", req.sector).range(offset, offset + 999).execute()
+        system_data.extend(res.data)
+        if len(res.data) < 1000:
+            break
+        offset += 1000
+
+    system_set = {r["lot"].strip().upper() for r in system_data}
+    system_map = {r["lot"].strip().upper(): r for r in system_data}
+
+    only_in_system = [
+        {"lot": lot, "product": system_map[lot].get("product", ""), "maker": system_map[lot].get("maker", "")}
+        for lot in sorted(system_set - actual)
+    ]
+    only_in_actual = sorted(actual - system_set)
+
+    return {
+        "success": True,
+        "sector": req.sector,
+        "system_count": len(system_set),
+        "actual_count": len(actual),
+        "match_count": len(system_set & actual),
+        "only_in_system": only_in_system,
+        "only_in_actual": only_in_actual,
+    }
+
+
 @app.get("/api/inventory/known-lots")
 async def get_known_lots():
     """알려진 LOT 목록 반환: 현재 재고 전체 + 최근 2년 신규 등록 이력(prev_sector='').

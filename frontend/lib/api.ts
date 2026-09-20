@@ -291,6 +291,18 @@ export async function getHiddenDailyInventory(date: string) {
   return data;
 }
 
+export async function lotCheck(sector: string, lots: string[]) {
+  const { data } = await api.post("/api/inventory/lot-check", { sector, lots });
+  return data as {
+    sector: string;
+    system_count: number;
+    actual_count: number;
+    match_count: number;
+    only_in_system: { lot: string; product: string; maker: string }[];
+    only_in_actual: string[];
+  };
+}
+
 // ── Additional Types ──
 export interface Employee {
   department: string;
