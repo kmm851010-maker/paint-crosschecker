@@ -177,7 +177,7 @@ function buildCells(year: number, month: number, members: Record<string, string>
 function computePersonDays(year: number, month: number, members: Record<string, string>, leaves: LeaveItem[], name: string) {
   const total = daysInMonth(year, month);
   const memberTeam = Object.entries(members).find(([, v]) => v === name)?.[0];
-  const result: { shift: string; ds: string; leaveType?: string }[] = [];
+  const result: { shift: string; ds: string; leaveType?: string; subReason?: string }[] = [];
 
   for (let d = 1; d <= total; d++) {
     const ds = dateStr(year, month, d);
