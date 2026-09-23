@@ -49,46 +49,76 @@ def _parse_quantity(val) -> tuple:
 
 def _detect_blocks(header_row: list) -> list:
     """
-    헤더 행에서 [코드, 회사, 재고, 신규] 블록을 자동 감지합니다.
+    헤더 행에서 [코드, 회사, 재고, (위치), 신규, (입고)] 블록을 자동 감지합니다.
+    신규 열 기준 역방향 스캔으로 블록 열 수에 무관하게 동작합니다.
+    4열 블록(원본 엑셀)과 6열 블록(이미지 추출 엑셀) 모두 지원.
 
     Returns:
         [{"name": "TOP", "code_col": 0, "maker_col": 1, "stock_col": 2, "new_col": 3}, ...]
     """
     blocks = []
 
-    # 키워드 감지
     new_kw = ["신규", "new"]
     stock_kw = ["재고", "stock"]
     maker_kw = ["회사", "제조", "maker"]
 
-    # '신규' 컬럼 위치 찾기
+    # 신규 컬럼 위치 찾기
     new_cols = []
     for i, h in enumerate(header_row):
         h_str = str(h).lower() if h else ""
-        # 정확히 '신규'가 포함된 컬럼 (접미사 _1, _2 등 포함)
         base = re.sub(r"_\d+$", "", h_str)
         if any(k in base for k in new_kw):
             new_cols.append(i)
 
     if not new_cols:
-        # 신규 컬럼을 못 찾으면 4열 반복 패턴 시도
-        # [코드, 회사, 재고, 신규] 가 4열 단위로 반복
+        # 신규 컬럼을 못 찾으면 4열 반복 패턴 폴백
         total_cols = len(header_row)
-        # 마지막 열이 생산량일 수 있으므로 제외
         data_cols = total_cols - 1 if total_cols % 4 == 1 else total_cols
         for block_start in range(0, data_cols, 4):
             if block_start + 3 < len(header_row):
                 new_cols.append(block_start + 3)
 
-    # 각 신규 컬럼에서 역추적하여 블록 구성
     for new_col in new_cols:
-        code_col = max(0, new_col - 3)
-        maker_col = max(0, new_col - 2)
-        stock_col = max(0, new_col - 1)
+        # ── 역방향 스캔으로 재고 → 회사 → 코드 위치 감지 ──
+        stock_col = None
+        maker_col = None
+        code_col = None
 
-        # 블록 이름: 코드 컬럼의 헤더에서 추출
+        # 재고 열: new_col 바로 왼쪽 최대 5칸 내에서 찾기
+        for i in range(new_col - 1, max(-1, new_col - 6), -1):
+            if i >= len(header_row) or not header_row[i]:
+                continue
+            h_str = str(header_row[i]).lower()
+            base = re.sub(r"_\d+$", "", h_str)
+            if any(k in base for k in stock_kw):
+                stock_col = i
+                break
+
+        # 회사 열: 재고 열 바로 왼쪽에서 찾기
+        search_from = (stock_col - 1) if stock_col is not None else (new_col - 2)
+        for i in range(search_from, max(-1, search_from - 3), -1):
+            if i < 0 or i >= len(header_row) or not header_row[i]:
+                continue
+            h_str = str(header_row[i]).lower()
+            base = re.sub(r"_\d+$", "", h_str)
+            if any(k in base for k in maker_kw):
+                maker_col = i
+                break
+
+        # 코드 열: 회사 열 바로 왼쪽
+        if maker_col is not None and maker_col > 0:
+            code_col = maker_col - 1
+
+        # 폴백: 원래 4열 고정 로직
+        if code_col is None:
+            code_col = max(0, new_col - 3)
+        if maker_col is None:
+            maker_col = max(0, new_col - 2)
+        if stock_col is None:
+            stock_col = max(0, new_col - 1)
+
         name = str(header_row[code_col]) if code_col < len(header_row) else ""
-        name = re.sub(r"_\d+$", "", name)  # _1, _2 등 제거
+        name = re.sub(r"_\d+$", "", name)
 
         blocks.append({
             "name": name,
