@@ -9,6 +9,15 @@ from io import BytesIO
 
 import pandas as pd
 
+CCL_RE = re.compile(r'(\d+CCL)', re.IGNORECASE)
+
+
+def _extract_ccl_type(value) -> str:
+    if not value or (hasattr(value, '__class__') and value.__class__.__name__ == 'float'):
+        return ""
+    m = CCL_RE.search(str(value))
+    return m.group(1).upper() if m else ""
+
 
 def _parse_quantity(val) -> tuple:
     """수량 셀 값을 파싱합니다. (quantity, note) 반환."""
@@ -119,8 +128,17 @@ def parse_plan_excel(file_bytes: bytes, file_name: str) -> list:
     if df.empty or len(df) < 2:
         raise ValueError("데이터가 부족합니다.")
 
-    # 헤더 감지
-    header_row = list(df.iloc[0])
+    # 헤더 감지: 첫 행에서 CCL 타입 탐지 후 실제 컬럼 헤더 행 결정
+    first_row = list(df.iloc[0])
+    current_ccl = _extract_ccl_type(first_row[0]) if first_row else ""
+    # CCL 타입이 첫 행에 있으면 다음 행이 실제 헤더
+    if current_ccl and len(df) > 2:
+        header_row = list(df.iloc[1])
+        data_start = 2
+    else:
+        header_row = first_row
+        data_start = 1
+
     blocks = _detect_blocks(header_row)
 
     if not blocks:
@@ -128,8 +146,15 @@ def parse_plan_excel(file_bytes: bytes, file_name: str) -> list:
 
     # 데이터 행 파싱
     all_items = []
-    for row_idx in range(1, len(df)):
+    for row_idx in range(data_start, len(df)):
         row = df.iloc[row_idx]
+
+        # 행 첫 셀에서 CCL 마커 감지 (다중 섹션 엑셀 지원)
+        first_val = row.iloc[0] if len(row) > 0 else None
+        row_ccl = _extract_ccl_type(first_val)
+        if row_ccl:
+            current_ccl = row_ccl
+            continue  # CCL 마커 행은 데이터 행이 아님
 
         for block in blocks:
             new_col = block["new_col"]
@@ -182,17 +207,18 @@ def parse_plan_excel(file_bytes: bytes, file_name: str) -> list:
                 "신규": qty,
                 "생산량": 0,
                 "비고": note,
+                "ccl_type": current_ccl,
             })
 
-    # 같은 품목코드 합산
+    # 같은 품목코드 + CCL 타입 조합으로 합산
     merged = {}
     for item in all_items:
-        code = item["색상코드"]
-        if code in merged:
-            merged[code]["신규"] += item["신규"]
-            if item["비고"] and not merged[code]["비고"]:
-                merged[code]["비고"] = item["비고"]
+        key = (item["색상코드"], item.get("ccl_type", ""))
+        if key in merged:
+            merged[key]["신규"] += item["신규"]
+            if item["비고"] and not merged[key]["비고"]:
+                merged[key]["비고"] = item["비고"]
         else:
-            merged[code] = item.copy()
+            merged[key] = item.copy()
 
     return list(merged.values())

@@ -14,6 +14,16 @@ import re
 
 import anthropic
 
+CCL_RE = re.compile(r'(\d+CCL)', re.IGNORECASE)
+
+
+def _extract_ccl_type(value) -> str:
+    """셀 값에서 CCL 타입을 추출합니다. 예: '5CCL' → '5CCL', '6CCL...' → '6CCL'."""
+    if not value:
+        return ""
+    m = CCL_RE.search(str(value))
+    return m.group(1).upper() if m else ""
+
 from utils.helpers import (
     encode_image_to_base64,
     detect_media_type,
@@ -129,6 +139,7 @@ def extract_new_items_from_table(table_data: dict) -> list:
     """
     추출된 표에서 프로그래밍 로직으로 '신규' 품목만 필터링합니다.
     AI 판단 없이 코드로 정확하게 처리.
+    CCL 타입(5CCL/6CCL 등)을 헤더 및 행 스캔으로 감지하여 각 항목에 부여합니다.
     """
     headers = table_data.get("headers", [])
     rows = table_data.get("rows", [])
@@ -145,8 +156,23 @@ def extract_new_items_from_table(table_data: dict) -> list:
         data_cols = total - 1 if total % 4 == 1 else total
         new_cols = [i for i in range(3, data_cols, 4)]
 
+    # 헤더에서 초기 CCL 타입 감지
+    current_ccl = ""
+    for h in headers[:4]:
+        ccl = _extract_ccl_type(h)
+        if ccl:
+            current_ccl = ccl
+            break
+
     items = []
     for row in rows:
+        # 행 첫 번째 셀에서 CCL 마커 감지 (한 이미지에 5CCL/6CCL 두 테이블이 있는 경우)
+        if row:
+            row_ccl = _extract_ccl_type(row[0])
+            if row_ccl:
+                current_ccl = row_ccl
+                continue  # CCL 헤더 행 자체는 데이터가 아님
+
         for new_col in new_cols:
             if new_col >= len(row):
                 continue
@@ -216,18 +242,19 @@ def extract_new_items_from_table(table_data: dict) -> list:
                 "위치": "",
                 "재고": 0,
                 "생산량": 0,
+                "ccl_type": current_ccl,
             })
 
-    # 같은 품목코드 합산
+    # 같은 품목코드 + CCL 타입 조합으로 합산
     merged = {}
     for item in items:
-        code = item["색상코드"]
-        if code in merged:
-            merged[code]["신규"] += item["신규"]
-            if item["비고"] and not merged[code]["비고"]:
-                merged[code]["비고"] = item["비고"]
+        key = (item["색상코드"], item.get("ccl_type", ""))
+        if key in merged:
+            merged[key]["신규"] += item["신규"]
+            if item["비고"] and not merged[key]["비고"]:
+                merged[key]["비고"] = item["비고"]
         else:
-            merged[code] = item.copy()
+            merged[key] = item.copy()
 
     return list(merged.values())
 

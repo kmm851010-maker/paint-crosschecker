@@ -213,19 +213,19 @@ def convert_erp_filled_to_excel(headers: list, rows: list) -> bytes:
 
 
 def generate_incoming_plan_excel(plan_df) -> bytes:
-    """입고 예정 품목만 추려서 깔끔한 엑셀을 생성합니다."""
+    """입고 예정 품목만 추려서 깔끔한 엑셀을 생성합니다.
+    ccl_type 컬럼이 있으면 CCL 타입별로 그룹화하고 그룹 사이에 빈 행을 삽입합니다."""
     import pandas as pd
 
     cols = ["색상코드", "제조사", "신규"]
     has_note = "비고" in plan_df.columns
+    has_ccl = "ccl_type" in plan_df.columns
     if has_note:
         cols.append("비고")
-    incoming = plan_df[plan_df["신규"] > 0][cols].copy()
-    col_names = ["품목코드", "제조사", "입고예정수량"]
-    if has_note:
-        col_names.append("비고")
-    incoming.columns = col_names
-    incoming = incoming.reset_index(drop=True)
+    if has_ccl:
+        cols.append("ccl_type")
+
+    incoming = plan_df[plan_df["신규"] > 0][cols].copy().reset_index(drop=True)
 
     if incoming.empty:
         raise ValueError("입고 예정 품목이 없습니다.")
@@ -244,25 +244,42 @@ def generate_incoming_plan_excel(plan_df) -> bytes:
         cell.alignment = CENTER
         cell.border = THIN_BORDER
 
-    for row_idx, (_, row) in enumerate(incoming.iterrows(), 2):
+    excel_row = 2
+    no = 1
+    prev_ccl = None
+
+    for _, row in incoming.iterrows():
+        ccl = str(row.get("ccl_type", "")) if has_ccl else ""
+
+        # CCL 타입이 바뀌면 빈 구분 행 삽입
+        if has_ccl and prev_ccl is not None and ccl != prev_ccl:
+            for col in range(1, len(headers) + 1):
+                ws.cell(row=excel_row, column=col, value="")
+            excel_row += 1
+
         row_data = [
-            (row_idx - 1, CENTER),
-            (row["품목코드"], CENTER),
-            (row["제조사"], CENTER),
-            (int(row["입고예정수량"]), CENTER),
+            (no, CENTER),
+            (str(row["색상코드"]), CENTER),
+            (str(row["제조사"]), CENTER),
+            (int(row["신규"]), CENTER),
         ]
         if has_note:
             row_data.append((str(row.get("비고", "")), CENTER))
+
         for col_idx, (val, align) in enumerate(row_data, 1):
-            c = ws.cell(row=row_idx, column=col_idx, value=val)
+            c = ws.cell(row=excel_row, column=col_idx, value=val)
             c.font = DATA_FONT if col_idx < 4 else Font(name="맑은 고딕", size=10, bold=True)
             c.border = THIN_BORDER
             c.alignment = align
             if col_idx == 4:
                 c.number_format = "#,##0"
 
+        prev_ccl = ccl
+        no += 1
+        excel_row += 1
+
     # 합계 행
-    sum_row = len(incoming) + 2
+    sum_row = excel_row
     sum_fill = PatternFill(start_color="DFE4EA", end_color="DFE4EA", fill_type="solid")
     for col in range(1, len(headers) + 1):
         c = ws.cell(row=sum_row, column=col)

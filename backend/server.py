@@ -131,6 +131,14 @@ async def parse_plan(req: ParsePlanRequest):
                 rows.extend(td["rows"])
             merged_table_data = {"headers": headers, "rows": rows}
 
+    # CCL 타입 기준 정렬: 낮은 번호(5CCL) 먼저, 같은 타입 내 순서 유지 (stable sort)
+    import re as _re
+    def _ccl_key(item):
+        ccl = item.get("ccl_type", "")
+        m = _re.search(r'(\d+)CCL', ccl, _re.IGNORECASE)
+        return int(m.group(1)) if m else 9999
+    all_items.sort(key=_ccl_key)
+
     return {
         "success": True,
         "items": all_items,
