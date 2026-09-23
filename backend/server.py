@@ -624,6 +624,23 @@ async def inventory_register(req: InventoryRegisterRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class RevertCheckoutRequest(BaseModel):
+    history_ids: list[int]
+
+
+@app.post("/api/inventory/revert-checkout")
+async def revert_checkout_endpoint(req: RevertCheckoutRequest):
+    """라인입고 철회 - 24시간 이내 라인입고 항목을 재고로 복원"""
+    from utils.inventory_supabase import revert_checkout_drums
+    if not req.history_ids:
+        raise HTTPException(status_code=400, detail="history_ids가 비어 있습니다.")
+    try:
+        result = revert_checkout_drums(req.history_ids)
+        return {"success": True, **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class ScanDisabledRequest(BaseModel):
     drums: list[DrumItem]
     disabled: bool

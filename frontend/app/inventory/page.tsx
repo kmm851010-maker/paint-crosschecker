@@ -5,7 +5,7 @@ import Button from "@/components/ui/Button";
 import toast from "react-hot-toast";
 import {
   getSectors, registerDrums, updateDrum, setReturnStatus,
-  setScanDisabled, getInventoryHistory, parsePdfLots,
+  setScanDisabled, getInventoryHistory, revertCheckout, parsePdfLots,
   DrumItem, SECTORS, MAKERS, isRecentlyRegistered,
 } from "@/lib/api";
 import { isAdmin, isAttendanceManager } from "@/lib/auth";
@@ -19,7 +19,7 @@ import { saveAs } from "file-saver";
 type SortMode = "섹터별" | "제조사별" | "품목별" | "LOT순" | "등록시간순";
 type ConfirmType = "checkout" | "checkout_r" | "return_done" | null;
 interface HistoryItem {
-  timestamp: string; lot: string; product: string; maker: string;
+  id?: number; timestamp: string; lot: string; product: string; maker: string;
   action: string; from_sector?: string; to_sector?: string;
 }
 interface BulkItem { lot: string; product: string; maker: string; selected: boolean; }
@@ -230,6 +230,9 @@ export default function InventoryPage() {
   const [histTab, setHistTab] = useState<"신규등록" | "라인입고" | "반품완료">("신규등록");
   const [histSortCol, setHistSortCol] = useState<string | null>(null);
   const [histSortAsc, setHistSortAsc] = useState(true);
+  const [histSelectedIds, setHistSelectedIds] = useState<Set<number>>(new Set());
+  const [histRevertLoading, setHistRevertLoading] = useState(false);
+  const [histRevertConfirm, setHistRevertConfirm] = useState(false);
 
   // ── 대량 등록 state ──
   const [bulkItems, setBulkItems] = useState<BulkItem[]>([]);
@@ -416,6 +419,36 @@ export default function InventoryPage() {
       toast.error("수정 실패");
     } finally {
       setActionLoading(false);
+    }
+  }
+
+  // ── History helpers ─────────────────────────────────────────────────────────
+  function isWithin24h(timestamp: string): boolean {
+    if (!timestamp) return false;
+    try {
+      const t = new Date(timestamp.replace("T", " "));
+      return (Date.now() - t.getTime()) / 1000 <= 24 * 3600;
+    } catch { return false; }
+  }
+
+  async function doRevertCheckout() {
+    const ids = [...histSelectedIds];
+    setHistRevertLoading(true);
+    try {
+      const result = await revertCheckout(ids);
+      const n = result.reverted.length;
+      if (n > 0) toast.success(`${n}드럼 라인입고 철회 완료! 재고로 복원되었습니다.`);
+      if (result.rejected_expired.length > 0)
+        toast.error(`${result.rejected_expired.length}드럼은 24시간 경과로 철회 불가: ${result.rejected_expired.join(", ")}`);
+      if (result.already_in_inventory.length > 0)
+        toast(`${result.already_in_inventory.length}드럼은 이미 재고에 있습니다.`, { icon: "ℹ️" });
+      setHistSelectedIds(new Set());
+      setHistRevertConfirm(false);
+      fetchHistory();
+    } catch {
+      toast.error("철회 처리 실패");
+    } finally {
+      setHistRevertLoading(false);
     }
   }
 
@@ -766,6 +799,29 @@ export default function InventoryPage() {
     const fromDate = histFrom.replace(/-/g, "");
     const toDate = histTo.replace(/-/g, "");
 
+    const isLineTab = histTab === "라인입고";
+    const revertableItems = isLineTab ? sortedItems.filter(h => h.id != null && isWithin24h(h.timestamp)) : [];
+    const revertableIds = new Set(revertableItems.map(h => h.id!));
+    const selectedRevertable = [...histSelectedIds].filter(id => revertableIds.has(id));
+    const allRevertableSelected = revertableItems.length > 0 && revertableItems.every(h => histSelectedIds.has(h.id!));
+
+    function toggleHistItem(id: number | undefined) {
+      if (id == null) return;
+      setHistSelectedIds(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        return next;
+      });
+    }
+    function toggleAllRevertable(value: boolean) {
+      setHistSelectedIds(prev => {
+        const next = new Set(prev);
+        if (value) revertableItems.forEach(h => h.id != null && next.add(h.id!));
+        else revertableItems.forEach(h => h.id != null && next.delete(h.id!));
+        return next;
+      });
+    }
+
     return (
       <div>
         <div className="grid grid-cols-2 gap-3 mb-4">
@@ -799,7 +855,7 @@ export default function InventoryPage() {
             {/* Sub-tabs */}
             <div className="flex gap-1 mb-3 border-b border-gray-200">
               {(["신규등록", "라인입고", "반품완료"] as const).map(t => (
-                <button key={t} onClick={() => setHistTab(t)}
+                <button key={t} onClick={() => { setHistTab(t); setHistSelectedIds(new Set()); setHistRevertConfirm(false); }}
                   className={cn("px-3 py-1.5 text-sm font-medium rounded-t transition-colors",
                     histTab === t ? "bg-white border border-b-white border-gray-200 text-purple-700 -mb-px" : "text-gray-500 hover:text-gray-700"
                   )}>
@@ -812,15 +868,45 @@ export default function InventoryPage() {
               <p className="text-sm text-gray-400 text-center py-8">해당 항목 없음</p>
             ) : (
               <>
-                <div className="flex justify-end mb-2">
+                <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {isLineTab && revertableItems.length > 0 && (
+                      <>
+                        <Button variant="secondary" size="sm" onClick={() => toggleAllRevertable(!allRevertableSelected)}>
+                          {allRevertableSelected ? `선택해제 (${revertableItems.length})` : `전체선택 (${revertableItems.length})`}
+                        </Button>
+                        {selectedRevertable.length > 0 && !histRevertConfirm && (
+                          <Button size="sm" onClick={() => setHistRevertConfirm(true)} loading={histRevertLoading}>
+                            ↩️ 라인입고 철회 ({selectedRevertable.length}드럼)
+                          </Button>
+                        )}
+                        {histRevertConfirm && (
+                          <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded px-3 py-1.5">
+                            <span className="text-xs text-red-700 font-medium">
+                              {selectedRevertable.length}드럼을 재고로 복원합니다. 계속하시겠습니까?
+                            </span>
+                            <Button size="sm" onClick={doRevertCheckout} loading={histRevertLoading}>확인</Button>
+                            <Button variant="secondary" size="sm" onClick={() => setHistRevertConfirm(false)}>취소</Button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
                   <Button variant="secondary" size="sm" onClick={() => exportHistoryExcel(items, sectorKey, `${histTab}_${fromDate}_${toDate}.xlsx`)}>
-                    <Download size={14} /> 엑셀 다운로드 ({items.length}건)
+                    <Download size={14} /> 엑셀 ({items.length}건)
                   </Button>
                 </div>
+
                 <div className="overflow-x-auto rounded border border-gray-200">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr>
+                        {isLineTab && (
+                          <th className="w-8 py-2 px-2">
+                            <input type="checkbox" checked={allRevertableSelected} disabled={revertableItems.length === 0}
+                              onChange={() => toggleAllRevertable(!allRevertableSelected)} />
+                          </th>
+                        )}
                         {[
                           { col: "timestamp", label: "일시" },
                           { col: "lot", label: "LOT" },
@@ -843,20 +929,49 @@ export default function InventoryPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {sortedItems.map((h, i) => (
-                        <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
-                          <td className="py-1.5 px-3 text-xs text-gray-500">{h.timestamp?.slice(0, 16)}</td>
-                          <td className="py-1.5 px-3 font-mono text-xs">{h.lot}</td>
-                          <td className="py-1.5 px-3 text-sm">{h.product}</td>
-                          <td className="py-1.5 px-3 text-xs text-gray-600">{h.maker}</td>
-                          <td className="py-1.5 px-3 text-xs text-gray-600">
-                            {histTab === "신규등록" ? h.to_sector : h.from_sector}
-                          </td>
-                        </tr>
-                      ))}
+                      {sortedItems.map((h, i) => {
+                        const within24h = isWithin24h(h.timestamp);
+                        const canRevert = isLineTab && h.id != null && within24h;
+                        const sel = h.id != null && histSelectedIds.has(h.id);
+                        return (
+                          <tr key={i}
+                            onClick={() => canRevert && toggleHistItem(h.id)}
+                            className={cn(
+                              "border-t border-gray-100 hover:bg-gray-50",
+                              canRevert && "cursor-pointer",
+                              sel && "bg-orange-50",
+                            )}>
+                            {isLineTab && (
+                              <td className="py-1.5 px-2 text-center" onClick={e => e.stopPropagation()}>
+                                {canRevert
+                                  ? <input type="checkbox" checked={sel} onChange={() => toggleHistItem(h.id)} />
+                                  : <span className="text-xs text-gray-300">—</span>
+                                }
+                              </td>
+                            )}
+                            <td className="py-1.5 px-3 text-xs text-gray-500">
+                              {h.timestamp?.slice(0, 16)}
+                              {isLineTab && within24h && (
+                                <span className="ml-1 text-orange-500 font-medium text-xs">24h</span>
+                              )}
+                            </td>
+                            <td className="py-1.5 px-3 font-mono text-xs">{h.lot}</td>
+                            <td className="py-1.5 px-3 text-sm">{h.product}</td>
+                            <td className="py-1.5 px-3 text-xs text-gray-600">{h.maker}</td>
+                            <td className="py-1.5 px-3 text-xs text-gray-600">
+                              {histTab === "신규등록" ? h.to_sector : h.from_sector}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
+                {isLineTab && (
+                  <p className="text-xs text-gray-400 mt-2">
+                    입고 후 24시간 이내 항목만 철회 가능합니다. 만료된 항목은 체크박스가 비활성화됩니다.
+                  </p>
+                )}
               </>
             )}
           </>

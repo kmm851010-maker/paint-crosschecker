@@ -273,6 +273,7 @@ def get_inventory_history(from_dt: str, to_dt: str):
         else:
             action = "이동"
         result.append({
+            "id": r.get("id"),
             "lot": r["lot"],
             "product": r.get("product", ""),
             "maker": r.get("maker", ""),
@@ -282,6 +283,84 @@ def get_inventory_history(from_dt: str, to_dt: str):
             "action": action,
         })
     return result
+
+
+def revert_checkout_drums(history_ids: list):
+    """라인입고 철회 - 24시간 이내 라인입고 이력을 재고로 복원."""
+    now_kst = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
+    now = now_kst.strftime("%Y-%m-%d %H:%M:%S")
+    cutoff = (now_kst - datetime.timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+    sb = _sb()
+
+    res = sb.table("inventory_history").select("*").in_("id", history_ids).execute()
+    entries = res.data or []
+
+    reverted_entries = []
+    rejected_expired = []
+    rejected_wrong_action = []
+
+    for entry in entries:
+        if entry.get("new_sector") != CHECKOUT_SECTOR:
+            rejected_wrong_action.append(entry["lot"])
+            continue
+        if entry.get("recorded_at", "") < cutoff:
+            rejected_expired.append(entry["lot"])
+            continue
+        reverted_entries.append(entry)
+
+    if not reverted_entries:
+        return {
+            "reverted": [],
+            "rejected_expired": rejected_expired,
+            "rejected_wrong_action": rejected_wrong_action,
+            "already_in_inventory": [],
+        }
+
+    revert_lots = [e["lot"] for e in reverted_entries]
+    existing = sb.table("inventory").select("lot").in_("lot", revert_lots).execute()
+    existing_lots = {r["lot"] for r in existing.data}
+
+    to_restore = [e for e in reverted_entries if e["lot"] not in existing_lots]
+    already_in_inventory = [e["lot"] for e in reverted_entries if e["lot"] in existing_lots]
+
+    if to_restore:
+        insert_rows = [
+            {
+                "lot": e["lot"],
+                "product": e.get("product", ""),
+                "maker": e.get("maker", ""),
+                "sector": e.get("prev_sector") or "창고",
+                "registered_at": now,
+                "updated_at": now,
+                "return_status": "",
+                "scan_disabled": "",
+                "remark": "",
+            }
+            for e in to_restore
+        ]
+        for i in range(0, len(insert_rows), 500):
+            sb.table("inventory").insert(insert_rows[i:i + 500]).execute()
+
+        history_rows = [
+            {
+                "lot": e["lot"],
+                "product": e.get("product", ""),
+                "maker": e.get("maker", ""),
+                "prev_sector": CHECKOUT_SECTOR,
+                "new_sector": e.get("prev_sector") or "창고",
+                "recorded_at": now,
+            }
+            for e in to_restore
+        ]
+        for i in range(0, len(history_rows), 500):
+            sb.table("inventory_history").insert(history_rows[i:i + 500]).execute()
+
+    return {
+        "reverted": [e["lot"] for e in to_restore],
+        "rejected_expired": rejected_expired,
+        "rejected_wrong_action": rejected_wrong_action,
+        "already_in_inventory": already_in_inventory,
+    }
 
 
 def set_return_status(drums: list, status: str):

@@ -60,6 +60,17 @@ export async function getInventoryHistory(from_dt: string, to_dt: string) {
   return data;
 }
 
+export async function revertCheckout(history_ids: number[]) {
+  const { data } = await api.post("/api/inventory/revert-checkout", { history_ids });
+  return data as {
+    success: boolean;
+    reverted: string[];
+    rejected_expired: string[];
+    rejected_wrong_action: string[];
+    already_in_inventory: string[];
+  };
+}
+
 export async function parseBarcode(raw_text: string) {
   const { data } = await api.post("/api/inventory/parse-barcode", { raw_text });
   return data;

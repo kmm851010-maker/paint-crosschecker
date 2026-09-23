@@ -396,10 +396,9 @@ export default function WorklogPage() {
                     {/* 휴무 */}
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>휴무</div>
-                      <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>휴무자</label>
+                      <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>{shiftData?.["휴무_구분"] || "휴무자"}</label>
                       <input value={shiftData?.["휴무_근무자"] ?? ""} onChange={e => updateShiftField("휴무_근무자", e.target.value)}
                         style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "5px 8px", fontSize: 13, boxSizing: "border-box", marginBottom: 4 }} />
-                      <div style={{ fontSize: 12, color: "#6b7280" }}>{shiftData?.["휴무_구분"] ?? ""}</div>
                       {(shiftAuto?.leave_person || shiftData?.leave_person) && (
                         <>
                           <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2, marginTop: 6 }}>휴가자</label>
@@ -430,9 +429,9 @@ export default function WorklogPage() {
                     {/* 휴무 */}
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>휴무</div>
+                      <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 2 }}>{shiftData?.["휴무_구분"] || "휴무자"}</label>
                       <input value={shiftData?.["휴무_근무자"] ?? ""} onChange={e => updateShiftField("휴무_근무자", e.target.value)}
                         style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "5px 8px", fontSize: 13, boxSizing: "border-box" }} />
-                      <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>{shiftData?.["휴무_구분"] ?? ""}</div>
                     </div>
                   </div>
                 )}
