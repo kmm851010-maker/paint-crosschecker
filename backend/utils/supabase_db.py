@@ -414,3 +414,20 @@ def get_daily_inventory_hidden(date: str) -> list:
     res = _sb().table("daily_inventory_hidden").select("*").eq("date", date) \
         .order("hidden_at").execute()
     return res.data or []
+
+
+# ── 신너 재고 ──
+
+def get_daily_thinner(date: str) -> list:
+    """해당 날짜의 신너 재고 항목 반환."""
+    res = _sb().table("daily_thinner").select("items").eq("date", date).execute()
+    if res.data:
+        return res.data[0]["items"] or []
+    return []
+
+
+def save_daily_thinner(date: str, items: list) -> None:
+    """신너 재고 저장 (upsert)."""
+    _sb().table("daily_thinner").upsert(
+        {"date": date, "items": items}, on_conflict="date"
+    ).execute()

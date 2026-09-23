@@ -302,6 +302,15 @@ export async function getHiddenDailyInventory(date: string) {
   return data;
 }
 
+export async function getDailyThinner(date: string): Promise<{ name: string; qty: number | null }[]> {
+  const { data } = await api.get("/api/daily-inventory/thinner", { params: { date } });
+  return data.items ?? [];
+}
+
+export async function saveDailyThinner(date: string, items: { name: string; qty: number | null }[]): Promise<void> {
+  await api.post("/api/daily-inventory/thinner", { date, items });
+}
+
 export async function lotCheck(sector: string, lots: string[]) {
   const { data } = await api.post("/api/inventory/lot-check", { sector, lots });
   return data as {

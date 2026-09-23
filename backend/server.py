@@ -1641,6 +1641,30 @@ class DailyInventoryExportRequest(BaseModel):
     shift_groups: list[dict]
 
 
+class SaveThinnerRequest(BaseModel):
+    date: str
+    items: list[dict]
+
+
+@app.get("/api/daily-inventory/thinner")
+async def get_daily_thinner_endpoint(date: str):
+    from utils.supabase_db import get_daily_thinner
+    try:
+        return {"items": get_daily_thinner(date)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/daily-inventory/thinner")
+async def save_daily_thinner_endpoint(req: SaveThinnerRequest):
+    from utils.supabase_db import save_daily_thinner
+    try:
+        save_daily_thinner(req.date, req.items)
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/daily-inventory/export")
 async def export_daily_inventory(req: DailyInventoryExportRequest):
     """일일 재고기록 서식 적용 엑셀 생성."""
