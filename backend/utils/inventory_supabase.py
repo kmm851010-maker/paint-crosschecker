@@ -285,34 +285,48 @@ def get_inventory_history(from_dt: str, to_dt: str):
     return result
 
 
-def revert_checkout_drums(history_ids: list):
-    """라인입고 철회 - 24시간 이내 라인입고 이력을 재고로 복원."""
+def revert_checkout_drums(items: list):
+    """라인입고 철회 - 24시간 이내 라인입고 이력을 재고로 복원.
+    items: [{"lot": str, "recorded_at": str}]
+    """
     now_kst = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
     now = now_kst.strftime("%Y-%m-%d %H:%M:%S")
     cutoff = (now_kst - datetime.timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
     sb = _sb()
 
-    res = sb.table("inventory_history").select("*").in_("id", history_ids).execute()
-    entries = res.data or []
+    lots = [i["lot"] for i in items]
+    ts_by_lot = {i["lot"]: i["recorded_at"] for i in items}
+
+    # 해당 lot들의 라인입고 이력 조회
+    res = sb.table("inventory_history").select("*") \
+        .in_("lot", lots) \
+        .eq("new_sector", CHECKOUT_SECTOR) \
+        .execute()
+
+    entries_by_key = {(r["lot"], r["recorded_at"]): r for r in (res.data or [])}
 
     reverted_entries = []
     rejected_expired = []
-    rejected_wrong_action = []
+    not_found = []
 
-    for entry in entries:
-        if entry.get("new_sector") != CHECKOUT_SECTOR:
-            rejected_wrong_action.append(entry["lot"])
+    for item in items:
+        lot = item["lot"]
+        recorded_at = item["recorded_at"]
+        key = (lot, recorded_at)
+        if key not in entries_by_key:
+            not_found.append(lot)
             continue
-        if entry.get("recorded_at", "") < cutoff:
-            rejected_expired.append(entry["lot"])
+        r = entries_by_key[key]
+        if recorded_at < cutoff:
+            rejected_expired.append(lot)
             continue
-        reverted_entries.append(entry)
+        reverted_entries.append(r)
 
     if not reverted_entries:
         return {
             "reverted": [],
             "rejected_expired": rejected_expired,
-            "rejected_wrong_action": rejected_wrong_action,
+            "not_found": not_found,
             "already_in_inventory": [],
         }
 
@@ -358,7 +372,7 @@ def revert_checkout_drums(history_ids: list):
     return {
         "reverted": [e["lot"] for e in to_restore],
         "rejected_expired": rejected_expired,
-        "rejected_wrong_action": rejected_wrong_action,
+        "not_found": not_found,
         "already_in_inventory": already_in_inventory,
     }
 

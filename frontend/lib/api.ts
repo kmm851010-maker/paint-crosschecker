@@ -60,13 +60,13 @@ export async function getInventoryHistory(from_dt: string, to_dt: string) {
   return data;
 }
 
-export async function revertCheckout(history_ids: number[]) {
-  const { data } = await api.post("/api/inventory/revert-checkout", { history_ids });
+export async function revertCheckout(items: { lot: string; recorded_at: string }[]) {
+  const { data } = await api.post("/api/inventory/revert-checkout", { items });
   return data as {
     success: boolean;
     reverted: string[];
     rejected_expired: string[];
-    rejected_wrong_action: string[];
+    not_found: string[];
     already_in_inventory: string[];
   };
 }
