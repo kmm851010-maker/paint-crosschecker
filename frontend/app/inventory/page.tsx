@@ -242,6 +242,7 @@ export default function InventoryPage() {
   const [moveSector, setMoveSector] = useState("창고");
   const [moveLoading, setMoveLoading] = useState(false);
   const [batchMoveSector, setBatchMoveSector] = useState("창고");
+  const [batchMoveType, setBatchMoveType] = useState<"daily" | "location">("daily");
 
   useEffect(() => { setAdmin(isAdmin()); }, []);
   useEffect(() => { fetchSectors(); }, []);
@@ -388,7 +389,7 @@ export default function InventoryPage() {
   async function doBatchMove() {
     setActionLoading(true);
     try {
-      const result = await registerDrums(selectedDrums, batchMoveSector, "");
+      const result = await registerDrums(selectedDrums, batchMoveSector, "", false, batchMoveType);
       toast.success(`${result.moved ?? selectedDrums.length}드럼 [${batchMoveSector}]으로 이동!`);
       clearSelection();
       fetchSectors();
@@ -727,7 +728,7 @@ export default function InventoryPage() {
         </div>
 
         {/* 일괄 이동 */}
-        <div className="flex items-center gap-2 flex-wrap mb-3">
+        <div className="flex items-center gap-2 flex-wrap mb-1">
           <span className="text-xs font-medium text-gray-600">📦 일괄 이동</span>
           <select value={batchMoveSector} onChange={e => setBatchMoveSector(e.target.value)}
             className="border border-gray-300 rounded px-2 py-1.5 text-sm">
@@ -736,6 +737,16 @@ export default function InventoryPage() {
           <Button size="sm" onClick={doBatchMove} loading={actionLoading}>
             이동 ({selectedLots.size}드럼)
           </Button>
+        </div>
+        <div className="flex items-center gap-4 mb-3 ml-1">
+          {(["daily", "location"] as const).map(type => (
+            <label key={type} className="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" checked={batchMoveType === type}
+                onChange={() => setBatchMoveType(type)}
+                className="w-3.5 h-3.5 accent-blue-600" />
+              <span className="text-xs text-gray-600">{type === "daily" ? "생산 후 재고" : "위치이동"}</span>
+            </label>
+          ))}
         </div>
 
         {/* 스캔불가 버튼 (입고존 선택 시) */}

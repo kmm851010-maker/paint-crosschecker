@@ -168,11 +168,11 @@ export interface RegisterResult {
   moved: number;           // 실제 이동/등록된 드럼 수
 }
 
-export async function registerDrums(drums: DrumItem[], sector: string): Promise<RegisterResult> {
+export async function registerDrums(drums: DrumItem[], sector: string, move_type: "daily" | "location" = "daily"): Promise<RegisterResult> {
   const response = await fetch(`${API_BASE_URL}/api/inventory/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ drums, sector }),
+    body: JSON.stringify({ drums, sector, move_type }),
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: "등록 실패" }));

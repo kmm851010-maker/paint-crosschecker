@@ -601,6 +601,7 @@ class InventoryRegisterRequest(BaseModel):
     sector: str
     remark: str = ""
     skip_existing: bool = False
+    move_type: str = "daily"  # "daily"=생산 후 재고(일일재고 포함), "location"=위치이동(제외)
 
 
 @app.post("/api/inventory/parse-barcode")
@@ -623,7 +624,8 @@ async def inventory_register(req: InventoryRegisterRequest):
             checkout_drums(drums)
             return {"success": True, "count": len(drums), "sector": req.sector, "already_same": [], "moved": len(drums)}
         else:
-            result = save_drums_to_sector(drums, req.sector, remark=req.remark, skip_existing=req.skip_existing)
+            source = "incoming" if req.remark == "신규" else req.move_type
+            result = save_drums_to_sector(drums, req.sector, remark=req.remark, skip_existing=req.skip_existing, source=source)
             return {"success": True, "count": len(drums), "sector": req.sector,
                     "already_same": result["already_same"], "moved": result["moved"],
                     "skipped": result.get("skipped", []),
@@ -1508,6 +1510,8 @@ async def get_daily_inventory(date: str):
     hidden_set = {(r["lot"], r["recorded_at"]) for r in hidden_raw}
 
     EXCLUDE_SECTORS = {"라인입고", "반품완료"}
+    # source가 없는 구형 이력(NULL)은 하위호환으로 포함, 명시된 경우 daily/edit만 허용
+    DAILY_SOURCES = {"daily", "edit", None}
 
     shift_groups = []
     for sname, sstart, send, sworker in shifts:
@@ -1515,6 +1519,9 @@ async def get_daily_inventory(date: str):
         lot_map: dict[str, dict] = {}
         for it in items:
             if (it.get("new_sector") or "") in EXCLUDE_SECTORS:
+                continue
+            src = it.get("source") or None
+            if src not in DAILY_SOURCES:
                 continue
             lot = (it.get("lot") or "").strip()
             recorded_at = (it.get("recorded_at") or "").strip()

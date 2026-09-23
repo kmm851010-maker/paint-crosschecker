@@ -387,7 +387,7 @@ def get_history_in_range(start_kst: str, end_kst: str) -> list:
     offset = 0
     while True:
         res = sb.table("inventory_history") \
-            .select("lot,product,maker,prev_sector,new_sector,recorded_at") \
+            .select("lot,product,maker,prev_sector,new_sector,recorded_at,source") \
             .gte("recorded_at", start_kst) \
             .lt("recorded_at", end_kst) \
             .order("recorded_at") \

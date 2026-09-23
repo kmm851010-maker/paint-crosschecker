@@ -63,10 +63,14 @@ def parse_barcode(raw_text: str):
     return {"lot": lot, "product": "", "maker": maker}
 
 
-def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existing: bool = False):
+def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existing: bool = False, source: str = "daily"):
     """드럼 목록을 지정 섹터에 등록/이동 (배치 처리).
     skip_existing=True: 이미 재고에 있는 드럼은 건너뜀 (ERP 입고 전용).
+    source: 이력 출처 ("daily"|"location"|"incoming") — 일일재고 필터링에 사용.
     """
+    # ERP 신규입고(remark="신규")는 항상 incoming으로 강제
+    if remark == "신규":
+        source = "incoming"
     now = _kst_now()
     sb = _sb()
     drum_map = {d["lot"]: d for d in drums}
@@ -108,6 +112,7 @@ def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existi
             history_rows.append({
                 "lot": lot, "product": drum["product"], "maker": drum["maker"],
                 "prev_sector": prev_sector, "new_sector": sector, "recorded_at": now,
+                "source": source,
             })
         else:
             to_insert.append({
@@ -118,6 +123,7 @@ def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existi
             history_rows.append({
                 "lot": lot, "product": drum["product"], "maker": drum["maker"],
                 "prev_sector": "", "new_sector": sector, "recorded_at": now,
+                "source": source,
             })
 
     # 2) 동일 섹터 재등록 — registered_at / updated_at 모두 갱신
@@ -406,6 +412,7 @@ def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: 
     _sb().table("inventory_history").insert({
         "lot": new_lot, "product": new_product, "maker": new_maker,
         "prev_sector": old_sector, "new_sector": new_sector, "recorded_at": now,
+        "source": "edit",
     }).execute()
     return True
 

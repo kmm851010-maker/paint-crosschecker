@@ -32,8 +32,8 @@ export async function getSectors() {
   return data.sectors as Record<string, DrumItem[]>;
 }
 
-export async function registerDrums(drums: Partial<DrumItem>[], sector: string, remark = "", skip_existing = false) {
-  const { data } = await api.post("/api/inventory/register", { drums, sector, remark, skip_existing });
+export async function registerDrums(drums: Partial<DrumItem>[], sector: string, remark = "", skip_existing = false, move_type: "daily" | "location" = "daily") {
+  const { data } = await api.post("/api/inventory/register", { drums, sector, remark, skip_existing, move_type });
   return data;
 }
 

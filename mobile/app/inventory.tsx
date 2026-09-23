@@ -279,6 +279,7 @@ export default function InventoryScreen() {
   const [ingoScanDisabled, setIngoScanDisabled] = useState(false);
   const [showIngoPrompt, setShowIngoPrompt] = useState(false);
   const [returnType, setReturnType] = useState<"불량"|"기술"|"무상"|"">(""); // 섹터 선택 시 반품 종류
+  const [moveType, setMoveType] = useState<"daily"|"location">("daily"); // 생산 후 재고 / 위치이동
   const [showBatchMoveModal, setShowBatchMoveModal] = useState(false);
   const [expandedSectors, setExpandedSectors] = useState<Set<string>>(new Set());
   const [statusTab, setStatusTab] = useState<"sector"|"history">("sector");
@@ -605,12 +606,14 @@ export default function InventoryScreen() {
     setMode("scanning");
     setLoading(true);
     const savedReturnType = returnType;
+    const savedMoveType = moveType;
     setReturnType("");
+    setMoveType("daily");
     try {
       const drumsToSend = sector === "입고존"
         ? batch.map(d => ({ ...d, scanDisabled: scanDis ?? false }))
         : batch;
-      const result = await registerDrums(drumsToSend, sector);
+      const result = await registerDrums(drumsToSend, sector, sector === CHECKOUT ? "daily" : savedMoveType);
       const count = batch.length;
       if (savedReturnType && sector !== CHECKOUT) {
         await setDrumReturnStatus(drumsToSend, savedReturnType);
@@ -813,6 +816,31 @@ export default function InventoryScreen() {
           ) : (
             <>
               <Text style={styles.modalTitle}>{batch.length}드럼 → 섹터 선택</Text>
+              {/* 이동 종류 선택 (생산 후 재고 / 위치이동) */}
+              <View style={{ flexDirection: "row", justifyContent: "center", gap: 16, marginBottom: 10 }}>
+                {([
+                  { key: "daily" as const, label: "생산 후 재고" },
+                  { key: "location" as const, label: "위치이동" },
+                ]).map(({ key, label }) => {
+                  const checked = moveType === key;
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      onPress={() => setMoveType(key)}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <View style={{
+                        width: 16, height: 16, borderRadius: 3, borderWidth: 1.5,
+                        borderColor: checked ? "#3B82F6" : "#6B7280",
+                        backgroundColor: checked ? "#3B82F6" : "transparent",
+                        alignItems: "center", justifyContent: "center",
+                      }}>
+                        {checked && <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>✓</Text>}
+                      </View>
+                      <Text style={{ color: checked ? "#93C5FD" : "#9CA3AF", fontSize: 13, fontWeight: "600" }}>{label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
               {/* 반품 종류 선택 (1행 라디오) */}
               <View style={{ flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 12 }}>
                 {(["불량", "기술", "무상"] as const).map(t => {
