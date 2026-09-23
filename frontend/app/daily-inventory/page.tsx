@@ -390,17 +390,13 @@ export default function DailyInventoryPage() {
               {thinnerSaving && <span className="text-xs text-gray-400">저장 중...</span>}
             </div>
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-gray-100 bg-gray-50 grid grid-cols-[1fr_80px] gap-2">
-                <span className="text-xs text-gray-500 font-semibold">항목</span>
-                <span className="text-xs text-gray-500 font-semibold text-right">수량</span>
-              </div>
-              <div className="divide-y divide-gray-50">
+              <div className="divide-y divide-gray-100">
                 {thinnerItems.map((item, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_80px] gap-2 px-3 py-2 items-center hover:bg-gray-50/50">
+                  <div key={i} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50/50">
                     <input
                       value={item.name}
                       onChange={e => updateThinnerName(i, e.target.value)}
-                      className="border-0 bg-transparent text-xs text-gray-700 font-medium focus:outline-none focus:bg-white focus:border focus:border-[#4B2D8E] focus:rounded px-1 py-0.5 w-full"
+                      className="border-0 bg-transparent text-sm text-gray-800 font-semibold focus:outline-none focus:bg-white focus:border focus:border-[#4B2D8E] focus:rounded px-1 py-0.5 w-20"
                     />
                     <input
                       type="number"
@@ -408,7 +404,7 @@ export default function DailyInventoryPage() {
                       value={item.qty}
                       onChange={e => updateThinnerQty(i, e.target.value)}
                       placeholder="—"
-                      className="border border-gray-200 rounded px-2 py-1 text-xs text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-[#4B2D8E] w-full"
+                      className="border border-gray-200 rounded px-2 py-1 text-sm text-center tabular-nums focus:outline-none focus:ring-1 focus:ring-[#4B2D8E] w-20"
                     />
                   </div>
                 ))}
