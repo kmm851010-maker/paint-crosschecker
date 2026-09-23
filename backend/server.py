@@ -261,19 +261,21 @@ async def erp_fill_endpoint(req: ErpFillRequest):
 
     padded = [list(r[:len(unique_h)]) + [""] * max(0, len(unique_h) - len(r)) for r in rows_raw]
 
-    # 3. 신규 다음 입고 컬럼 삽입
+    # 3. 신규 다음 입고 컬럼 삽입 (이미 입고 컬럼이 있으면 건너뜀)
     exp_h = []
     new_col_flags = []
-    for h in unique_h:
+    for idx, h in enumerate(unique_h):
         exp_h.append(h)
         new_col_flags.append(False)
         if "신규" in str(h):
-            in_name = str(h).replace("신규", "입고")
-            base_n, c = in_name, 1
-            while in_name in exp_h:
-                in_name = f"{base_n}_{c}"; c += 1
-            exp_h.append(in_name)
-            new_col_flags.append(True)
+            next_orig = str(unique_h[idx + 1]) if idx + 1 < len(unique_h) else ""
+            if "입고" not in next_orig:
+                in_name = str(h).replace("신규", "입고")
+                base_n, c = in_name, 1
+                while in_name in exp_h:
+                    in_name = f"{base_n}_{c}"; c += 1
+                exp_h.append(in_name)
+                new_col_flags.append(True)
 
     def _ts(x):
         if x is None or str(x) in ("nan", "None", "NaN"): return ""
@@ -292,15 +294,36 @@ async def erp_fill_endpoint(req: ErpFillRequest):
                 orig_idx += 1
         exp_rows.append(new_row)
 
-    # 4. 입고 컬럼에 ERP 수량 채우기 (code는 신규 인덱스 - 3)
+    # 블록별 코드 컬럼 인덱스 계산 (위치 컬럼 있어도 올바르게 탐지)
+    def _find_code_col_for_block(headers, ni):
+        """신규 컬럼(ni) 기준 역방향 스캔으로 코드 컬럼 인덱스 반환."""
+        non_code_kws = ["신규", "재고", "위치", "회사", "제조", "입고", "stock", "maker", "new"]
+        # 회사 컬럼 탐색 후 그 왼쪽을 코드 컬럼으로
+        maker_col = None
+        for i in range(ni - 1, max(-1, ni - 6), -1):
+            h_str = _re.sub(r"_\d+$", "", str(headers[i]).lower())
+            if any(k in h_str for k in ["회사", "제조", "maker"]):
+                maker_col = i
+                break
+        if maker_col is not None and maker_col > 0:
+            return maker_col - 1
+        # 폴백: 논-코드 키워드가 없는 첫 컬럼
+        for i in range(ni - 1, -1, -1):
+            h_str = _re.sub(r"_\d+$", "", str(headers[i]).lower())
+            if not any(k in h_str for k in non_code_kws):
+                return i
+        return None
+
+    # 4. 입고 컬럼에 ERP 수량 채우기
     신규_col_indices = [i for i, h in enumerate(exp_h) if "신규" in str(h)]
+    신규_code_map = {ni: _find_code_col_for_block(exp_h, ni) for ni in 신규_col_indices}
     for row_idx in range(len(exp_rows)):
         for ni in 신규_col_indices:
             if ni + 1 >= len(exp_h): continue
             inc_col_name = exp_h[ni + 1]
             if "입고" not in str(inc_col_name): continue
-            code_col_idx = ni - 3
-            if code_col_idx < 0: continue
+            code_col_idx = 신규_code_map.get(ni)
+            if code_col_idx is None or code_col_idx < 0: continue
             raw_code = str(exp_rows[row_idx][code_col_idx]).strip()
             corrected = auto_correct_code(raw_code)
             if is_valid_item_code(corrected) and corrected in erp_qty_map:
@@ -311,8 +334,8 @@ async def erp_fill_endpoint(req: ErpFillRequest):
     for ni in 신규_col_indices:
         if ni + 1 >= len(exp_h): continue
         inc_col_idx = ni + 1
-        code_col_idx = ni - 3
-        if code_col_idx < 0: continue
+        code_col_idx = 신규_code_map.get(ni)
+        if code_col_idx is None or code_col_idx < 0: continue
         first_seen: dict = {}
         for ridx in range(len(exp_rows)):
             raw = str(exp_rows[ridx][code_col_idx]).strip()
@@ -351,6 +374,7 @@ async def erp_fill_endpoint(req: ErpFillRequest):
         pass
 
     # 7. 재고 컬럼 우측에 위치 삽입 (역순, code는 재고_idx - 2)
+    #    이미 위치 컬럼이 있으면 값만 업데이트
     final_h = list(exp_h)
     final_rows = [list(row) for row in exp_rows]
     if inv_location_map:
@@ -360,6 +384,18 @@ async def erp_fill_endpoint(req: ErpFillRequest):
             code_for_loc_idx = rc_idx - 2
             wi_col_name = f"위치{suffix}"
             insert_pos = rc_idx + 1
+            # 이미 위치 컬럼이 있으면 삽입 없이 값만 갱신
+            if insert_pos < len(final_h) and str(final_h[insert_pos]).startswith("위치"):
+                for row in final_rows:
+                    stock = str(row[rc_idx]).strip() if rc_idx < len(row) else ""
+                    try: stock_n = int(stock) if stock else 0
+                    except: stock_n = 0
+                    if stock_n > 0 and 0 <= code_for_loc_idx < len(row):
+                        code = str(row[code_for_loc_idx]).strip().upper()
+                        loc = inv_location_map.get(code, "")
+                        if loc and insert_pos < len(row):
+                            row[insert_pos] = loc
+                continue
             loc_vals = []
             for row in final_rows:
                 stock = str(row[rc_idx]).strip() if rc_idx < len(row) else ""
@@ -447,19 +483,21 @@ async def plan_conversion_endpoint(req: PlanConversionRequest):
     # 2. 행 패딩
     padded = [list(r[:len(unique_h)]) + [""] * max(0, len(unique_h) - len(r)) for r in rows_raw]
 
-    # 3. 신규 컬럼 다음에 입고 컬럼 삽입
+    # 3. 신규 컬럼 다음에 입고 컬럼 삽입 (이미 입고 컬럼이 있으면 건너뜀)
     final_h = []
     new_col_flags = []
-    for h in unique_h:
+    for idx, h in enumerate(unique_h):
         final_h.append(h)
         new_col_flags.append(False)
         if "신규" in str(h):
-            in_name = str(h).replace("신규", "입고")
-            base_n, c = in_name, 1
-            while in_name in final_h:
-                in_name = f"{base_n}_{c}"; c += 1
-            final_h.append(in_name)
-            new_col_flags.append(True)
+            next_orig = str(unique_h[idx + 1]) if idx + 1 < len(unique_h) else ""
+            if "입고" not in next_orig:
+                in_name = str(h).replace("신규", "입고")
+                base_n, c = in_name, 1
+                while in_name in final_h:
+                    in_name = f"{base_n}_{c}"; c += 1
+                final_h.append(in_name)
+                new_col_flags.append(True)
 
     def _ts(x):
         if x is None or str(x) in ("nan", "None", "NaN"):
@@ -515,6 +553,7 @@ async def plan_conversion_endpoint(req: PlanConversionRequest):
                 break
 
     # 6. 재고 컬럼 우측에 위치 컬럼 삽입 (역순으로 처리해 인덱스 유지)
+    #    이미 위치 컬럼이 있으면 값만 업데이트
     if inv_location_map:
         jaego_idxs = [(i, c) for i, c in enumerate(final_h) if _re.match(r'^재고(_\d+)?$', str(c).strip())]
         for rc_idx, rc in reversed(jaego_idxs):
@@ -526,6 +565,20 @@ async def plan_conversion_endpoint(req: PlanConversionRequest):
                 corr_code_idx = code_col_idx
             wi_col_name = f"위치{suffix}"
             insert_pos = rc_idx + 1
+            # 이미 위치 컬럼이 있으면 삽입 없이 값만 갱신
+            if insert_pos < len(final_h) and str(final_h[insert_pos]).startswith("위치"):
+                for row in final_rows:
+                    stock = str(row[rc_idx]).strip() if rc_idx < len(row) else ""
+                    try:
+                        stock_n = int(stock) if stock else 0
+                    except Exception:
+                        stock_n = 0
+                    if stock_n > 0 and corr_code_idx is not None and corr_code_idx < len(row):
+                        code = str(row[corr_code_idx]).strip().upper()
+                        loc = inv_location_map.get(code, "")
+                        if loc and insert_pos < len(row):
+                            row[insert_pos] = loc
+                continue
             loc_vals = []
             for row in final_rows:
                 stock = str(row[rc_idx]).strip() if rc_idx < len(row) else ""
