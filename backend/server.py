@@ -1657,9 +1657,13 @@ async def get_daily_thinner_endpoint(date: str):
 
 @app.post("/api/daily-inventory/thinner")
 async def save_daily_thinner_endpoint(req: SaveThinnerRequest):
+    import datetime as _dt
     from utils.supabase_db import save_daily_thinner
     try:
         save_daily_thinner(req.date, req.items)
+        # 전날에도 동일하게 저장 (내일 입력 시 오늘에 덮어씌워지는 구조)
+        prev_date = ((_dt.date.fromisoformat(req.date)) - _dt.timedelta(days=1)).isoformat()
+        save_daily_thinner(prev_date, req.items)
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
