@@ -275,8 +275,8 @@ def extract_production_plan(
     """
     if is_document_file(file_name, file_bytes):
         from modules.plan_excel_parser import parse_plan_excel
-        items = parse_plan_excel(file_bytes, file_name)
-        return {"items": items, "table_data": None}
+        result = parse_plan_excel(file_bytes, file_name)
+        return {"items": result["items"], "table_data": result["table_data"]}
 
     # 이미지 → table_extractor로 표 전체 읽기 (1회, 엑셀 변환기와 동일 방식)
     from modules.table_extractor import extract_table_from_image

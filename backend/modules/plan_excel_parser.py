@@ -131,12 +131,15 @@ def _detect_blocks(header_row: list) -> list:
     return blocks
 
 
-def parse_plan_excel(file_bytes: bytes, file_name: str) -> list:
+def parse_plan_excel(file_bytes: bytes, file_name: str) -> dict:
     """
-    생산계획서 엑셀을 파싱하여 입고 대상 품목 리스트를 반환합니다.
+    생산계획서 엑셀을 파싱하여 입고 대상 품목 리스트와 원본 테이블 데이터를 반환합니다.
 
     Returns:
-        [{"색상코드", "제조사", "재고", "신규", "라인", "비고"}, ...]
+        {
+            "items": [{"색상코드", "제조사", "재고", "신규", "라인", "비고"}, ...],
+            "table_data": {"headers": [...], "rows": [[...], ...]},
+        }
     """
     ext = file_name.lower().rsplit(".", 1)[-1] if "." in file_name else ""
     is_ole = file_bytes[:8] == bytes.fromhex("d0cf11e0a1b011ae") if len(file_bytes) >= 8 else False
@@ -251,4 +254,16 @@ def parse_plan_excel(file_bytes: bytes, file_name: str) -> list:
         else:
             merged[key] = item.copy()
 
-    return list(merged.values())
+    # 원본 엑셀 테이블 데이터 (변환결과/ERP 입고 반영용)
+    def _cell(v):
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return ""
+        if isinstance(v, float) and v == int(v):
+            return int(v)
+        return v
+
+    raw_headers = [_cell(h) for h in header_row]
+    raw_rows = [[_cell(v) for v in df.iloc[i]] for i in range(data_start, len(df))]
+    table_data = {"headers": raw_headers, "rows": raw_rows}
+
+    return {"items": list(merged.values()), "table_data": table_data}
