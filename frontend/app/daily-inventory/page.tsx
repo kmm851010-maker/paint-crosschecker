@@ -384,15 +384,15 @@ export default function DailyInventoryPage() {
           </div>
 
           {/* 오른쪽: 신너 재고 */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
+          <div className="flex flex-col items-center">
+            <div className="flex items-center justify-between w-fit mb-3 gap-6">
               <h2 className="text-sm font-semibold text-gray-600">신너 재고</h2>
               {thinnerSaving && <span className="text-xs text-gray-400">저장 중...</span>}
             </div>
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="divide-y divide-gray-100">
                 {thinnerItems.map((item, i) => (
-                  <div key={i} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50/50">
+                  <div key={i} className="flex items-center gap-12 px-6 py-2.5 hover:bg-gray-50/50">
                     <input
                       value={item.name}
                       onChange={e => updateThinnerName(i, e.target.value)}
