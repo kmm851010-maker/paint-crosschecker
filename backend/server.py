@@ -1529,7 +1529,8 @@ async def get_daily_inventory(date: str):
     import datetime as _dt
     from utils.supabase_db import (
         load_daily_detail, get_history_in_range, get_daily_inventory_remarks,
-        get_daily_inventory_hidden,
+        get_daily_inventory_hidden, load_leaves, get_members_dict,
+        get_shift_info, apply_leaves,
     )
     try:
         d = _dt.date.fromisoformat(date)
@@ -1538,10 +1539,28 @@ async def get_daily_inventory(date: str):
 
     next_date = (d + _dt.timedelta(days=1)).strftime("%Y-%m-%d")
     detail = load_daily_detail(date)
-    shift_data = (detail.get("shift") or {}) if detail else {}
+    saved_shift = (detail.get("shift") or {}) if detail else {}
 
-    if not shift_data:
+    if not saved_shift:
         return {"success": True, "date": date, "shift_data": {}, "shift_groups": []}
+
+    # 현재 휴가 목록으로 shift 동적 재계산 (휴가 삭제 시 즉시 반영)
+    try:
+        members = get_members_dict()
+        shift_auto = get_shift_info(d, members)
+        leave_list = load_leaves()
+        shift_auto = apply_leaves(shift_auto, d, leave_list)
+        # 근무자 이름 등 저장값은 유지하되 is_2person/is_allleave는 동적값 우선
+        shift_data = {**saved_shift,
+                      "is_2person": shift_auto.get("is_2person", False),
+                      "is_allleave": shift_auto.get("is_allleave", False),
+                      "주간_근무자": shift_auto.get("주간_근무자", saved_shift.get("주간_근무자", "")),
+                      "야간_근무자": shift_auto.get("야간_근무자", saved_shift.get("야간_근무자", "")),
+                      "1근_근무자": shift_auto.get("1근_근무자", saved_shift.get("1근_근무자", "")),
+                      "2근_근무자": shift_auto.get("2근_근무자", saved_shift.get("2근_근무자", "")),
+                      "3근_근무자": shift_auto.get("3근_근무자", saved_shift.get("3근_근무자", ""))}
+    except Exception:
+        shift_data = saved_shift
 
     is_2p = shift_data.get("is_2person", False)
     if is_2p:
