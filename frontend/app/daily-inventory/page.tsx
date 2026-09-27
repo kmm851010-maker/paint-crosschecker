@@ -410,14 +410,14 @@ export default function DailyInventoryPage() {
                           e.preventDefault();
                           // 즉시 저장
                           if (thinnerSaveTimer.current) clearTimeout(thinnerSaveTimer.current);
-                          const items = thinnerItems;
                           setThinnerSaving(true);
-                          saveDailyThinner(date, items.map(it => ({
+                          saveDailyThinner(date, thinnerItems.map(it => ({
                             name: it.name,
                             qty: it.qty !== "" ? Number(it.qty) : null,
-                          }))).then(() => {}).catch(() => toast.error("신너 재고 저장 실패")).finally(() => setThinnerSaving(false));
-                          // 다음 칸으로 포커스
-                          thinnerQtyRefs.current[i + 1]?.focus();
+                          }))).catch(() => toast.error("신너 재고 저장 실패")).finally(() => setThinnerSaving(false));
+                          // 다음 칸으로 포커스 (마지막이면 첫 칸으로)
+                          const nextIdx = i + 1 < thinnerItems.length ? i + 1 : 0;
+                          setTimeout(() => thinnerQtyRefs.current[nextIdx]?.focus(), 0);
                         }
                       }}
                       placeholder="—"
