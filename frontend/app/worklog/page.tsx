@@ -122,6 +122,17 @@ export default function WorklogPage() {
       const res = await getWorklog(d);
       setShiftAuto(res.shift_auto);
       let usedShift: ShiftInfo = res.saved_shift || res.shift_auto;
+      // is_2person/is_allleave는 현재 휴가목록 기준 동적값(shift_auto) 우선 적용
+      // (휴가 삭제 후에도 저장된 2인근무가 표시되는 문제 방지)
+      if (res.shift_auto && res.saved_shift) {
+        usedShift = {
+          ...usedShift,
+          is_2person: res.shift_auto.is_2person,
+          is_allleave: res.shift_auto.is_allleave,
+          leave_person: res.shift_auto.leave_person || "",
+          leave_type: res.shift_auto.leave_type || "",
+        } as ShiftInfo;
+      }
       // 2인 모드일 때 빠진 필드는 shift_auto 값으로 채우기
       if (usedShift?.is_2person) {
         const auto = res.shift_auto as unknown as Record<string, string>;
