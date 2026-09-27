@@ -87,6 +87,7 @@ export default function DailyInventoryPage() {
   );
   const [thinnerSaving, setThinnerSaving] = useState(false);
   const thinnerSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const thinnerQtyRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const loadData = useCallback(async (d: string) => {
     setLoading(true);
@@ -401,8 +402,24 @@ export default function DailyInventoryPage() {
                     <input
                       type="number"
                       min={0}
+                      ref={el => { thinnerQtyRefs.current[i] = el; }}
                       value={item.qty}
                       onChange={e => updateThinnerQty(i, e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          // 즉시 저장
+                          if (thinnerSaveTimer.current) clearTimeout(thinnerSaveTimer.current);
+                          const items = thinnerItems;
+                          setThinnerSaving(true);
+                          saveDailyThinner(date, items.map(it => ({
+                            name: it.name,
+                            qty: it.qty !== "" ? Number(it.qty) : null,
+                          }))).then(() => {}).catch(() => toast.error("신너 재고 저장 실패")).finally(() => setThinnerSaving(false));
+                          // 다음 칸으로 포커스
+                          thinnerQtyRefs.current[i + 1]?.focus();
+                        }
+                      }}
                       placeholder="—"
                       className="border border-gray-200 rounded px-2 py-1 text-sm text-center tabular-nums focus:outline-none focus:ring-1 focus:ring-[#4B2D8E] w-20"
                     />
