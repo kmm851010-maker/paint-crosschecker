@@ -80,9 +80,20 @@ function initCells(savedItems: Record<string, WorkItem> | null, is2p: boolean): 
 }
 
 function initSafety(saved: SafetyRow[] | null, is2p: boolean): SafetyRow[] {
+  const activeKeys = is2p ? ["day", "night"] : ["s1", "s2", "s3"];
+  const disabledKeys = is2p ? ["s1", "s2", "s3"] : ["day", "night"];
   return SAFETY_QUESTIONS.map((text, i) => {
     if (saved && i < saved.length) {
-      return { text, s1: !!saved[i].s1, s2: !!saved[i].s2, s3: !!saved[i].s3, day: !!saved[i].day, night: !!saved[i].night };
+      const row = { text, s1: !!saved[i].s1, s2: !!saved[i].s2, s3: !!saved[i].s3, day: !!saved[i].day, night: !!saved[i].night };
+      // 비활성 컬럼이 이전 모드에서 체크됐는지 확인 후 false로 강제
+      const anyDisabledWasTrue = disabledKeys.some(k => !!(saved[i] as Record<string, unknown>)[k]);
+      for (const k of disabledKeys) (row as Record<string, unknown>)[k] = false;
+      // 활성 컬럼이 모두 false인데 비활성에 체크돼 있었으면 → 현재 모드 기본값(true)으로 리셋
+      const allActiveAreFalse = activeKeys.every(k => !(row as Record<string, unknown>)[k]);
+      if (anyDisabledWasTrue && allActiveAreFalse) {
+        for (const k of activeKeys) (row as Record<string, unknown>)[k] = true;
+      }
+      return row;
     }
     return { text, s1: !is2p, s2: !is2p, s3: !is2p, day: is2p, night: is2p };
   });
