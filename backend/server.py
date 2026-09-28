@@ -1978,8 +1978,10 @@ async def get_attendance_month_stats(year: int, month: int, name: str):
                 if fhol: frow["유휴근로"]=8.0; frow["야간근로"]=nb; frow["휴일연장"]=not_; frow["휴일비근로"]=8.0
                 else: frow["정상근로"]=8.0; frow["야간근로"]=nb; frow["연장근로"]=not_
         else:
+            matched = False
             for sk, 근k in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
                 if sh2.get(sk) == name:
+                    matched = True
                     nb3 = NIGHT_HOURS.get(근k, 0)
                     ot3 = _sff(sh2.get(f"{근k}_연장", 0) or 0)
                     dy3 = _sff(sh2.get(f"{근k}_주간연장") or ot3)
@@ -1992,6 +1994,9 @@ async def get_attendance_month_stats(year: int, month: int, name: str):
                         frow["정상근로"]=8.0; frow["연장근로"]=dy3
                         if nb3 > 0: frow["야간근로"] = nb3+ny3
                     break
+            # 교대휴무이고 빨간날이면 휴일비근로 적용
+            if not matched and fhol and sh2.get("휴무_근무자") == name:
+                frow["휴일비근로"] = 8.0
 
         # 연장근로 신청 반영 (type="연장근로", sub=시간)
         for lv in base_leaves:
