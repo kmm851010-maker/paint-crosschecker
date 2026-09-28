@@ -1924,7 +1924,7 @@ async def get_attendance_month_stats(year: int, month: int, name: str):
     for fd in range(1, days_in_month + 1):
         fd_date = _dt.date(year, month, fd)
         fds = fd_date.strftime("%Y-%m-%d")
-        fhol = fd_date in kr_holidays
+        fhol = fd_date in kr_holidays or (fd_date.month, fd_date.day) in _KG_COMPANY_DAYS
         frow = {c: 0.0 for c in SCOLS}
         frow["날짜"] = f"{month:02d}/{fd:02d}"
 
