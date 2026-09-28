@@ -1970,10 +1970,10 @@ async def get_attendance_month_stats(year: int, month: int, name: str):
                 if lv_type == "공가": frow["공가"] = 8.0
                 else: frow["휴가비근로"] = 8.0
             elif name == dw:
-                if fhol: frow["유휴근로"]=8.0; frow["휴일연장"]=dot; frow["휴일비근로"]=8.0
+                if fhol: frow["휴일근로"]=8.0; frow["휴일연장"]=dot
                 else: frow["정상근로"]=8.0; frow["연장근로"]=dot
             elif name == nw:
-                if fhol: frow["유휴근로"]=8.0; frow["야간근로"]=nb; frow["휴일연장"]=not_; frow["휴일비근로"]=8.0
+                if fhol: frow["휴일근로"]=8.0; frow["야간근로"]=nb; frow["휴일연장"]=not_
                 else: frow["정상근로"]=8.0; frow["야간근로"]=nb; frow["연장근로"]=not_
         else:
             for sk, 근k in [("1근_근무자","1근"),("2근_근무자","2근"),("3근_근무자","3근")]:
@@ -1983,7 +1983,7 @@ async def get_attendance_month_stats(year: int, month: int, name: str):
                     dy3 = _sff(sh2.get(f"{근k}_주간연장") or ot3)
                     ny3 = _sff(sh2.get(f"{근k}_야간연장") or 0)
                     if fhol:
-                        frow["유휴근로"]=8.0; frow["휴일비근로"]=8.0
+                        frow["휴일근로"]=8.0
                         frow["휴일연장"]=dy3+ny3
                         if nb3 > 0: frow["야간근로"] = nb3
                     else:

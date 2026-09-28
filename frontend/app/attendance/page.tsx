@@ -366,7 +366,8 @@ export default function AttendancePage() {
   // 연장근로 신청 폼
   const [otName, setOtName] = useState(() => (!isAttendanceManager() && getAuth()?.name) ? getAuth()!.name : "");
   const [otDate, setOtDate] = useState("");
-  const [otHours, setOtHours] = useState("1");
+  const [otStart, setOtStart] = useState("18:00");
+  const [otEnd, setOtEnd] = useState("19:00");
   const [otSaving, setOtSaving] = useState(false);
 
   // expander
@@ -433,20 +434,27 @@ export default function AttendancePage() {
     catch { toast.error("삭제 실패"); }
   }
 
+  function calcOtHours(start: string, end: string): number {
+    const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+    let diff = toMin(end) - toMin(start);
+    if (diff <= 0) diff += 24 * 60; // 자정 넘어가는 경우
+    return Math.round(diff / 30) * 0.5;
+  }
+
   async function handleAddOvertime(e: React.FormEvent) {
     e.preventDefault();
     const nm = otName || currentUser?.name || "";
-    if (!nm || !otDate || !otHours) { toast.error("항목을 모두 입력하세요."); return; }
+    if (!nm || !otDate) { toast.error("항목을 모두 입력하세요."); return; }
     if (!admin && currentUser && nm !== currentUser.name) { toast.error("본인의 연장만 신청할 수 있습니다."); return; }
-    const h = parseFloat(otHours);
-    if (isNaN(h) || h <= 0) { toast.error("시간을 올바르게 입력하세요."); return; }
+    const h = calcOtHours(otStart, otEnd);
+    if (h <= 0) { toast.error("종료 시간이 시작 시간보다 늦어야 합니다."); return; }
     setOtSaving(true);
     const next = [...leaves, { name: nm, type: "연장근로", start: otDate, end: otDate, sub: String(h) }];
     try {
       await saveLeaves(next);
       setLeaves(next);
-      toast.success("연장근로 신청 완료");
-      setOtDate(""); setOtHours("1");
+      toast.success(`연장근로 신청 완료 (${h}H)`);
+      setOtDate("");
     } catch { toast.error("등록 실패"); }
     finally { setOtSaving(false); }
   }
@@ -852,38 +860,59 @@ export default function AttendancePage() {
             {/* 연장근로 신청 */}
             <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 16, marginBottom: 16 }}>
               <p style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", marginBottom: 10 }}>연장근로 신청</p>
-              <form onSubmit={handleAddOvertime}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
-                  <div>
-                    <label style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, display: "block", marginBottom: 4 }}>대상자</label>
-                    {admin ? (
-                      <select value={otName} onChange={e => setOtName(e.target.value)}
-                        style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 13 }}>
-                        <option value="">선택</option>
-                        {allNames.map(n => <option key={n}>{n}</option>)}
-                      </select>
-                    ) : (
-                      <div style={{ width: "100%", border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 8px", fontSize: 13, background: "#f9fafb", color: "#374151", fontWeight: 600 }}>
-                        {currentUser?.name ?? ""}
+              {(() => {
+                const timeOptions: string[] = [];
+                for (let h = 0; h < 24; h++)
+                  for (const m of [0, 30])
+                    timeOptions.push(`${String(h).padStart(2,"0")}:${m === 0 ? "00" : "30"}`);
+                const computedH = calcOtHours(otStart, otEnd);
+                return (
+                  <form onSubmit={handleAddOvertime}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                      <div>
+                        <label style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, display: "block", marginBottom: 4 }}>대상자</label>
+                        {admin ? (
+                          <select value={otName} onChange={e => setOtName(e.target.value)}
+                            style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 13 }}>
+                            <option value="">선택</option>
+                            {allNames.map(n => <option key={n}>{n}</option>)}
+                          </select>
+                        ) : (
+                          <div style={{ width: "100%", border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 8px", fontSize: 13, background: "#f9fafb", color: "#374151", fontWeight: 600 }}>
+                            {currentUser?.name ?? ""}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  <div>
-                    <label style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, display: "block", marginBottom: 4 }}>날짜</label>
-                    <input type="date" value={otDate} onChange={e => setOtDate(e.target.value)}
-                      style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 13 }} />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, display: "block", marginBottom: 4 }}>시간 (H)</label>
-                    <input type="number" min="0.5" max="12" step="0.5" value={otHours} onChange={e => setOtHours(e.target.value)}
-                      style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 13 }} />
-                  </div>
-                </div>
-                <button type="submit" disabled={otSaving}
-                  style={{ width: "100%", background: otSaving ? "#9ca3af" : "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "7px 0", fontSize: 13, fontWeight: 700, cursor: otSaving ? "not-allowed" : "pointer", marginBottom: 4 }}>
-                  {otSaving ? "등록 중..." : "연장근로 등록"}
-                </button>
-              </form>
+                      <div>
+                        <label style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, display: "block", marginBottom: 4 }}>날짜</label>
+                        <input type="date" value={otDate} onChange={e => setOtDate(e.target.value)}
+                          style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 13 }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, display: "block", marginBottom: 4 }}>시작 시간</label>
+                        <select value={otStart} onChange={e => setOtStart(e.target.value)}
+                          style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 13 }}>
+                          {timeOptions.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, display: "block", marginBottom: 4 }}>종료 시간</label>
+                        <select value={otEnd} onChange={e => setOtEnd(e.target.value)}
+                          style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 13 }}>
+                          {timeOptions.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{ background: "#eff6ff", borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: 13, color: "#1d4ed8", fontWeight: 600 }}>
+                      총 연장시간: {computedH}H ({otStart} ~ {otEnd})
+                    </div>
+                    <button type="submit" disabled={otSaving}
+                      style={{ width: "100%", background: otSaving ? "#9ca3af" : "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "7px 0", fontSize: 13, fontWeight: 700, cursor: otSaving ? "not-allowed" : "pointer", marginBottom: 4 }}>
+                      {otSaving ? "등록 중..." : `연장근로 등록 (${computedH}H)`}
+                    </button>
+                  </form>
+                );
+              })()}
             </div>
 
             {/* 등록된 일정 조회 */}
