@@ -1991,6 +1991,19 @@ async def get_attendance_month_stats(year: int, month: int, name: str):
                         if nb3 > 0: frow["야간근로"] = nb3+ny3
                     break
 
+        # 연장근로 신청 반영 (type="연장근로", sub=시간)
+        for lv in base_leaves:
+            if lv.get("type") == "연장근로" and lv.get("name") == name:
+                try:
+                    ls2 = _dt.date.fromisoformat(lv["start"][:10])
+                    le2 = _dt.date.fromisoformat(lv["end"][:10])
+                    if ls2 <= fd_date <= le2:
+                        ot_add = float(lv.get("sub") or 0)
+                        if ot_add > 0:
+                            frow["연장근로"] = (frow.get("연장근로") or 0) + ot_add
+                except Exception:
+                    pass
+
         ft = sum(frow[c] for c in SCOLS)
         frow["일별합계"] = ft
         if ft > 0:

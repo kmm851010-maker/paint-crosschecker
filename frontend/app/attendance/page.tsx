@@ -363,6 +363,12 @@ export default function AttendancePage() {
   const [lvEnd, setLvEnd] = useState("");
   const [lvSaving, setLvSaving] = useState(false);
 
+  // 연장근로 신청 폼
+  const [otName, setOtName] = useState(() => (!isAttendanceManager() && getAuth()?.name) ? getAuth()!.name : "");
+  const [otDate, setOtDate] = useState("");
+  const [otHours, setOtHours] = useState("1");
+  const [otSaving, setOtSaving] = useState(false);
+
   // expander
   const [expSub, setExpSub] = useState(false);
   const [expLv, setExpLv] = useState(false);
@@ -422,9 +428,27 @@ export default function AttendancePage() {
   }
 
   async function handleDeleteLeave(lv: LeaveItem) {
-    const next = leaves.filter(l => !(l.name === lv.name && l.start === lv.start && l.end === lv.end));
+    const next = leaves.filter(l => !(l.name === lv.name && l.start === lv.start && l.end === lv.end && l.type === lv.type));
     try { await saveLeaves(next); setLeaves(next); toast.success("삭제 완료"); }
     catch { toast.error("삭제 실패"); }
+  }
+
+  async function handleAddOvertime(e: React.FormEvent) {
+    e.preventDefault();
+    const nm = otName || currentUser?.name || "";
+    if (!nm || !otDate || !otHours) { toast.error("항목을 모두 입력하세요."); return; }
+    if (!admin && currentUser && nm !== currentUser.name) { toast.error("본인의 연장만 신청할 수 있습니다."); return; }
+    const h = parseFloat(otHours);
+    if (isNaN(h) || h <= 0) { toast.error("시간을 올바르게 입력하세요."); return; }
+    setOtSaving(true);
+    const next = [...leaves, { name: nm, type: "연장근로", start: otDate, end: otDate, sub: String(h) }];
+    try {
+      await saveLeaves(next);
+      setLeaves(next);
+      toast.success("연장근로 신청 완료");
+      setOtDate(""); setOtHours("1");
+    } catch { toast.error("등록 실패"); }
+    finally { setOtSaving(false); }
   }
 
   function prevMonth() { if (month === 0) { setYear(y => y - 1); setMonth(11); } else setMonth(m => m - 1); }
@@ -825,6 +849,43 @@ export default function AttendancePage() {
               </button>
             </form>
 
+            {/* 연장근로 신청 */}
+            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 16, marginBottom: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", marginBottom: 10 }}>연장근로 신청</p>
+              <form onSubmit={handleAddOvertime}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+                  <div>
+                    <label style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, display: "block", marginBottom: 4 }}>대상자</label>
+                    {admin ? (
+                      <select value={otName} onChange={e => setOtName(e.target.value)}
+                        style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 13 }}>
+                        <option value="">선택</option>
+                        {allNames.map(n => <option key={n}>{n}</option>)}
+                      </select>
+                    ) : (
+                      <div style={{ width: "100%", border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 8px", fontSize: 13, background: "#f9fafb", color: "#374151", fontWeight: 600 }}>
+                        {currentUser?.name ?? ""}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, display: "block", marginBottom: 4 }}>날짜</label>
+                    <input type="date" value={otDate} onChange={e => setOtDate(e.target.value)}
+                      style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 13 }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, display: "block", marginBottom: 4 }}>시간 (H)</label>
+                    <input type="number" min="0.5" max="12" step="0.5" value={otHours} onChange={e => setOtHours(e.target.value)}
+                      style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 8px", fontSize: 13 }} />
+                  </div>
+                </div>
+                <button type="submit" disabled={otSaving}
+                  style={{ width: "100%", background: otSaving ? "#9ca3af" : "#1d4ed8", color: "#fff", border: "none", borderRadius: 8, padding: "7px 0", fontSize: 13, fontWeight: 700, cursor: otSaving ? "not-allowed" : "pointer", marginBottom: 4 }}>
+                  {otSaving ? "등록 중..." : "연장근로 등록"}
+                </button>
+              </form>
+            </div>
+
             {/* 등록된 일정 조회 */}
             <p style={{ fontSize: 13, fontWeight: 700, color: "#1f2937", marginBottom: 8 }}>등록된 일정 조회</p>
             {(() => {
@@ -863,12 +924,12 @@ export default function AttendancePage() {
                       <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 6px" }}>{lvFilterYear}년 {lvFilterMonth}월 — {filtered.length}건</p>
                       <div style={{ maxHeight: 400, overflowY: "auto" }}>
                         {filtered.map((lv, i) => (
-                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, background: "#f9fafb", borderRadius: 8, padding: "7px 10px", marginBottom: 4 }}>
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, background: lv.type === "연장근로" ? "#eff6ff" : "#f9fafb", borderRadius: 8, padding: "7px 10px", marginBottom: 4 }}>
                             <span style={{ fontWeight: 600, color: "#1f2937", minWidth: 44 }}>{lv.name}</span>
-                            <span style={{ background: "#F57F17", color: "#fff", borderRadius: 4, padding: "2px 6px", fontSize: 11, fontWeight: 700 }}>{lv.type}</span>
+                            <span style={{ background: lv.type === "연장근로" ? "#1d4ed8" : "#F57F17", color: "#fff", borderRadius: 4, padding: "2px 6px", fontSize: 11, fontWeight: 700 }}>{lv.type}</span>
                             <span style={{ color: "#6b7280", flex: 1 }}>
                               {lv.start}{lv.start !== lv.end ? ` ~ ${lv.end}` : ""}
-                              {lv.sub ? ` | 대근: ${lv.sub}` : ""}
+                              {lv.type === "연장근로" && lv.sub ? ` | ${lv.sub}H` : lv.sub ? ` | 대근: ${lv.sub}` : ""}
                             </span>
                             {(admin || lv.name === currentUser?.name) && (
                               <button onClick={() => handleDeleteLeave(lv)}
