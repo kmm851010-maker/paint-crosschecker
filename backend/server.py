@@ -1931,6 +1931,10 @@ async def get_attendance_month_stats(year: int, month: int, name: str):
         sh2 = None
         if fds in daily_details and daily_details[fds].get("shift"):
             sh2 = daily_details[fds]["shift"]
+            # is_2person은 현재 휴가목록 기준으로 재계산 (저장 후 휴가 삭제 시 오염 방지)
+            auto_check = _apply_leaves(_shift_for_date(fd_date), fd_date)
+            if sh2.get("is_2person") and not auto_check.get("is_2person"):
+                sh2 = auto_check
         else:
             auto = _shift_for_date(fd_date)
             sh2 = _apply_leaves(auto, fd_date)
