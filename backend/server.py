@@ -1541,30 +1541,33 @@ async def get_daily_inventory(date: str):
     detail = load_daily_detail(date)
     saved_shift = (detail.get("shift") or {}) if detail else {}
 
-    if not saved_shift:
-        return {"success": True, "date": date, "shift_data": {}, "shift_groups": []}
-
-    # 현재 휴가 목록으로 shift 동적 재계산 (휴가 삭제 시 즉시 반영)
+    # 현재 휴가 목록으로 shift 동적 재계산 (작업일지 미저장 날도 재고 표시)
     try:
         members = get_members_dict()
         shift_auto = get_shift_info(d, members)
         leave_list = load_leaves()
         shift_auto = apply_leaves(shift_auto, d, leave_list)
-        # 모드가 바뀐 경우(2인↔3근) shift_auto로 완전 교체 → 잔재 비고 등 제거
-        saved_is2p = bool(saved_shift.get("is_2person", False))
-        auto_is2p = bool(shift_auto.get("is_2person", False))
-        if saved_is2p != auto_is2p:
+        if not saved_shift:
+            # 작업일지 미저장 → shift_auto로 완전 계산
             shift_data = dict(shift_auto)
         else:
-            shift_data = {**saved_shift,
-                          "is_2person": auto_is2p,
-                          "is_allleave": shift_auto.get("is_allleave", False),
-                          "주간_근무자": shift_auto.get("주간_근무자", saved_shift.get("주간_근무자", "")),
-                          "야간_근무자": shift_auto.get("야간_근무자", saved_shift.get("야간_근무자", "")),
-                          "1근_근무자": shift_auto.get("1근_근무자", saved_shift.get("1근_근무자", "")),
-                          "2근_근무자": shift_auto.get("2근_근무자", saved_shift.get("2근_근무자", "")),
-                          "3근_근무자": shift_auto.get("3근_근무자", saved_shift.get("3근_근무자", ""))}
+            saved_is2p = bool(saved_shift.get("is_2person", False))
+            auto_is2p = bool(shift_auto.get("is_2person", False))
+            if saved_is2p != auto_is2p:
+                # 모드가 바뀐 경우 shift_auto로 완전 교체
+                shift_data = dict(shift_auto)
+            else:
+                shift_data = {**saved_shift,
+                              "is_2person": auto_is2p,
+                              "is_allleave": shift_auto.get("is_allleave", False),
+                              "주간_근무자": shift_auto.get("주간_근무자", saved_shift.get("주간_근무자", "")),
+                              "야간_근무자": shift_auto.get("야간_근무자", saved_shift.get("야간_근무자", "")),
+                              "1근_근무자": shift_auto.get("1근_근무자", saved_shift.get("1근_근무자", "")),
+                              "2근_근무자": shift_auto.get("2근_근무자", saved_shift.get("2근_근무자", "")),
+                              "3근_근무자": shift_auto.get("3근_근무자", saved_shift.get("3근_근무자", ""))}
     except Exception:
+        if not saved_shift:
+            return {"success": True, "date": date, "shift_data": {}, "shift_groups": []}
         shift_data = saved_shift
 
     is_2p = shift_data.get("is_2person", False)
