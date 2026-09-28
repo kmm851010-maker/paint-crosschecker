@@ -534,7 +534,7 @@ export default function AttendancePage() {
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
-          <button onClick={() => loadData()}
+          <button onClick={() => window.location.reload()}
             style={{ background: "#fff", border: "1px solid #d1d5db", borderRadius: 8, padding: "5px 10px", fontSize: 13, cursor: "pointer" }}>
             🔄
           </button>
