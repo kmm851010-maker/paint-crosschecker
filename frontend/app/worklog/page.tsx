@@ -134,36 +134,43 @@ export default function WorklogPage() {
     try {
       const res = await getWorklog(d);
       setShiftAuto(res.shift_auto);
-      let usedShift: ShiftInfo = res.saved_shift || res.shift_auto;
-      // is_2person/is_allleave는 현재 휴가목록 기준 동적값(shift_auto) 우선 적용
-      // (휴가 삭제 후에도 저장된 2인근무가 표시되는 문제 방지)
-      if (res.shift_auto && res.saved_shift) {
+      const savedIs2p: boolean = res.saved_shift?.is_2person ?? false;
+      const autoIs2p: boolean = res.shift_auto?.is_2person ?? false;
+      let usedShift: ShiftInfo;
+
+      // 모드가 바뀌었거나 저장된 데이터 없으면 → shift_auto 기준으로 완전 교체
+      // (2인→3근, 3근→2인 전환 시 비고 등 잔재 완전 제거)
+      if (!res.saved_shift || savedIs2p !== autoIs2p) {
+        usedShift = res.shift_auto;
+        // 2인 모드일 때 기본 비고 세팅
+        if (autoIs2p) {
+          const auto = res.shift_auto as unknown as Record<string, string>;
+          const lp = auto["leave_person"] || "";
+          const lt = auto["leave_type"] || "";
+          const defaultNote = lp ? `${lp} ${lt}로 대근` : "";
+          usedShift = { ...usedShift, "1근_비고": defaultNote, "2근_비고": defaultNote } as ShiftInfo;
+        }
+      } else {
+        // 같은 모드 → saved_shift 기반, 동적값만 override
         usedShift = {
-          ...usedShift,
-          is_2person: res.shift_auto.is_2person,
+          ...res.saved_shift,
+          is_2person: autoIs2p,
           is_allleave: res.shift_auto.is_allleave,
           leave_person: res.shift_auto.leave_person || "",
           leave_type: res.shift_auto.leave_type || "",
         } as ShiftInfo;
-      }
-      // 2인 모드일 때 빠진 필드는 shift_auto 값으로 채우기
-      if (usedShift?.is_2person) {
-        const auto = res.shift_auto as unknown as Record<string, string>;
-        const r = usedShift as unknown as Record<string, string>;
-        const lp = r["leave_person"] || auto["leave_person"] || "";
-        const lt = r["leave_type"] || auto["leave_type"] || "";
-        const defaultNote = lp ? `${lp} ${lt}로 대근` : "";
-        usedShift = {
-          ...usedShift,
-          "주간_근무자": r["주간_근무자"] || auto["주간_근무자"] || "",
-          "야간_근무자": r["야간_근무자"] || auto["야간_근무자"] || "",
-          "주간_조": r["주간_조"] || auto["주간_조"] || "",
-          "야간_조": r["야간_조"] || auto["야간_조"] || "",
-          leave_person: lp,
-          leave_type: lt,
-          "1근_비고": defaultNote || r["1근_비고"],
-          "2근_비고": defaultNote || r["2근_비고"],
-        } as ShiftInfo;
+        // 2인 모드에서 근무자 정보는 shift_auto 우선
+        if (autoIs2p) {
+          const auto = res.shift_auto as unknown as Record<string, string>;
+          const r = usedShift as unknown as Record<string, string>;
+          usedShift = {
+            ...usedShift,
+            "주간_근무자": r["주간_근무자"] || auto["주간_근무자"] || "",
+            "야간_근무자": r["야간_근무자"] || auto["야간_근무자"] || "",
+            "주간_조": r["주간_조"] || auto["주간_조"] || "",
+            "야간_조": r["야간_조"] || auto["야간_조"] || "",
+          } as ShiftInfo;
+        }
       }
       setShiftData(usedShift);
       setMonthlyTotals(res.monthly_totals || {});

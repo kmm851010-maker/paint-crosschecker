@@ -1550,15 +1550,20 @@ async def get_daily_inventory(date: str):
         shift_auto = get_shift_info(d, members)
         leave_list = load_leaves()
         shift_auto = apply_leaves(shift_auto, d, leave_list)
-        # 근무자 이름 등 저장값은 유지하되 is_2person/is_allleave는 동적값 우선
-        shift_data = {**saved_shift,
-                      "is_2person": shift_auto.get("is_2person", False),
-                      "is_allleave": shift_auto.get("is_allleave", False),
-                      "주간_근무자": shift_auto.get("주간_근무자", saved_shift.get("주간_근무자", "")),
-                      "야간_근무자": shift_auto.get("야간_근무자", saved_shift.get("야간_근무자", "")),
-                      "1근_근무자": shift_auto.get("1근_근무자", saved_shift.get("1근_근무자", "")),
-                      "2근_근무자": shift_auto.get("2근_근무자", saved_shift.get("2근_근무자", "")),
-                      "3근_근무자": shift_auto.get("3근_근무자", saved_shift.get("3근_근무자", ""))}
+        # 모드가 바뀐 경우(2인↔3근) shift_auto로 완전 교체 → 잔재 비고 등 제거
+        saved_is2p = bool(saved_shift.get("is_2person", False))
+        auto_is2p = bool(shift_auto.get("is_2person", False))
+        if saved_is2p != auto_is2p:
+            shift_data = dict(shift_auto)
+        else:
+            shift_data = {**saved_shift,
+                          "is_2person": auto_is2p,
+                          "is_allleave": shift_auto.get("is_allleave", False),
+                          "주간_근무자": shift_auto.get("주간_근무자", saved_shift.get("주간_근무자", "")),
+                          "야간_근무자": shift_auto.get("야간_근무자", saved_shift.get("야간_근무자", "")),
+                          "1근_근무자": shift_auto.get("1근_근무자", saved_shift.get("1근_근무자", "")),
+                          "2근_근무자": shift_auto.get("2근_근무자", saved_shift.get("2근_근무자", "")),
+                          "3근_근무자": shift_auto.get("3근_근무자", saved_shift.get("3근_근무자", ""))}
     except Exception:
         shift_data = saved_shift
 
