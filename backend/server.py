@@ -1952,9 +1952,11 @@ async def get_attendance_month_stats(year: int, month: int, name: str):
         if person_leave_type:
             if person_leave_type == "공가":
                 frow["공가"] = 8.0
+            elif person_leave_type == "공휴":
+                frow["휴일비근로"] = 8.0
             else:
                 frow["휴가비근로"] = 8.0
-            frow["일별합계"] = frow["공가"] + frow["휴가비근로"]
+            frow["일별합계"] = frow["공가"] + frow["휴일비근로"] + frow["휴가비근로"]
             salary_rows.append(frow)
             continue
 
