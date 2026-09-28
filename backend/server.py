@@ -1970,6 +1970,7 @@ async def get_attendance_month_stats(year: int, month: int, name: str):
             not_ = _sff(sh2.get("2근_연장", 4) or 4)
             if name == lp:
                 if lv_type == "공가": frow["공가"] = 8.0
+                elif lv_type == "공휴": frow["휴일비근로"] = 8.0
                 else: frow["휴가비근로"] = 8.0
             elif name == dw:
                 if fhol: frow["유휴근로"]=8.0; frow["휴일연장"]=dot; frow["휴일비근로"]=8.0
