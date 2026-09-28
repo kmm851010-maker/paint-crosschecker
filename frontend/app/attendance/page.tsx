@@ -477,6 +477,19 @@ export default function AttendancePage() {
     if (shift === "대근") { subDetail.push({ ds, reason: subReason }); subHours += 4; }
   }
 
+  // 연장근로 신청 내역 (해당 월만)
+  const otDetail: { ds: string; hours: number; timeRange?: string }[] = [];
+  let otTotalHours = 0;
+  for (const lv of leaves) {
+    if (lv.name !== selName || lv.type !== "연장근로") continue;
+    const [ly, lm] = lv.start.split("-").map(Number);
+    if (ly === year && lm === month + 1) {
+      const h = parseFloat(lv.sub ?? "0") || 0;
+      otDetail.push({ ds: lv.start, hours: h });
+      otTotalHours += h;
+    }
+  }
+
   // 이번 달 휴가 내역 (일별 확장)
   const lvDetailExpanded: { ds: string; type: string }[] = [];
   for (const lv of leaves) {
@@ -586,21 +599,31 @@ export default function AttendancePage() {
               </h4>
             )}
 
-            {/* 대근 내역 */}
+            {/* 대근/연장 내역 */}
             <div style={{ marginBottom: 8 }}>
-              {subDetail.length === 0 ? (
-                <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>대근 없음</p>
+              {subDetail.length === 0 && otDetail.length === 0 ? (
+                <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>대근/연장 없음</p>
               ) : (
                 <>
                   <button onClick={() => setExpSub(!expSub)}
                     style={{ background: "none", border: "none", fontSize: 13, fontWeight: 600, color: "#1f2937", cursor: "pointer", padding: 0, textAlign: "left" }}>
-                    {expSub ? "▼" : "▶"} 대근 내역 ({subDetail.length}회 · 계 {subHours}H)
+                    {expSub ? "▼" : "▶"} 대근/연장 내역
+                    {subDetail.length > 0 && <span style={{ color: "#6b7280", fontWeight: 400 }}> · 대근 {subDetail.length}회 {subHours}H</span>}
+                    {otDetail.length > 0 && <span style={{ color: "#1d4ed8", fontWeight: 400 }}> · 연장 {otDetail.length}회 {otTotalHours}H</span>}
                   </button>
                   {expSub && (
                     <div style={{ paddingLeft: 16, marginTop: 4 }}>
                       {subDetail.map(({ ds, reason }) => (
-                        <p key={ds} style={{ fontSize: 12, color: "#374151", margin: "2px 0" }}>
+                        <p key={`sub-${ds}`} style={{ fontSize: 12, color: "#374151", margin: "2px 0" }}>
                           {ds}{reason ? <span style={{ color: "#6b7280", marginLeft: 6 }}>— {reason}</span> : null}
+                        </p>
+                      ))}
+                      {otDetail.length > 0 && subDetail.length > 0 && (
+                        <div style={{ borderTop: "1px solid #e5e7eb", margin: "4px 0" }} />
+                      )}
+                      {otDetail.map(({ ds, hours }) => (
+                        <p key={`ot-${ds}`} style={{ fontSize: 12, color: "#1d4ed8", margin: "2px 0" }}>
+                          {ds} — 연장근로 <strong>{hours}H</strong>
                         </p>
                       ))}
                     </div>
