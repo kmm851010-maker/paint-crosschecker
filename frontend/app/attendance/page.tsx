@@ -152,6 +152,7 @@ function buildCells(year: number, month: number, members: Record<string, string>
     const onLeaveNames = new Set<string>();
     let leaveType = "";
     for (const lv of leaves) {
+      if (lv.type === "연장근로") continue;
       if (lv.start <= ds && ds <= lv.end) {
         const nm = lv.name;
         onLeaveNames.add(nm);
@@ -192,6 +193,7 @@ function computePersonDays(year: number, month: number, members: Record<string, 
     let leaveType: string | undefined;
     let subReason: string | undefined;
     for (const lv of leaves) {
+      if (lv.type === "연장근로") continue;
       if (lv.start <= ds && ds <= lv.end) {
         if (lv.name === name) { shift = "휴가"; leaveType = lv.type; break; }
         if (lv.type === "명휴") continue; // 명휴는 전원 휴무 — 대근 없음
@@ -478,7 +480,7 @@ export default function AttendancePage() {
   // 이번 달 휴가 내역 (일별 확장)
   const lvDetailExpanded: { ds: string; type: string }[] = [];
   for (const lv of leaves) {
-    if (lv.name !== selName) continue;
+    if (lv.name !== selName || lv.type === "연장근로") continue;
     const s = new Date(lv.start), e = new Date(lv.end);
     for (let cur = new Date(s); cur <= e; cur.setDate(cur.getDate() + 1)) {
       const ds2 = cur.toISOString().slice(0, 10);
@@ -490,7 +492,7 @@ export default function AttendancePage() {
   // 연간 휴가: 날짜 범위를 일별로 확장
   const yrLeaves: { 날짜: string; 구분: string }[] = [];
   for (const lv of leaves) {
-    if (lv.name !== selName) continue;
+    if (lv.name !== selName || lv.type === "연장근로") continue;
     const s = new Date(lv.start), e = new Date(lv.end);
     for (let cur = new Date(s); cur <= e; cur.setDate(cur.getDate() + 1)) {
       const ds2 = cur.toISOString().slice(0, 10);
