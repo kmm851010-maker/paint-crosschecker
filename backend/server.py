@@ -1928,16 +1928,15 @@ async def get_attendance_month_stats(year: int, month: int, name: str):
         frow = {c: 0.0 for c in SCOLS}
         frow["날짜"] = f"{month:02d}/{fd:02d}"
 
-        sh2 = None
+        # 급여계산은 항상 현재 휴가목록 기준 재계산 (저장된 worklog의 연장 잔재 방지)
+        sh2 = _apply_leaves(_shift_for_date(fd_date), fd_date)
+        # 단, 수동으로 입력한 근무별 연장시간은 저장된 worklog에서 덮어씀 (3근 모드일 때만)
         if fds in daily_details and daily_details[fds].get("shift"):
-            sh2 = daily_details[fds]["shift"]
-            # is_2person은 현재 휴가목록 기준으로 재계산 (저장 후 휴가 삭제 시 오염 방지)
-            auto_check = _apply_leaves(_shift_for_date(fd_date), fd_date)
-            if sh2.get("is_2person") and not auto_check.get("is_2person"):
-                sh2 = auto_check
-        else:
-            auto = _shift_for_date(fd_date)
-            sh2 = _apply_leaves(auto, fd_date)
+            saved_sh = daily_details[fds]["shift"]
+            if not sh2.get("is_2person") and not saved_sh.get("is_2person"):
+                for k in ["1근_연장","2근_연장","3근_연장","1근_주간연장","2근_주간연장","3근_주간연장","1근_야간연장","2근_야간연장","3근_야간연장"]:
+                    v = saved_sh.get(k)
+                    if v: sh2[k] = v
 
         if not sh2:
             continue
