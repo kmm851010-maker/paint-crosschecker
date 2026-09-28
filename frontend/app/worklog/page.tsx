@@ -84,14 +84,16 @@ function initSafety(saved: SafetyRow[] | null, is2p: boolean): SafetyRow[] {
   const disabledKeys = is2p ? ["s1", "s2", "s3"] : ["day", "night"];
   return SAFETY_QUESTIONS.map((text, i) => {
     if (saved && i < saved.length) {
-      const row = { text, s1: !!saved[i].s1, s2: !!saved[i].s2, s3: !!saved[i].s3, day: !!saved[i].day, night: !!saved[i].night };
+      const sv = saved[i] as unknown as Record<string, unknown>;
+      const row: SafetyRow = { text, s1: !!saved[i].s1, s2: !!saved[i].s2, s3: !!saved[i].s3, day: !!saved[i].day, night: !!saved[i].night };
+      const r = row as unknown as Record<string, unknown>;
       // 비활성 컬럼이 이전 모드에서 체크됐는지 확인 후 false로 강제
-      const anyDisabledWasTrue = disabledKeys.some(k => !!(saved[i] as Record<string, unknown>)[k]);
-      for (const k of disabledKeys) (row as Record<string, unknown>)[k] = false;
+      const anyDisabledWasTrue = disabledKeys.some(k => !!sv[k]);
+      for (const k of disabledKeys) r[k] = false;
       // 활성 컬럼이 모두 false인데 비활성에 체크돼 있었으면 → 현재 모드 기본값(true)으로 리셋
-      const allActiveAreFalse = activeKeys.every(k => !(row as Record<string, unknown>)[k]);
+      const allActiveAreFalse = activeKeys.every(k => !r[k]);
       if (anyDisabledWasTrue && allActiveAreFalse) {
-        for (const k of activeKeys) (row as Record<string, unknown>)[k] = true;
+        for (const k of activeKeys) r[k] = true;
       }
       return row;
     }
