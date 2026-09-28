@@ -159,7 +159,7 @@ def apply_leaves(shift_data: dict, target_date: datetime.date, leave_list: list)
             end = datetime.date.fromisoformat(leave["end"])
         except Exception:
             continue
-        if start <= target_date <= end:
+        if start <= target_date <= end and leave.get("type") != "연장근로":
             on_leave[leave["name"]] = leave["type"]
 
     w1 = result.get("1근_근무자", "")

@@ -1889,7 +1889,7 @@ async def get_attendance_month_stats(year: int, month: int, name: str):
                 le = _dt.date.fromisoformat(lv["end"][:10])
             except Exception:
                 continue
-            if ls <= d <= le:
+            if ls <= d <= le and lv.get("type") != "연장근로":
                 absent = lv["name"]
                 if result["1근_근무자"] == absent:
                     result["is_2person"] = True
@@ -1946,7 +1946,7 @@ async def get_attendance_month_stats(year: int, month: int, name: str):
                 le = _dt.date.fromisoformat(lv["end"][:10])
             except Exception:
                 continue
-            if ls <= fd_date <= le and lv["name"] == name:
+            if ls <= fd_date <= le and lv["name"] == name and lv.get("type") != "연장근로":
                 person_leave_type = lv["type"]
                 break
         if person_leave_type:
