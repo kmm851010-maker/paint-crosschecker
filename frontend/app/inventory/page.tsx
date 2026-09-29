@@ -681,7 +681,7 @@ export default function InventoryPage() {
           <div className="grid grid-cols-2 gap-3 mb-3">
             <div>
               <label className="text-xs text-gray-600 mb-1 block">LOT번호</label>
-              <input className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" value={editFields.lot} onChange={e => setEditFields(f => ({ ...f, lot: e.target.value }))} />
+              <input className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" value={editFields.lot} onChange={e => setEditFields(f => ({ ...f, lot: e.target.value.toUpperCase() }))} />
             </div>
             <div>
               <label className="text-xs text-gray-600 mb-1 block">품명</label>
