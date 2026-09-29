@@ -25,7 +25,7 @@ export default function LoginPage() {
     try {
       const id = employeeId.trim();
       const data = await login(id, password);
-      saveAuth({ token: data.token, name: data.name, employee_id: data.employee_id, role: data.role });
+      saveAuth({ token: data.token, name: data.name, employee_id: data.employee_id, role: data.role, menu_permissions: data.menu_permissions ?? null });
       router.push("/attendance");
     } catch {
       setError("아이디 또는 비밀번호가 올바르지 않습니다.");
