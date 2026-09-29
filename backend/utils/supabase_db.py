@@ -445,10 +445,15 @@ def get_daily_inventory_hidden(date: str) -> list:
 # ── 신너 재고 ──
 
 def get_daily_thinner(date: str) -> list:
-    """해당 날짜의 신너 재고 항목 반환."""
+    """해당 날짜의 신너 재고 항목 반환. 없으면 가장 최근 이전 날짜 데이터 자동 이관."""
     res = _sb().table("daily_thinner").select("items").eq("date", date).execute()
     if res.data:
         return res.data[0]["items"] or []
+    # 이전 날짜 중 가장 최근 데이터 조회
+    prev = _sb().table("daily_thinner").select("items") \
+        .lt("date", date).order("date", desc=True).limit(1).execute()
+    if prev.data:
+        return prev.data[0]["items"] or []
     return []
 
 
