@@ -1049,6 +1049,22 @@ async def reset_employee_password(employee_id: str, req: ResetPasswordRequest):
     return {"success": True}
 
 
+class RenameEmployeeRequest(BaseModel):
+    new_name: str
+
+
+@app.patch("/api/employees/{employee_id}/name")
+async def rename_employee(employee_id: str, req: RenameEmployeeRequest):
+    from utils.supabase_db import rename_app_user
+    if not req.new_name.strip():
+        raise HTTPException(status_code=400, detail="이름을 입력하세요.")
+    try:
+        rename_app_user(employee_id, req.new_name.strip())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True}
+
+
 class MenuPermissionsRequest(BaseModel):
     permissions: list[str] | None = None  # None = 전체 허용
 

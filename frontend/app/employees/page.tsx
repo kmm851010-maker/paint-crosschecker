@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
 import {
-  getEmployees, createEmployee, deleteEmployee, resetEmployeePassword, setMenuPermissions,
+  getEmployees, createEmployee, deleteEmployee, resetEmployeePassword, setMenuPermissions, renameEmployee,
   type Employee,
 } from "@/lib/api";
 import { isAdmin } from "@/lib/auth";
@@ -56,6 +56,10 @@ export default function EmployeesPage() {
   // reset password
   const [resetTarget, setResetTarget] = useState<string | null>(null);
   const [resetPw, setResetPw] = useState("");
+
+  // rename
+  const [renameTarget, setRenameTarget] = useState<string | null>(null);
+  const [renameName, setRenameName] = useState("");
 
   // menu permissions
   const [menuTarget, setMenuTarget] = useState<string | null>(null);
@@ -115,6 +119,18 @@ export default function EmployeesPage() {
       setResetPw("");
     } catch {
       toast.error("비밀번호 변경 실패");
+    }
+  }
+
+  async function handleRename(eid: string) {
+    if (!renameName.trim()) { toast.error("이름을 입력하세요."); return; }
+    try {
+      await renameEmployee(eid, renameName.trim());
+      toast.success("이름 변경 완료");
+      setRenameTarget(null);
+      await loadEmployees();
+    } catch {
+      toast.error("변경 실패");
     }
   }
 
@@ -307,6 +323,31 @@ export default function EmployeesPage() {
                           </span>
                         )}
 
+                        {/* Rename inline */}
+                        {renameTarget === emp.employee_id ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              value={renameName}
+                              onChange={e=>setRenameName(e.target.value)}
+                              placeholder="새 이름"
+                              className="border border-gray-300 rounded px-2 py-1 text-xs w-24 focus:outline-none"
+                              onKeyDown={e=>{ if(e.key==="Enter") handleRename(emp.employee_id); }}
+                              autoFocus
+                            />
+                            <button onClick={()=>handleRename(emp.employee_id)}
+                              className="text-xs bg-green-600 text-white rounded px-2 py-1">확인</button>
+                            <button onClick={()=>{setRenameTarget(null);setRenameName("");}}
+                              className="text-xs bg-gray-200 text-gray-600 rounded px-2 py-1">취소</button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={()=>{setRenameTarget(emp.employee_id);setRenameName(emp.name);setResetTarget(null);setMenuTarget(null);}}
+                            className="text-xs text-gray-500 hover:underline"
+                          >
+                            이름변경
+                          </button>
+                        )}
+
                         {/* Reset password inline */}
                         {resetTarget === emp.employee_id ? (
                           <div className="flex items-center gap-1">
@@ -323,7 +364,7 @@ export default function EmployeesPage() {
                           </div>
                         ) : (
                           <button
-                            onClick={()=>{setResetTarget(emp.employee_id);setResetPw("");setMenuTarget(null);}}
+                            onClick={()=>{setResetTarget(emp.employee_id);setResetPw("");setMenuTarget(null);setRenameTarget(null);}}
                             className="text-xs text-blue-600 hover:underline"
                           >
                             비밀번호 초기화

@@ -352,6 +352,11 @@ export interface Employee {
   menu_permissions?: string[] | null;
 }
 
+export async function renameEmployee(employee_id: string, new_name: string) {
+  const { data } = await api.patch(`/api/employees/${employee_id}/name`, { new_name });
+  return data;
+}
+
 export async function setMenuPermissions(employee_id: string, permissions: string[] | null) {
   const { data } = await api.patch(`/api/employees/${employee_id}/menu-permissions`, { permissions });
   return data;
