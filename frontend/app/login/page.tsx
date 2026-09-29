@@ -80,16 +80,14 @@ export default function LoginPage() {
               </select>
             </div>
 
-            {/* 아이디 / 사번 */}
+            {/* 아이디 */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                {isAdmin ? "아이디" : "사번"}
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">ID</label>
               <input
                 type="text"
                 value={employeeId}
                 onChange={(e) => setEmployeeId(e.target.value)}
-                placeholder={isAdmin ? "관리자 아이디" : "사번을 입력하세요"}
+                placeholder="아이디를 입력하세요"
                 required
                 className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#4B2D8E] focus:border-transparent"
               />
