@@ -50,6 +50,15 @@ def _is_sum_row(row: list) -> bool:
     return False
 
 
+def _drop_location_cols(headers: list, rows: list):
+    """'위치' 포함 컬럼 제거 후 (headers, rows) 반환."""
+    import re as _re_loc
+    keep = [i for i, h in enumerate(headers) if not _re_loc.search(r'위치', str(h))]
+    new_headers = [headers[i] for i in keep]
+    new_rows = [[row[i] for i in keep if i < len(row)] for row in rows]
+    return new_headers, new_rows
+
+
 def convert_to_excel(headers: list, rows: list) -> bytes:
     """
     헤더와 행 데이터를 서식 적용 엑셀 파일로 변환합니다.
@@ -61,6 +70,7 @@ def convert_to_excel(headers: list, rows: list) -> bytes:
     Returns:
         엑셀 파일 바이트
     """
+    headers, rows = _drop_location_cols(headers, rows)
     wb = Workbook()
     ws = wb.active
     ws.title = "변환 결과"
@@ -145,6 +155,7 @@ def convert_to_excel(headers: list, rows: list) -> bytes:
 
 def convert_erp_filled_to_excel(headers: list, rows: list) -> bytes:
     """ERP 입고 반영 결과를 색상 적용 엑셀로 변환합니다."""
+    headers, rows = _drop_location_cols(headers, rows)
     import re as _re_erp_h
     FILL_RED    = PatternFill(start_color="FF9999", end_color="FF9999", fill_type="solid")
     FILL_GREEN  = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")

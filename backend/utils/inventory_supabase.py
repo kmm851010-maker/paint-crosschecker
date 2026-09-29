@@ -96,7 +96,8 @@ def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existi
             prev_sector = prev["sector"]
             if prev_sector == sector:
                 already_same.append(lot)
-                to_refresh_ts.append(lot)  # 동일 섹터라도 재스캔 시 updated_at 갱신
+                if not skip_existing:
+                    to_refresh_ts.append(lot)  # 동일 섹터라도 재스캔 시 updated_at 갱신
                 # 생산 후 재고(daily)일 때는 이력도 남겨 일일재고에 포함
                 if source == "daily":
                     history_rows.append({
