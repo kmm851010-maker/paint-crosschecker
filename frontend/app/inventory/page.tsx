@@ -476,6 +476,19 @@ export default function InventoryPage() {
     return histData.filter(h => h.lot.toUpperCase().includes(s) || h.product.toUpperCase().includes(s));
   }, [histData, histSearch]);
 
+  // 철회된 라인입고 항목 식별: 이동 이력 중 from_sector="라인입고"인 것이 있으면 해당 lot의 이전 checkout을 reverted로 표시
+  const revertedCheckoutKeys = useMemo(() => {
+    if (!histData) return new Set<string>();
+    const reverts = histData.filter(h => h.action === "이동" && h.from_sector === "라인입고");
+    const result = new Set<string>();
+    for (const h of histData.filter(h => h.action === "라인입고")) {
+      if (reverts.some(r => r.lot === h.lot && r.timestamp > h.timestamp)) {
+        result.add(`${h.lot}|${h.timestamp}`);
+      }
+    }
+    return result;
+  }, [histData]);
+
   // ── Bulk LOT extraction ────────────────────────────────────────────────────
   async function handleBulkFile(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -948,6 +961,7 @@ export default function InventoryPage() {
                         const canRevert = isLineTab && isWithin24h(h.timestamp);
                         const key = histKey(h);
                         const sel = canRevert && histSelectedKeys.has(key);
+                        const isReverted = isLineTab && revertedCheckoutKeys.has(key);
                         return (
                           <tr key={i}
                             onClick={() => canRevert && toggleHistItem(h)}
@@ -955,6 +969,7 @@ export default function InventoryPage() {
                               "border-t border-gray-100 hover:bg-gray-50",
                               canRevert && "cursor-pointer",
                               sel && "bg-orange-50",
+                              isReverted && "opacity-50",
                             )}>
                             {isLineTab && (
                               <td className="py-1.5 px-2 text-center w-8" onClick={e => e.stopPropagation()}>
@@ -963,12 +978,15 @@ export default function InventoryPage() {
                                 )}
                               </td>
                             )}
-                            <td className="py-1.5 px-3 text-xs text-gray-500">{h.timestamp?.slice(0, 16)}</td>
-                            <td className="py-1.5 px-3 font-mono text-xs">{h.lot}</td>
-                            <td className="py-1.5 px-3 text-sm">{h.product}</td>
-                            <td className="py-1.5 px-3 text-xs text-gray-600">{h.maker}</td>
+                            <td className={cn("py-1.5 px-3 text-xs text-gray-500", isReverted && "line-through")}>{h.timestamp?.slice(0, 16)}</td>
+                            <td className={cn("py-1.5 px-3 font-mono text-xs", isReverted && "line-through")}>{h.lot}</td>
+                            <td className={cn("py-1.5 px-3 text-sm", isReverted && "line-through")}>{h.product}</td>
+                            <td className={cn("py-1.5 px-3 text-xs text-gray-600", isReverted && "line-through")}>{h.maker}</td>
                             <td className="py-1.5 px-3 text-xs text-gray-600">
-                              {histTab === "신규등록" ? h.to_sector : h.from_sector}
+                              {isReverted
+                                ? <span className="line-through">{h.from_sector}</span>
+                                : histTab === "신규등록" ? h.to_sector : h.from_sector}
+                              {isReverted && <span className="ml-1 text-red-500 font-medium">[철회]</span>}
                             </td>
                           </tr>
                         );
