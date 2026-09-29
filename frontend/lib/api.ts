@@ -92,6 +92,24 @@ export async function parsePlan(plan_files: string[], plan_filenames: string[], 
   return data as { success: boolean; items: unknown[]; count: number; table_data: { headers: string[]; rows: unknown[][] } | null };
 }
 
+export interface PlanHistorySummary { id: number; date: string; filenames: string[]; recorded_at: string; }
+export interface PlanHistoryDetail extends PlanHistorySummary { items: unknown[]; table_data: { headers: string[]; rows: unknown[][] } | null; }
+
+export async function savePlanHistory(filenames: string[], items: unknown[], table_data: unknown | null, date?: string) {
+  const { data } = await api.post("/api/plan-history", { filenames, items, table_data, date: date ?? "" });
+  return data as { success: boolean; id: number };
+}
+
+export async function listPlanHistory(from_date: string, to_date: string) {
+  const { data } = await api.get("/api/plan-history", { params: { from_date, to_date } });
+  return data as { items: PlanHistorySummary[] };
+}
+
+export async function getPlanHistory(id: number) {
+  const { data } = await api.get(`/api/plan-history/${id}`);
+  return data as PlanHistoryDetail;
+}
+
 export async function planConversion(table_data: { headers: string[]; rows: unknown[][] }, plan_items: unknown[]) {
   const { data } = await api.post("/api/plan-conversion", { table_data, plan_items }, { timeout: 30000 });
   return data as { success: boolean; headers: string[]; rows: string[][]; excel_base64: string };

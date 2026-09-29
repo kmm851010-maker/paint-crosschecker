@@ -6,6 +6,8 @@ import toast from "react-hot-toast";
 import {
   parsePlan, crossCheckMulti, exportExcelMulti,
   generateIncomingExcel, registerDrums, planConversion, erpFill,
+  savePlanHistory, listPlanHistory, getPlanHistory,
+  PlanHistorySummary,
   DrumItem, SECTORS, MAKERS,
 } from "@/lib/api";
 import { fileToBase64, downloadBase64 } from "@/lib/utils";
@@ -381,6 +383,20 @@ export default function IncomingPage() {
   const [newRegLoading, setNewRegLoading] = useState(false);
   const [showNewReg, setShowNewReg] = useState(false);
 
+  // ── 추출 이력 ──
+  const [histList, setHistList] = useState<PlanHistorySummary[] | null>(null);
+  const [histLoading, setHistLoading] = useState(false);
+  const [histFrom, setHistFrom] = useState(() => {
+    const d = new Date(Date.now() + 9 * 3600000);
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().slice(0, 10);
+  });
+  const [histTo, setHistTo] = useState(() =>
+    new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10)
+  );
+  const [histOpen, setHistOpen] = useState(false);
+  const [histLoadingId, setHistLoadingId] = useState<number | null>(null);
+
   // ── Reset ──────────────────────────────────────────────────────────────────
   function reset() {
     setPlanFiles([]); setErpFile(null);
@@ -409,6 +425,12 @@ export default function IncomingPage() {
       setPlanTableData(data.table_data ?? null);
       setPlanFileB64s(encoded);
       toast.success(`생산계획서 분석 완료 (${data.items?.length ?? 0}개 품목)`);
+      // 추출 결과 자동 저장
+      savePlanHistory(
+        encoded.map(e => e.name),
+        data.items ?? [],
+        data.table_data ?? null,
+      ).catch(() => {/* 저장 실패는 무시 */});
     } catch (e: unknown) {
       const ax = e as { response?: { status: number; data?: { detail?: string } }; message?: string };
       const detail = ax?.response?.data?.detail ?? ax?.message ?? "오류";
@@ -416,6 +438,35 @@ export default function IncomingPage() {
       toast.error(`생산계획서 분석 실패: ${detail}${status}`, { duration: 8000 });
     } finally {
       setPlanLoading(false);
+    }
+  }
+
+  // ── 추출 이력 조회 ────────────────────────────────────────────────────────
+  async function fetchHistList() {
+    setHistLoading(true);
+    try {
+      const res = await listPlanHistory(histFrom, histTo);
+      setHistList(res.items);
+    } catch {
+      toast.error("이력 조회 실패");
+    } finally {
+      setHistLoading(false);
+    }
+  }
+
+  async function loadFromHistory(id: number) {
+    setHistLoadingId(id);
+    try {
+      const detail = await getPlanHistory(id);
+      setPlanItems((detail.items ?? []) as PlanItem[]);
+      setPlanTableData(detail.table_data ?? null);
+      setPlanFileB64s([]);
+      setHistOpen(false);
+      toast.success("이전 추출 내역을 불러왔습니다.");
+    } catch {
+      toast.error("불러오기 실패");
+    } finally {
+      setHistLoadingId(null);
     }
   }
 
@@ -526,9 +577,12 @@ const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완�
     <AppShell>
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-bold text-gray-900">입고관리</h1>
           <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={() => { setHistOpen(v => !v); if (!histOpen) fetchHistList(); }}>
+              <ChevronDown size={15} className={cn("transition-transform", histOpen && "rotate-180")} /> 이전 추출내역
+            </Button>
             {planItems.length > 0 && (
               <Button variant="ghost" size="sm" onClick={reset}>
                 <RefreshCw size={15} /> 초기화
@@ -536,6 +590,43 @@ const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완�
             )}
           </div>
         </div>
+
+        {/* ── 이전 추출 이력 패널 ── */}
+        {histOpen && (
+          <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 mb-5">
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <span className="text-sm font-medium text-gray-700">날짜 범위</span>
+              <input type="date" value={histFrom} onChange={e => setHistFrom(e.target.value)}
+                className="border border-gray-300 rounded px-2 py-1 text-sm" />
+              <span className="text-gray-400 text-sm">~</span>
+              <input type="date" value={histTo} onChange={e => setHistTo(e.target.value)}
+                className="border border-gray-300 rounded px-2 py-1 text-sm" />
+              <Button size="sm" variant="secondary" onClick={fetchHistList} loading={histLoading}>조회</Button>
+            </div>
+            {histList === null ? (
+              <p className="text-xs text-gray-400">조회 버튼을 눌러 이력을 불러오세요.</p>
+            ) : histList.length === 0 ? (
+              <p className="text-xs text-gray-400">해당 기간에 추출 이력이 없습니다.</p>
+            ) : (
+              <div className="space-y-1 max-h-64 overflow-y-auto">
+                {histList.map(h => (
+                  <div key={h.id}
+                    className="flex items-center justify-between bg-white rounded-lg border border-gray-200 px-3 py-2 hover:border-purple-300 transition-colors">
+                    <div>
+                      <span className="text-xs font-semibold text-gray-700 mr-2">{h.date}</span>
+                      <span className="text-xs text-gray-500">{h.recorded_at?.slice(11, 16)}</span>
+                      <div className="text-xs text-gray-400 mt-0.5">{h.filenames?.join(", ")}</div>
+                    </div>
+                    <Button size="sm" variant="secondary" loading={histLoadingId === h.id}
+                      onClick={() => loadFromHistory(h.id)}>
+                      불러오기
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── 파일 업로드 (2컬럼) ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">

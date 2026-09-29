@@ -147,6 +147,63 @@ async def parse_plan(req: ParsePlanRequest):
     }
 
 
+# --- 생산계획서 추출 이력 ---
+
+class SavePlanHistoryRequest(BaseModel):
+    filenames: list[str]
+    items: list[dict]
+    table_data: dict | None = None
+    date: str = ""  # YYYY-MM-DD, 비어있으면 오늘 KST
+
+
+@app.post("/api/plan-history")
+async def save_plan_history(req: SavePlanHistoryRequest):
+    """추출된 생산계획서 결과를 저장합니다."""
+    from utils.supabase_db import _sb
+    import datetime as _dt, json as _json
+    now_kst = _dt.datetime.utcnow() + _dt.timedelta(hours=9)
+    date_str = req.date or now_kst.strftime("%Y-%m-%d")
+    sb = _sb()
+    row = {
+        "date": date_str,
+        "filenames": req.filenames,
+        "items": req.items,
+        "table_data": req.table_data,
+        "recorded_at": now_kst.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    res = sb.table("plan_history").insert(row).execute()
+    saved = res.data[0] if res.data else {}
+    return {"success": True, "id": saved.get("id")}
+
+
+@app.get("/api/plan-history")
+async def list_plan_history(from_date: str = "", to_date: str = ""):
+    """날짜 범위로 생산계획서 추출 이력 목록을 반환합니다 (items/table_data 제외)."""
+    from utils.supabase_db import _sb
+    import datetime as _dt
+    now_kst = _dt.datetime.utcnow() + _dt.timedelta(hours=9)
+    if not from_date:
+        from_date = (now_kst - _dt.timedelta(days=30)).strftime("%Y-%m-%d")
+    if not to_date:
+        to_date = now_kst.strftime("%Y-%m-%d")
+    sb = _sb()
+    res = sb.table("plan_history").select("id,date,filenames,recorded_at") \
+        .gte("date", from_date).lte("date", to_date) \
+        .order("recorded_at", desc=True).execute()
+    return {"items": res.data or []}
+
+
+@app.get("/api/plan-history/{plan_id}")
+async def get_plan_history(plan_id: int):
+    """특정 생산계획서 추출 이력의 전체 데이터를 반환합니다."""
+    from utils.supabase_db import _sb
+    sb = _sb()
+    res = sb.table("plan_history").select("*").eq("id", plan_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="이력을 찾을 수 없습니다.")
+    return res.data[0]
+
+
 # --- 교차검증 ---
 
 class CrossCheckRequest(BaseModel):
