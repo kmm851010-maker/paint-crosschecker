@@ -54,10 +54,17 @@ def _verify_pw(password: str, stored: str) -> bool:
 # ════════════════════════════════════════════════════════════════════
 
 def list_app_users(department: str = None) -> list:
-    q = _sb().table("app_users").select("department,name,employee_id,role,created_at,team,menu_permissions")
-    if department:
-        q = q.eq("department", department)
-    return q.order("department").order("name").execute().data or []
+    try:
+        q = _sb().table("app_users").select("department,name,employee_id,role,created_at,team,menu_permissions")
+        if department:
+            q = q.eq("department", department)
+        return q.order("department").order("name").execute().data or []
+    except Exception:
+        # menu_permissions 컬럼이 없는 경우 폴백
+        q = _sb().table("app_users").select("department,name,employee_id,role,created_at,team")
+        if department:
+            q = q.eq("department", department)
+        return q.order("department").order("name").execute().data or []
 
 
 def register_app_user(department: str, name: str, employee_id: str, password: str) -> bool:
@@ -91,10 +98,16 @@ def set_menu_permissions(employee_id: str, permissions: list) -> bool:
 
 def authenticate_app_user(employee_id: str, password: str):
     """사번+비밀번호로 인증. 성공 시 user dict 반환, 실패 시 None."""
-    rows = _sb().table("app_users") \
-        .select("employee_id,name,role,department,team,menu_permissions") \
-        .eq("employee_id", employee_id) \
-        .limit(1).execute().data
+    try:
+        rows = _sb().table("app_users") \
+            .select("employee_id,name,role,department,team,menu_permissions") \
+            .eq("employee_id", employee_id) \
+            .limit(1).execute().data
+    except Exception:
+        rows = _sb().table("app_users") \
+            .select("employee_id,name,role,department,team") \
+            .eq("employee_id", employee_id) \
+            .limit(1).execute().data
     if not rows:
         return None
     # password_hash 별도 조회 (select에서 제외 후 verify)
