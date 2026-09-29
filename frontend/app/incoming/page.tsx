@@ -386,6 +386,7 @@ export default function IncomingPage() {
   const [erpFillEditRows, setErpFillEditRows] = useState<string[][] | null>(null);
 
   // ── 신규 입고처리 ──
+  const [checkoutSkippedList, setCheckoutSkippedList] = useState<{ lot: string; product: string }[]>([]);
   const [newRegDrums, setNewRegDrums] = useState<ExtractedDrum[]>([]);
   const [newRegSector, setNewRegSector] = useState("창고주위");
   const [newRegLoading, setNewRegLoading] = useState(false);
@@ -558,10 +559,8 @@ export default function IncomingPage() {
         toast(`이미 재고에 있어 건너뛴 드럼: ${result.already_same.length}개`, { icon: "ℹ️" });
       }
       if (result.checkout_skipped?.length > 0) {
-        const details = result.checkout_skipped
-          .map((d: { lot: string; product: string }) => `${d.lot}${d.product ? ` (${d.product})` : ""}`)
-          .join(", ");
-        toast(`🚫 라인입고 처리된 드럼 재등록 차단 ${result.checkout_skipped.length}개:\n${details}`, { duration: 8000 });
+        setCheckoutSkippedList(result.checkout_skipped);
+        toast(`🚫 라인입고 차단 ${result.checkout_skipped.length}개 — 아래 목록 확인`, { duration: 5000 });
       }
       setNewRegDrums([]);
       setShowNewReg(false);
@@ -1039,6 +1038,45 @@ const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완�
           </div>
         )}
       </div>
+
+      {/* ── 라인입고 차단 목록 모달 ── */}
+      {checkoutSkippedList.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setCheckoutSkippedList([])}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <h3 className="font-semibold text-gray-800">🚫 라인입고 차단 목록 ({checkoutSkippedList.length}개)</h3>
+              <button onClick={() => setCheckoutSkippedList([])} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <p className="px-5 py-2 text-xs text-gray-500 border-b border-gray-100">이미 라인입고 처리된 이력이 있어 재등록이 차단된 드럼입니다.</p>
+            <div className="overflow-y-auto flex-1 px-2 py-2">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">#</th>
+                    <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">LOT</th>
+                    <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">품명</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {checkoutSkippedList.map((d, i) => (
+                    <tr key={i} className="border-t border-gray-100">
+                      <td className="py-1.5 px-3 text-xs text-gray-400">{i + 1}</td>
+                      <td className="py-1.5 px-3 font-mono text-xs font-medium">{d.lot}</td>
+                      <td className="py-1.5 px-3 text-xs text-gray-600">{d.product || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200">
+              <button onClick={() => setCheckoutSkippedList([])}
+                className="w-full py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200">
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 변환결과 다이얼로그 ── */}
       {showConversion && planTableData && (
