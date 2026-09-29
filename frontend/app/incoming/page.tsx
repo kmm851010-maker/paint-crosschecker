@@ -558,7 +558,10 @@ export default function IncomingPage() {
         toast(`이미 재고에 있어 건너뛴 드럼: ${result.already_same.length}개`, { icon: "ℹ️" });
       }
       if (result.checkout_skipped?.length > 0) {
-        toast(`라인입고 처리된 드럼 재등록 차단: ${result.checkout_skipped.length}개`, { icon: "🚫" });
+        const details = result.checkout_skipped
+          .map((d: { lot: string; product: string }) => `${d.lot}${d.product ? ` (${d.product})` : ""}`)
+          .join(", ");
+        toast(`🚫 라인입고 처리된 드럼 재등록 차단 ${result.checkout_skipped.length}개:\n${details}`, { duration: 8000 });
       }
       setNewRegDrums([]);
       setShowNewReg(false);
