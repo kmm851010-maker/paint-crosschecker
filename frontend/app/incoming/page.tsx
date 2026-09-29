@@ -237,15 +237,23 @@ function ConversionDialog({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, []);
 
-  const headers = result?.headers ?? [];
-  const displayRows = editRows ?? result?.rows ?? [];
+  const allHeaders = result?.headers ?? [];
+  const allDisplayRows = editRows ?? result?.rows ?? [];
 
-  // 편집 가능 컬럼: 신규 또는 입고 포함 (기입고/위치 제외)
+  // 위치 컬럼 제외
+  const visibleColIdxs = useMemo(
+    () => allHeaders.map((h, i) => i).filter(i => !allHeaders[i]?.includes("위치")),
+    [allHeaders]
+  );
+  const headers = visibleColIdxs.map(i => allHeaders[i]);
+  const displayRows = allDisplayRows.map(row => visibleColIdxs.map(i => row[i]));
+
+  // 편집 가능 컬럼: 신규 또는 입고 포함 (기입고 제외) — visibleColIdxs 기준 재매핑
   const editableCols = useMemo(() => {
     return new Set(
       headers
         .map((h, i) => ({ h, i }))
-        .filter(({ h }) => (h.includes("신규") || h.includes("입고")) && !h.includes("기입고") && !h.includes("위치"))
+        .filter(({ h }) => (h.includes("신규") || h.includes("입고")) && !h.includes("기입고"))
         .map(({ i }) => i)
     );
   }, [headers]);
@@ -293,6 +301,7 @@ function ConversionDialog({
               변환 결과 ({displayRows.length}행 × {headers.length}열)
             </span>
           )}
+
         </div>
         <div className="overflow-auto flex-1">
           {loading ? (
@@ -319,7 +328,6 @@ function ConversionDialog({
                         key={ci}
                         className={cn(
                           "py-0.5 px-1 text-xs border border-gray-100 whitespace-nowrap",
-                          headers[ci]?.includes("위치") && cell ? "text-blue-600 font-medium" : "",
                           editableCols.has(ci) ? "bg-yellow-50" : "",
                         )}
                       >
@@ -810,25 +818,31 @@ const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완�
             {erpFillLoading ? (
               <div className="flex items-center justify-center h-20 text-gray-400 text-sm">입고반영 계산 중...</div>
             ) : erpFillData && (() => {
-              const headers = erpFillData.headers;
-              const displayRows = erpFillEditRows ?? erpFillData.rows;
+              const allErpHeaders = erpFillData.headers;
+              const allErpRows = erpFillEditRows ?? erpFillData.rows;
+              // 위치 컬럼 제외 (원본 인덱스 보존)
+              const visibleErpIdxs = allErpHeaders.map((h, i) => i).filter(i => !allErpHeaders[i]?.includes("위치"));
+              const erpHeaders = visibleErpIdxs.map(i => allErpHeaders[i]);
+              const erpRows = allErpRows.map(row => visibleErpIdxs.map(i => row[i]));
+
               const editableCols = new Set(
-                headers.map((h, i) => ({ h, i }))
-                  .filter(({ h }) => (h.includes("신규") || h.includes("입고")) && !h.includes("기입고") && !h.includes("위치") && h !== "상태")
+                erpHeaders.map((h, i) => ({ h, i }))
+                  .filter(({ h }) => (h.includes("신규") || h.includes("입고")) && !h.includes("기입고") && h !== "상태")
                   .map(({ i }) => i)
               );
-              // 신규_idx → { 입고_idx, 상태_idx } 매핑 (실시간 상태 재계산용)
+              // 신규_idx → { 입고_idx, 상태_idx } 매핑 (원본 인덱스 기준)
               const statusUpdateMap = new Map<number, { 입고_idx: number; 상태_idx: number }>();
-              for (let i = 0; i < headers.length; i++) {
-                if (headers[i]?.includes("신규") && i + 1 < headers.length && headers[i + 1]?.includes("입고")) {
-                  for (let j = i + 2; j < headers.length; j++) {
-                    if (headers[j]?.includes("상태")) { statusUpdateMap.set(i, { 입고_idx: i + 1, 상태_idx: j }); break; }
-                    if (headers[j]?.includes("신규")) break;
+              for (let i = 0; i < allErpHeaders.length; i++) {
+                if (allErpHeaders[i]?.includes("신규") && i + 1 < allErpHeaders.length && allErpHeaders[i + 1]?.includes("입고")) {
+                  for (let j = i + 2; j < allErpHeaders.length; j++) {
+                    if (allErpHeaders[j]?.includes("상태")) { statusUpdateMap.set(i, { 입고_idx: i + 1, 상태_idx: j }); break; }
+                    if (allErpHeaders[j]?.includes("신규")) break;
                   }
                 }
               }
-              const 입고ToShinGyu = new Map<number, number>();
-              for (const [ni, { 입고_idx }] of statusUpdateMap) 입고ToShinGyu.set(입고_idx, ni);
+              // 표시 인덱스 → 원본 인덱스
+              const visibleToOrig = (vi: number) => visibleErpIdxs[vi];
+              const origToVisible = new Map(visibleErpIdxs.map((origI, vi) => [origI, vi]));
 
               function calcStatus(신규_n: number, 입고_n: number) {
                 if (신규_n === 0) return "";
@@ -851,7 +865,7 @@ const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완�
                   <table className="text-xs border-collapse" style={{ minWidth: "max-content" }}>
                     <thead className="bg-gray-50 sticky top-0 z-10">
                       <tr>
-                        {headers.map((h, i) => (
+                        {erpHeaders.map((h, i) => (
                           <th key={i} className="py-1.5 px-2 text-left font-semibold text-gray-600 border border-gray-200 whitespace-nowrap bg-gray-50">
                             {h}
                           </th>
@@ -859,11 +873,11 @@ const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완�
                       </tr>
                     </thead>
                     <tbody>
-                      {displayRows.map((row, ri) => (
+                      {erpRows.map((row, ri) => (
                         <tr key={ri} className="hover:bg-blue-50">
-                          {row.map((cell, ci) => (
-                            <td key={ci} className={cn("py-0.5 px-1 border border-gray-100 whitespace-nowrap", getCellStyle(headers[ci], cell), headers[ci]?.includes("위치") && cell ? "text-blue-600" : "")}>
-                              {editableCols.has(ci) ? (
+                          {row.map((cell, vi) => (
+                            <td key={vi} className={cn("py-0.5 px-1 border border-gray-100 whitespace-nowrap", getCellStyle(erpHeaders[vi], cell as string))}>
+                              {editableCols.has(vi) ? (
                                 <input
                                   type="text"
                                   inputMode="numeric"
@@ -873,14 +887,24 @@ const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완�
                                     const val = e.target.value.replace(/[^0-9]/g, "");
                                     setErpFillEditRows(prev => {
                                       const next = (prev ?? erpFillData.rows).map(r => [...r]);
-                                      next[ri][ci] = val;
-                                      // 실시간 상태 재계산
-                                      const ni = statusUpdateMap.has(ci) ? ci : 입고ToShinGyu.get(ci);
-                                      if (ni !== undefined) {
-                                        const info = statusUpdateMap.get(ni)!;
-                                        const 신규_n = parseInt(String(next[ri][ni] ?? "")) || 0;
+                                      const origI = visibleToOrig(vi);
+                                      next[ri][origI] = val;
+                                      // 실시간 상태 재계산 (원본 인덱스 기준)
+                                      let mapKey: number | undefined;
+                                      if (statusUpdateMap.has(origI)) mapKey = origI;
+                                      else {
+                                        for (const [ni, info] of statusUpdateMap) {
+                                          if (info.입고_idx === origI) { mapKey = ni; break; }
+                                        }
+                                      }
+                                      if (mapKey !== undefined) {
+                                        const info = statusUpdateMap.get(mapKey)!;
+                                        const 신규_n = parseInt(String(next[ri][mapKey] ?? "")) || 0;
                                         const 입고_n = parseInt(String(next[ri][info.입고_idx] ?? "")) || 0;
                                         next[ri][info.상태_idx] = calcStatus(신규_n, 입고_n);
+                                        // visible rows도 갱신 (상태 컬럼)
+                                        const stVi = origToVisible.get(info.상태_idx);
+                                        if (stVi !== undefined) row[stVi] = calcStatus(신규_n, 입고_n);
                                       }
                                       return next;
                                     });
