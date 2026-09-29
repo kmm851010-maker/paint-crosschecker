@@ -54,7 +54,7 @@ def _verify_pw(password: str, stored: str) -> bool:
 # ════════════════════════════════════════════════════════════════════
 
 def list_app_users(department: str = None) -> list:
-    q = _sb().table("app_users").select("department,name,employee_id,role,created_at,team")
+    q = _sb().table("app_users").select("department,name,employee_id,role,created_at,team,menu_permissions")
     if department:
         q = q.eq("department", department)
     return q.order("department").order("name").execute().data or []
@@ -82,10 +82,17 @@ def reset_app_user_password(employee_id: str, new_password: str) -> bool:
     return True
 
 
+def set_menu_permissions(employee_id: str, permissions: list) -> bool:
+    """사용자 메뉴 권한 설정. permissions=None이면 전체 허용."""
+    _sb().table("app_users").update({"menu_permissions": permissions}) \
+        .eq("employee_id", employee_id).execute()
+    return True
+
+
 def authenticate_app_user(employee_id: str, password: str):
     """사번+비밀번호로 인증. 성공 시 user dict 반환, 실패 시 None."""
     rows = _sb().table("app_users") \
-        .select("employee_id,name,role,department,team") \
+        .select("employee_id,name,role,department,team,menu_permissions") \
         .eq("employee_id", employee_id) \
         .limit(1).execute().data
     if not rows:

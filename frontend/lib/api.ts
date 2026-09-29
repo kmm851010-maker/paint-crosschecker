@@ -349,6 +349,12 @@ export interface Employee {
   role: string;
   created_at: string;
   team?: string;
+  menu_permissions?: string[] | null;
+}
+
+export async function setMenuPermissions(employee_id: string, permissions: string[] | null) {
+  const { data } = await api.patch(`/api/employees/${employee_id}/menu-permissions`, { permissions });
+  return data;
 }
 
 export interface WorkItem {

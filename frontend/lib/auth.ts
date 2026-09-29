@@ -6,6 +6,7 @@ export interface KGUser {
   name: string;
   employee_id: string;
   role?: string;
+  menu_permissions?: string[] | null;  // null/undefined = 전체 허용
 }
 
 export function saveAuth(user: KGUser) {

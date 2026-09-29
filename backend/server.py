@@ -79,6 +79,7 @@ async def login(req: LoginRequest):
                 "success": True, "token": token,
                 "name": user["name"], "employee_id": req.employee_id,
                 "role": user.get("role", "user"),
+                "menu_permissions": user.get("menu_permissions"),
             }
     except Exception:
         pass
@@ -1043,6 +1044,20 @@ async def reset_employee_password(employee_id: str, req: ResetPasswordRequest):
         raise HTTPException(status_code=400, detail="비밀번호를 입력하세요.")
     try:
         reset_app_user_password(employee_id, req.new_password.strip())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True}
+
+
+class MenuPermissionsRequest(BaseModel):
+    permissions: list[str] | None = None  # None = 전체 허용
+
+
+@app.patch("/api/employees/{employee_id}/menu-permissions")
+async def set_menu_permissions_endpoint(employee_id: str, req: MenuPermissionsRequest):
+    from utils.supabase_db import set_menu_permissions
+    try:
+        set_menu_permissions(employee_id, req.permissions)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"success": True}

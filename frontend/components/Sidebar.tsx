@@ -69,8 +69,14 @@ export default function Sidebar({ onToggle }: { onToggle?: () => void }) {
     router.push("/login");
   }
 
+  const perms = user?.menu_permissions; // null/undefined = 전체, [] 이상 = 목록만
   const groups = [
-    ...NAV_GROUPS,
+    ...NAV_GROUPS.map(g => ({
+      ...g,
+      items: admin || !perms
+        ? g.items
+        : g.items.filter(item => perms.includes(item.href)),
+    })).filter(g => g.items.length > 0),
     ...(admin ? [ADMIN_GROUP] : []),
   ];
 

@@ -2,13 +2,22 @@
 import { useEffect, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
 import {
-  getEmployees, createEmployee, deleteEmployee, resetEmployeePassword,
+  getEmployees, createEmployee, deleteEmployee, resetEmployeePassword, setMenuPermissions,
   type Employee,
 } from "@/lib/api";
 import { isAdmin } from "@/lib/auth";
 import toast from "react-hot-toast";
 
 const DEPARTMENTS = ["칼라반지게차"];
+
+const ALL_MENUS = [
+  { href: "/attendance",      label: "근태관리" },
+  { href: "/worklog",         label: "일일 작업 일지" },
+  { href: "/incoming",        label: "입고 관리" },
+  { href: "/inventory",       label: "재고 현황" },
+  { href: "/returns",         label: "반품 관리" },
+  { href: "/daily-inventory", label: "일일 재고기록" },
+];
 
 function parseCSV(text: string): { dept: string; eid: string; name: string }[] {
   const lines = text.split(/\r?\n/).filter(Boolean);
@@ -47,6 +56,11 @@ export default function EmployeesPage() {
   // reset password
   const [resetTarget, setResetTarget] = useState<string | null>(null);
   const [resetPw, setResetPw] = useState("");
+
+  // menu permissions
+  const [menuTarget, setMenuTarget] = useState<string | null>(null);
+  const [menuPerms, setMenuPerms] = useState<string[]>([]);
+  const [menuSaving, setMenuSaving] = useState(false);
 
   useEffect(() => {
     setAdmin(isAdmin());
@@ -101,6 +115,29 @@ export default function EmployeesPage() {
       setResetPw("");
     } catch {
       toast.error("비밀번호 변경 실패");
+    }
+  }
+
+  function openMenuPerms(emp: Employee) {
+    setMenuTarget(emp.employee_id);
+    setMenuPerms(emp.menu_permissions ?? ALL_MENUS.map(m => m.href));
+  }
+
+  async function handleSaveMenuPerms() {
+    if (!menuTarget) return;
+    setMenuSaving(true);
+    try {
+      // 전체 선택이면 null(제한 없음)로 저장
+      const allHrefs = ALL_MENUS.map(m => m.href);
+      const isAll = allHrefs.every(h => menuPerms.includes(h));
+      await setMenuPermissions(menuTarget, isAll ? null : menuPerms);
+      toast.success("메뉴 권한 저장 완료");
+      setMenuTarget(null);
+      await loadEmployees();
+    } catch {
+      toast.error("저장 실패");
+    } finally {
+      setMenuSaving(false);
     }
   }
 
@@ -256,40 +293,95 @@ export default function EmployeesPage() {
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{dept} ({emps.length}명)</p>
                 <div className="divide-y divide-gray-100">
                   {emps.map((emp) => (
-                    <div key={emp.employee_id} className="flex items-center gap-2 py-2">
-                      <span className="w-5 h-5 rounded-full bg-[#4B2D8E] text-white text-xs flex items-center justify-center shrink-0">
-                        {emp.name[0]}
-                      </span>
-                      <span className="flex-1 text-sm font-medium text-gray-800">{emp.name}</span>
-                      <span className="text-xs text-gray-400 min-w-[60px]">{emp.employee_id}</span>
-                      {emp.team && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">{emp.team}조</span>}
+                    <div key={emp.employee_id}>
+                      <div className="flex items-center gap-2 py-2 flex-wrap">
+                        <span className="w-5 h-5 rounded-full bg-[#4B2D8E] text-white text-xs flex items-center justify-center shrink-0">
+                          {emp.name[0]}
+                        </span>
+                        <span className="flex-1 text-sm font-medium text-gray-800">{emp.name}</span>
+                        <span className="text-xs text-gray-400 min-w-[60px]">{emp.employee_id}</span>
+                        {emp.team && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">{emp.team}조</span>}
+                        {emp.menu_permissions && (
+                          <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded">
+                            메뉴 {emp.menu_permissions.length}개
+                          </span>
+                        )}
 
-                      {/* Reset password inline */}
-                      {resetTarget === emp.employee_id ? (
-                        <div className="flex items-center gap-1">
-                          <input
-                            value={resetPw}
-                            onChange={e=>setResetPw(e.target.value)}
-                            placeholder="새 비밀번호"
-                            className="border border-gray-300 rounded px-2 py-1 text-xs w-28 focus:outline-none"
-                          />
-                          <button onClick={()=>handleResetPw(emp.employee_id)}
-                            className="text-xs bg-green-600 text-white rounded px-2 py-1">확인</button>
-                          <button onClick={()=>{setResetTarget(null);setResetPw("");}}
-                            className="text-xs bg-gray-200 text-gray-600 rounded px-2 py-1">취소</button>
-                        </div>
-                      ) : (
+                        {/* Reset password inline */}
+                        {resetTarget === emp.employee_id ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              value={resetPw}
+                              onChange={e=>setResetPw(e.target.value)}
+                              placeholder="새 비밀번호"
+                              className="border border-gray-300 rounded px-2 py-1 text-xs w-28 focus:outline-none"
+                            />
+                            <button onClick={()=>handleResetPw(emp.employee_id)}
+                              className="text-xs bg-green-600 text-white rounded px-2 py-1">확인</button>
+                            <button onClick={()=>{setResetTarget(null);setResetPw("");}}
+                              className="text-xs bg-gray-200 text-gray-600 rounded px-2 py-1">취소</button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={()=>{setResetTarget(emp.employee_id);setResetPw("");setMenuTarget(null);}}
+                            className="text-xs text-blue-600 hover:underline"
+                          >
+                            비밀번호 초기화
+                          </button>
+                        )}
                         <button
-                          onClick={()=>{setResetTarget(emp.employee_id);setResetPw("");}}
-                          className="text-xs text-blue-600 hover:underline"
+                          onClick={() => menuTarget === emp.employee_id ? setMenuTarget(null) : openMenuPerms(emp)}
+                          className="text-xs text-purple-600 hover:underline"
                         >
-                          비밀번호 초기화
+                          메뉴 권한
                         </button>
+                        <button onClick={()=>handleDelete(emp.employee_id, emp.name)}
+                          className="text-xs text-red-500 hover:text-red-700 ml-1">
+                          삭제
+                        </button>
+                      </div>
+                      {/* 메뉴 권한 편집 패널 */}
+                      {menuTarget === emp.employee_id && (
+                        <div className="mb-2 ml-7 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                          <p className="text-xs font-semibold text-purple-700 mb-2">접근 허용 메뉴</p>
+                          <div className="grid grid-cols-2 gap-1.5 mb-3">
+                            {ALL_MENUS.map(m => (
+                              <label key={m.href} className="flex items-center gap-1.5 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={menuPerms.includes(m.href)}
+                                  onChange={e => setMenuPerms(prev =>
+                                    e.target.checked ? [...prev, m.href] : prev.filter(h => h !== m.href)
+                                  )}
+                                  className="accent-purple-600"
+                                />
+                                <span className="text-xs text-gray-700">{m.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={handleSaveMenuPerms}
+                              disabled={menuSaving}
+                              className="text-xs bg-[#4B2D8E] text-white rounded px-3 py-1.5 disabled:opacity-50"
+                            >
+                              {menuSaving ? "저장 중..." : "저장"}
+                            </button>
+                            <button
+                              onClick={() => setMenuPerms(ALL_MENUS.map(m => m.href))}
+                              className="text-xs bg-gray-100 text-gray-600 rounded px-3 py-1.5"
+                            >
+                              전체 선택
+                            </button>
+                            <button
+                              onClick={() => setMenuTarget(null)}
+                              className="text-xs bg-gray-100 text-gray-600 rounded px-3 py-1.5"
+                            >
+                              취소
+                            </button>
+                          </div>
+                        </div>
                       )}
-                      <button onClick={()=>handleDelete(emp.employee_id, emp.name)}
-                        className="text-xs text-red-500 hover:text-red-700 ml-1">
-                        삭제
-                      </button>
                     </div>
                   ))}
                 </div>
