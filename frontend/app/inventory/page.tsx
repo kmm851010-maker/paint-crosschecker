@@ -957,40 +957,86 @@ export default function InventoryPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {sortedItems.map((h, i) => {
-                        const canRevert = isLineTab && isWithin24h(h.timestamp);
-                        const key = histKey(h);
-                        const sel = canRevert && histSelectedKeys.has(key);
-                        const isReverted = isLineTab && revertedCheckoutKeys.has(key);
-                        return (
-                          <tr key={i}
-                            onClick={() => canRevert && toggleHistItem(h)}
-                            className={cn(
-                              "border-t border-gray-100 hover:bg-gray-50",
-                              canRevert && "cursor-pointer",
-                              sel && "bg-orange-50",
-                              isReverted && "opacity-50",
-                            )}>
-                            {isLineTab && (
-                              <td className="py-1.5 px-2 text-center w-8" onClick={e => e.stopPropagation()}>
-                                {canRevert && (
-                                  <input type="checkbox" checked={sel} onChange={() => toggleHistItem(h)} />
-                                )}
+                      {(() => {
+                        function renderHistRow(h: HistoryItem, i: number) {
+                          const canRevert = isLineTab && isWithin24h(h.timestamp);
+                          const key = histKey(h);
+                          const sel = canRevert && histSelectedKeys.has(key);
+                          const isReverted = isLineTab && revertedCheckoutKeys.has(key);
+                          return (
+                            <tr key={`row-${i}`}
+                              onClick={() => canRevert && toggleHistItem(h)}
+                              className={cn(
+                                "border-t border-gray-100 hover:bg-gray-50",
+                                canRevert && "cursor-pointer",
+                                sel && "bg-orange-50",
+                                isReverted && "opacity-50",
+                              )}>
+                              {isLineTab && (
+                                <td className="py-1.5 px-2 text-center w-8" onClick={e => e.stopPropagation()}>
+                                  {canRevert && (
+                                    <input type="checkbox" checked={sel} onChange={() => toggleHistItem(h)} />
+                                  )}
+                                </td>
+                              )}
+                              <td className={cn("py-1.5 px-3 text-xs text-gray-500", isReverted && "line-through")}>{h.timestamp?.slice(0, 16)}</td>
+                              <td className={cn("py-1.5 px-3 font-mono text-xs", isReverted && "line-through")}>{h.lot}</td>
+                              <td className={cn("py-1.5 px-3 text-sm", isReverted && "line-through")}>{h.product}</td>
+                              <td className={cn("py-1.5 px-3 text-xs text-gray-600", isReverted && "line-through")}>{h.maker}</td>
+                              <td className="py-1.5 px-3 text-xs text-gray-600">
+                                {isReverted
+                                  ? <span className="line-through">{h.from_sector}</span>
+                                  : histTab === "신규등록" ? h.to_sector : h.from_sector}
+                                {isReverted && <span className="ml-1 text-red-500 font-medium">[철회]</span>}
                               </td>
-                            )}
-                            <td className={cn("py-1.5 px-3 text-xs text-gray-500", isReverted && "line-through")}>{h.timestamp?.slice(0, 16)}</td>
-                            <td className={cn("py-1.5 px-3 font-mono text-xs", isReverted && "line-through")}>{h.lot}</td>
-                            <td className={cn("py-1.5 px-3 text-sm", isReverted && "line-through")}>{h.product}</td>
-                            <td className={cn("py-1.5 px-3 text-xs text-gray-600", isReverted && "line-through")}>{h.maker}</td>
-                            <td className="py-1.5 px-3 text-xs text-gray-600">
-                              {isReverted
-                                ? <span className="line-through">{h.from_sector}</span>
-                                : histTab === "신규등록" ? h.to_sector : h.from_sector}
-                              {isReverted && <span className="ml-1 text-red-500 font-medium">[철회]</span>}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                            </tr>
+                          );
+                        }
+
+                        if (histSortCol === "product") {
+                          // 품명별 그룹화
+                          const groups: { product: string; items: HistoryItem[] }[] = [];
+                          for (const h of sortedItems) {
+                            const last = groups[groups.length - 1];
+                            if (last && last.product === h.product) last.items.push(h);
+                            else groups.push({ product: h.product, items: [h] });
+                          }
+                          return groups.flatMap((g, gi) => {
+                            const groupRevertable = isLineTab ? g.items.filter(h => isWithin24h(h.timestamp)) : [];
+                            const allGroupSel = groupRevertable.length > 0 && groupRevertable.every(h => histSelectedKeys.has(histKey(h)));
+                            const rows = g.items.map((h, i) => renderHistRow(h, gi * 1000 + i));
+                            const header = (
+                              <tr key={`grp-${gi}`} className="bg-purple-50 border-t-2 border-purple-200">
+                                {isLineTab && (
+                                  <td className="py-1 px-2 text-center w-8" onClick={e => e.stopPropagation()}>
+                                    {groupRevertable.length >= 2 && (
+                                      <input type="checkbox" checked={allGroupSel}
+                                        onChange={() => {
+                                          setHistSelectedKeys(prev => {
+                                            const next = new Set(prev);
+                                            if (allGroupSel) groupRevertable.forEach(h => next.delete(histKey(h)));
+                                            else groupRevertable.forEach(h => next.add(histKey(h)));
+                                            return next;
+                                          });
+                                        }} />
+                                    )}
+                                  </td>
+                                )}
+                                <td colSpan={5} className="py-1 px-3 text-xs font-semibold text-purple-700">
+                                  {g.product}
+                                  <span className="ml-2 font-normal text-gray-500">{g.items.length}건</span>
+                                  {groupRevertable.length >= 2 && (
+                                    <span className="ml-2 text-orange-600">철회가능 {groupRevertable.length}드럼</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                            return [header, ...rows];
+                          });
+                        }
+
+                        return sortedItems.map((h, i) => renderHistRow(h, i));
+                      })()}
                     </tbody>
                   </table>
                 </div>
