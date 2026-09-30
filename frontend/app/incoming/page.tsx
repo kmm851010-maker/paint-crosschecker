@@ -386,7 +386,13 @@ export default function IncomingPage() {
   const [erpFillEditRows, setErpFillEditRows] = useState<string[][] | null>(null);
 
   // ── 신규 입고처리 ──
-  const [checkoutSkippedList, setCheckoutSkippedList] = useState<{ lot: string; product: string }[]>([]);
+  interface RegResult {
+    registered: { lot: string; product: string; maker: string }[];
+    alreadyIn:  { lot: string; product: string; maker: string }[];
+    blocked:    { lot: string; product: string; maker: string }[];
+    sector: string;
+  }
+  const [regResult, setRegResult] = useState<RegResult | null>(null);
   const [newRegDrums, setNewRegDrums] = useState<ExtractedDrum[]>([]);
   const [newRegSector, setNewRegSector] = useState("창고주위");
   const [newRegLoading, setNewRegLoading] = useState(false);
@@ -554,14 +560,22 @@ export default function IncomingPage() {
     try {
       const drums = newRegDrums as unknown as DrumItem[];
       const result = await registerDrums(drums, newRegSector, "신규", true);
-      toast.success(`${result.moved ?? newRegDrums.length}개 드럼 [${newRegSector}] 등록 완료!`);
-      if (result.already_same?.length > 0) {
-        toast(`이미 재고에 있어 건너뛴 드럼: ${result.already_same.length}개`, { icon: "ℹ️" });
-      }
-      if (result.checkout_skipped?.length > 0) {
-        setCheckoutSkippedList(result.checkout_skipped);
-        toast(`🚫 라인입고 차단 ${result.checkout_skipped.length}개 — 아래 목록 확인`, { duration: 5000 });
-      }
+
+      // 건너뛴 LOT 집합
+      const alreadyLots = new Set<string>([
+        ...(result.already_same ?? []),
+        ...(result.skipped ?? []).map((s: { lot: string }) => s.lot),
+      ]);
+      const blockedLots = new Set<string>(
+        (result.checkout_skipped ?? []).map((s: { lot: string }) => s.lot)
+      );
+
+      setRegResult({
+        sector: newRegSector,
+        registered: newRegDrums.filter(d => !alreadyLots.has(d.lot) && !blockedLots.has(d.lot)),
+        alreadyIn:  newRegDrums.filter(d => alreadyLots.has(d.lot)),
+        blocked:    newRegDrums.filter(d => blockedLots.has(d.lot)),
+      });
       setNewRegDrums([]);
       setShowNewReg(false);
     } catch {
@@ -1039,37 +1053,63 @@ const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완�
         )}
       </div>
 
-      {/* ── 라인입고 차단 목록 모달 ── */}
-      {checkoutSkippedList.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setCheckoutSkippedList([])}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+      {/* ── 신규 입고처리 결과 모달 ── */}
+      {regResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setRegResult(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl mx-4 max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-              <h3 className="font-semibold text-gray-800">🚫 라인입고 차단 목록 ({checkoutSkippedList.length}개)</h3>
-              <button onClick={() => setCheckoutSkippedList([])} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <h3 className="font-semibold text-gray-800">신규 입고처리 결과 — [{regResult.sector}]</h3>
+              <button onClick={() => setRegResult(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
-            <p className="px-5 py-2 text-xs text-gray-500 border-b border-gray-100">이미 라인입고 처리된 이력이 있어 재등록이 차단된 드럼입니다.</p>
-            <div className="overflow-y-auto flex-1 px-2 py-2">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 sticky top-0">
-                  <tr>
-                    <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">#</th>
-                    <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">LOT</th>
-                    <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">품명</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {checkoutSkippedList.map((d, i) => (
-                    <tr key={i} className="border-t border-gray-100">
-                      <td className="py-1.5 px-3 text-xs text-gray-400">{i + 1}</td>
-                      <td className="py-1.5 px-3 font-mono text-xs font-medium">{d.lot}</td>
-                      <td className="py-1.5 px-3 text-xs text-gray-600">{d.product || "-"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {/* 요약 */}
+            <div className="grid grid-cols-3 divide-x divide-gray-200 border-b border-gray-200">
+              <div className="px-4 py-3 text-center">
+                <p className="text-2xl font-bold text-green-600">{regResult.registered.length}</p>
+                <p className="text-xs text-gray-500 mt-0.5">✅ 등록 완료</p>
+              </div>
+              <div className="px-4 py-3 text-center">
+                <p className="text-2xl font-bold text-gray-400">{regResult.alreadyIn.length}</p>
+                <p className="text-xs text-gray-500 mt-0.5">ℹ️ 이미 재고 있음</p>
+              </div>
+              <div className="px-4 py-3 text-center">
+                <p className="text-2xl font-bold text-red-500">{regResult.blocked.length}</p>
+                <p className="text-xs text-gray-500 mt-0.5">🚫 라인입고 차단</p>
+              </div>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {[
+                { label: "✅ 등록 완료", items: regResult.registered, color: "text-green-700", bg: "bg-green-50" },
+                { label: "ℹ️ 이미 재고 있음 (건너뜀)", items: regResult.alreadyIn, color: "text-gray-600", bg: "bg-gray-50" },
+                { label: "🚫 라인입고 차단", items: regResult.blocked, color: "text-red-600", bg: "bg-red-50" },
+              ].filter(s => s.items.length > 0).map(section => (
+                <div key={section.label}>
+                  <div className={cn("px-4 py-2 text-xs font-semibold sticky top-0", section.color, section.bg)}>
+                    {section.label} ({section.items.length}개)
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead className="bg-white">
+                      <tr>
+                        {["#", "LOT", "품명", "제조사"].map(h => (
+                          <th key={h} className="py-1.5 px-3 text-left text-xs font-medium text-gray-400">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {section.items.map((d, i) => (
+                        <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
+                          <td className="py-1.5 px-3 text-xs text-gray-400">{i + 1}</td>
+                          <td className="py-1.5 px-3 font-mono text-xs font-medium">{d.lot}</td>
+                          <td className="py-1.5 px-3 text-xs text-gray-600">{d.product || "-"}</td>
+                          <td className="py-1.5 px-3 text-xs text-gray-500">{d.maker || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
             </div>
             <div className="px-5 py-3 border-t border-gray-200">
-              <button onClick={() => setCheckoutSkippedList([])}
+              <button onClick={() => setRegResult(null)}
                 className="w-full py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200">
                 닫기
               </button>
