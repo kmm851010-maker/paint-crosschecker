@@ -56,9 +56,11 @@ function exportHistoryExcel(items: HistoryItem[], sectorKey: string, filename: s
 function exportInventoryExcel(drums: DrumItem[], filename: string) {
   const rows = drums.map((d, i) => [
     i + 1, d.product, d.lot, d.maker, d.sector ?? "",
-    (d.updated || d.registered)?.slice(0, 16).replace("T", " ") ?? "", d.remark ?? "",
+    d.registered?.slice(0, 16).replace("T", " ") ?? "",
+    d.updated?.slice(0, 16).replace("T", " ") ?? "",
+    d.remark ?? "",
   ]);
-  const ws = XLSX.utils.aoa_to_sheet([["번호", "품명", "LOT번호", "제조사", "섹터", "등록시간", "비고"], ...rows]);
+  const ws = XLSX.utils.aoa_to_sheet([["번호", "품명", "LOT번호", "제조사", "섹터", "최초입고", "최근변동", "비고"], ...rows]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "재고현황");
   saveAs(new Blob([XLSX.write(wb, { type: "array", bookType: "xlsx" })], { type: "application/octet-stream" }), filename);
@@ -158,7 +160,8 @@ function DrumTable({ drums, selectedLots, onToggle, onToggleAll, showSector = fa
               <th className="py-2 px-3 text-left"><Hdr col="lot" label="LOT" /></th>
               <th className="py-2 px-3 text-left"><Hdr col="maker" label="제조사" /></th>
               {showSector && <th className="py-2 px-3 text-left"><Hdr col="sector" label="섹터" /></th>}
-              <th className="py-2 px-3 text-left"><Hdr col="registered" label="등록시간" /></th>
+              <th className="py-2 px-3 text-left"><Hdr col="registered" label="최초입고" /></th>
+              <th className="py-2 px-3 text-left"><Hdr col="updated" label="최근변동" /></th>
               <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">비고</th>
             </tr>
           </thead>
@@ -166,8 +169,8 @@ function DrumTable({ drums, selectedLots, onToggle, onToggleAll, showSector = fa
             {sorted.map(d => {
               const sel = selectedLots.has(d.lot);
               const emoji = retEmoji(d.returnStatus ?? "");
-              const timeVal = d.updated || d.registered;
-              const recent = isRecentlyRegistered(timeVal);
+              const timeVal = d.registered;
+              const recent = isRecentlyRegistered(d.registered);
               return (
                 <tr key={d.lot} onClick={() => onToggle(d.lot)} className={cn("border-t border-gray-100 hover:bg-purple-50 cursor-pointer transition-colors", sel && "bg-purple-50")}>
                   <td className="py-1.5 px-2 text-center" onClick={e => e.stopPropagation()}>
@@ -184,6 +187,11 @@ function DrumTable({ drums, selectedLots, onToggle, onToggleAll, showSector = fa
                   <td className="py-1.5 px-3">
                     <span className={cn("text-xs", recent ? "text-red-600 font-semibold" : "text-gray-400")}>
                       {timeVal ? timeVal.slice(0, 16).replace("T", " ") : ""}
+                    </span>
+                  </td>
+                  <td className="py-1.5 px-3">
+                    <span className={cn("text-xs", isRecentlyRegistered(d.updated) ? "text-red-600 font-semibold" : "text-gray-400")}>
+                      {d.updated ? d.updated.slice(0, 16).replace("T", " ") : ""}
                     </span>
                   </td>
                   <td className="py-1.5 px-3 text-xs text-gray-400">{d.remark}</td>
