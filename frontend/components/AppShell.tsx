@@ -1,16 +1,44 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { getAuth } from "@/lib/auth";
+import { getAuth, clearAuth } from "@/lib/auth";
 import Sidebar from "./Sidebar";
+
+const INACTIVITY_MS = 3 * 60 * 60 * 1000; // 3시간
+const LAST_ACTIVE_KEY = "kg_last_active";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
+  const updateActivity = useCallback(() => {
+    localStorage.setItem(LAST_ACTIVE_KEY, String(Date.now()));
+  }, []);
+
   useEffect(() => {
-    if (!getAuth()) router.replace("/login");
-  }, [router]);
+    if (!getAuth()) { router.replace("/login"); return; }
+
+    // 초기 활동 시간 기록
+    updateActivity();
+
+    // 사용자 활동 이벤트 감지
+    const events = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
+    events.forEach(e => window.addEventListener(e, updateActivity, { passive: true }));
+
+    // 1분마다 비활성 시간 체크
+    const timer = setInterval(() => {
+      const last = parseInt(localStorage.getItem(LAST_ACTIVE_KEY) ?? "0");
+      if (Date.now() - last > INACTIVITY_MS) {
+        clearAuth();
+        router.replace("/login");
+      }
+    }, 60_000);
+
+    return () => {
+      events.forEach(e => window.removeEventListener(e, updateActivity));
+      clearInterval(timer);
+    };
+  }, [router, updateActivity]);
 
   return (
     <div className="flex h-screen overflow-hidden">
