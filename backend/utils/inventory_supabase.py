@@ -378,6 +378,7 @@ def revert_checkout_drums(items: list):
                 "prev_sector": CHECKOUT_SECTOR,
                 "new_sector": e.get("prev_sector") or "창고",
                 "recorded_at": now,
+                "source": "revert",
             }
             for e in to_restore
         ]
