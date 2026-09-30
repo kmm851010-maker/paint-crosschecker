@@ -1678,8 +1678,8 @@ async def get_daily_inventory(date: str):
     hidden_set = {(r["lot"], r["recorded_at"]) for r in hidden_raw}
 
     EXCLUDE_SECTORS = {"라인입고", "반품완료"}
-    # source가 없는 구형 이력(NULL)은 하위호환으로 포함, 생산후 재고(daily)만 허용
-    DAILY_SOURCES = {"daily", None}
+    # 생산후재고 체크 후 이동한 것만 집계
+    DAILY_SOURCES = {"daily"}
 
     shift_groups = []
     for sname, sstart, send, sworker in shifts:
