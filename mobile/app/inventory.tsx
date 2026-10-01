@@ -70,6 +70,12 @@ const BRAND_BLACKLIST = ["NOROO", "SAMHWA", "KCC", "SJC", "KOCOSOL", "DIMETHYL",
 function isBrandText(text: string): boolean {
   return BRAND_BLACKLIST.some(b => text.toUpperCase().includes(b));
 }
+// 노루 라벨 등 스펙 항목 키워드 — 해당 키워드가 포함된 블록은 품명 오인식 원인
+// "점도" 옆의 관리코드(SJC00131A 등)가 같은 블록에 잡혀 오인식되는 경우 차단
+const SPEC_LINE_KEYWORDS = ["점도", "비중", "색상", "광택", "경화제", "희석제", "배합"];
+function isSpecBlock(text: string): boolean {
+  return SPEC_LINE_KEYWORDS.some(kw => text.includes(kw));
+}
 // 알려진 OCR 오인식 품명 교정 (정규화 후 적용)
 const PRODUCT_CORRECTIONS: Record<string, string> = {
   "E7GZ31H": "E7G231H",
@@ -78,14 +84,21 @@ const PRODUCT_CORRECTIONS: Record<string, string> = {
 const PRODUCT_BLACKLIST = new Set(["S0L150P", "L1AX00H", "S0OI005", "S0LE01M", "S1C004S", "S0C001S", "S0C0013"]);
 function normalizeProduct(raw: string): string {
   const a = raw.split("");
-  // 숫자 자리(index 1,4,5)만 정규화: I→1, O→0
-  const fixDigit = (c: string) => c === "I" ? "1" : c === "O" ? "0" : c;
+  // 숫자 자리(index 1,3,4,5)에서 OCR 오인식 교정
+  // I→1, O→0, Q/q/g→9, S/s→5, B→8, Z/z→2
+  const fixDigit = (c: string) => {
+    const m: Record<string, string> = { I: "1", O: "0", Q: "9", G: "9", S: "5", B: "8", Z: "2" };
+    return m[c] ?? c;
+  };
   a[1] = fixDigit(a[1]);
   a[4] = fixDigit(a[4]);
   a[5] = fixDigit(a[5]);
   const result = a.join("");
   const corrected = PRODUCT_CORRECTIONS[result] ?? result;
-  return PRODUCT_BLACKLIST.has(corrected) ? "" : corrected;
+  if (PRODUCT_BLACKLIST.has(corrected)) return "";
+  // 2번째 자리(index 1)가 숫자가 아니면 잘못된 인식 — 필터 제거
+  if (!/[0-9]/.test(corrected[1] ?? "")) return "";
+  return corrected;
 }
 const LOT_KEYWORDS = ["DRUM LOT", "LOT.NO", "DRUM NO", "LOT NO", "LOT", "롯트번호"];
 
@@ -139,6 +152,9 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
   const allText = blocks.map(b => b.text).join("\n");
   // 공백·하이픈 제거 + 대문자 통일
   const flat = allText.replace(/[-\s]/g, "").toUpperCase();
+  // 스펙 항목(점도·비중 등) 블록 제외 — 노루 라벨에서 해당 라인의 관리코드 오인식 방지
+  const nonSpecBlocks = blocks.filter(b => !isSpecBlock(b.text));
+  const nonSpecFlat = nonSpecBlocks.map(b => b.text).join("\n").replace(/[-\s]/g, "").toUpperCase();
 
   // 1. LOT 추출 — 키워드 우선(정확), 패턴 폴백(키워드 없을 때)
   let lot = "";
@@ -172,7 +188,7 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
   // 대시를 OCR이 놓쳤을 때 커버 (예: P1A573K)
   if (!product) {
     const NODASH_RE = /\b([A-Z])([0-9][A-Z][0-9]{2})([0-9][A-Z])\b/;
-    const blocksByFont = [...blocks].sort((a: any, b: any) => {
+    const blocksByFont = [...nonSpecBlocks].sort((a: any, b: any) => {
       const aH = (a.frame?.height ?? 0) / Math.max(a.lines?.length ?? 1, 1);
       const bH = (b.frame?.height ?? 0) / Math.max(b.lines?.length ?? 1, 1);
       return bH - aH;
@@ -186,8 +202,8 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
 
   // 우선순위 2: "CODE NO" / "CODE" 키워드 직후 패턴 (삼화 등)
   if (!product) {
-    const codeIdx = flat.indexOf("CODENO");
-    const after = codeIdx !== -1 ? flat.slice(codeIdx + 6) : "";
+    const codeIdx = nonSpecFlat.indexOf("CODENO");
+    const after = codeIdx !== -1 ? nonSpecFlat.slice(codeIdx + 6) : "";
     if (after) {
       const m = after.match(ITEM_RE);
       if (m) product = normalizeProduct(m[0]);
@@ -196,7 +212,7 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
 
   // 우선순위 3: 폰트 크기 내림차순 정렬 (회전 촬영 무관)
   if (!product) {
-    const blocksByFont = [...blocks].sort((a, b) => {
+    const blocksByFont = [...nonSpecBlocks].sort((a, b) => {
       const aH = (a.frame?.height ?? 0) / Math.max(a.lines?.length ?? 1, 1);
       const bH = (b.frame?.height ?? 0) / Math.max(b.lines?.length ?? 1, 1);
       return bH - aH;
@@ -212,9 +228,9 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
     }
   }
 
-  // 우선순위 4: 승인목록 퍼지 매칭 폴백 (전체 텍스트, 브랜드명 제외)
+  // 우선순위 4: 승인목록 퍼지 매칭 폴백 (스펙 블록 제외 텍스트, 브랜드명 제외)
   if (!product) {
-    const allItemMatches = [...flat.matchAll(ITEM_RE)]
+    const allItemMatches = [...nonSpecFlat.matchAll(ITEM_RE)]
       .map(m => normalizeProduct(m[0]))
       .filter(p => p && !isBrandText(p));
     if (allItemMatches.length > 0) {
