@@ -177,17 +177,25 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
   let product = "";
 
   // 우선순위 1: 대시 포함 라벨 패턴 (예: P-7Y61-2Y → P7Y612Y)
-  // 이 형식은 라벨 대형 인쇄 텍스트에만 나타남 — false positive 거의 없음
-  const LABEL_DASH_RE = /([A-Z])\s*[-–]\s*([0-9][A-Z][0-9]{2})\s*[-–]\s*([0-9][A-Z])/;
+  // 마지막 자리를 [A-Z0-9]로 확장 — OCR이 Z→2, B→8 등으로 읽어도 매칭
+  const LABEL_DASH_RE = /([A-Z])\s*[-–]\s*([0-9][A-Z][0-9]{2})\s*[-–]\s*([0-9][A-Z0-9])/;
+  // 마지막 자리 digit→letter 역교정 (Z→2, B→8, S→5, O→0 역방향)
+  const DIGIT_TO_LETTER: Record<string, string> = { "2": "Z", "8": "B", "5": "S", "0": "O", "1": "I" };
+  function fixLastLetter(raw: string): string {
+    if (raw.length !== 7) return raw;
+    const last = raw[6];
+    return /[A-Z]/.test(last) ? raw : raw.slice(0, 6) + (DIGIT_TO_LETTER[last] ?? last);
+  }
   const dashMatch = allText.toUpperCase().match(LABEL_DASH_RE);
   if (dashMatch) {
-    product = normalizeProduct(dashMatch[1] + dashMatch[2] + dashMatch[3]);
+    product = normalizeProduct(fixLastLetter(dashMatch[1] + dashMatch[2] + dashMatch[3]));
   }
 
   // 우선순위 1.5: 대시 없는 라벨 대형 텍스트 패턴 — 폰트 큰 블록 우선 탐색
-  // 대시를 OCR이 놓쳤을 때 커버 (예: P1A573K)
+  // 대시를 제거하고 매칭 — OCR이 대시를 보존한 경우도 커버
   if (!product) {
-    const NODASH_RE = /\b([A-Z])([0-9][A-Z][0-9]{2})([0-9][A-Z])\b/;
+    // 마지막 자리 digit 허용 ([A-Z0-9]) — 역교정으로 복원
+    const NODASH_RE = /\b([A-Z])([0-9][A-Z][0-9]{2})([0-9][A-Z0-9])\b/;
     const blocksByFont = [...nonSpecBlocks].sort((a: any, b: any) => {
       const aH = (a.frame?.height ?? 0) / Math.max(a.lines?.length ?? 1, 1);
       const bH = (b.frame?.height ?? 0) / Math.max(b.lines?.length ?? 1, 1);
@@ -195,8 +203,9 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
     });
     for (const block of blocksByFont) {
       if (isBrandText(block.text)) continue;
-      const m = block.text.toUpperCase().replace(/\s/g, "").match(NODASH_RE);
-      if (m) { product = normalizeProduct(m[1] + m[2] + m[3]); break; }
+      // 대시·공백 모두 제거 후 매칭 (OCR이 대시를 남긴 경우도 처리)
+      const m = block.text.toUpperCase().replace(/[-\s]/g, "").match(NODASH_RE);
+      if (m) { product = normalizeProduct(fixLastLetter(m[1] + m[2] + m[3])); break; }
     }
   }
 
