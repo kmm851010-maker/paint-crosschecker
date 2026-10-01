@@ -5,7 +5,7 @@ import Button from "@/components/ui/Button";
 import toast from "react-hot-toast";
 import {
   getSectors, registerDrums, updateDrum, setReturnStatus,
-  setScanDisabled, getInventoryHistory, revertCheckout, parsePdfLots,
+  setScanDisabled, deleteDrums, getInventoryHistory, revertCheckout, parsePdfLots,
   DrumItem, SECTORS, MAKERS, isRecentlyRegistered,
 } from "@/lib/api";
 import { isAdmin, isAttendanceManager } from "@/lib/auth";
@@ -233,6 +233,8 @@ export default function InventoryPage() {
   const [histSelectedKeys, setHistSelectedKeys] = useState<Set<string>>(new Set());
   const [histRevertLoading, setHistRevertLoading] = useState(false);
   const [histRevertConfirm, setHistRevertConfirm] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   // ── 대량 등록 state ──
   const [bulkItems, setBulkItems] = useState<BulkItem[]>([]);
@@ -354,6 +356,21 @@ export default function InventoryPage() {
       toast.error("처리 실패");
     } finally {
       setActionLoading(false);
+    }
+  }
+
+  async function doDeleteDrums() {
+    setDeleteLoading(true);
+    try {
+      const result = await deleteDrums(selectedDrums);
+      toast.success(`${result.deleted.length}드럼 삭제 완료`);
+      clearSelection();
+      setDeleteConfirm(false);
+      fetchSectors();
+    } catch {
+      toast.error("삭제 실패");
+    } finally {
+      setDeleteLoading(false);
     }
   }
 
@@ -788,6 +805,7 @@ export default function InventoryPage() {
                 setEditFields({ lot: d.lot, product: d.product, maker: d.maker, sector: d.sector ?? SECTORS[0], remark: d.remark === "신규" ? "" : (d.remark ?? "") });
               }}>✏️ 정보 수정</Button>
             )}
+            {admin && <Button variant="secondary" onClick={() => setDeleteConfirm(true)} loading={deleteLoading} style={{ color: "#dc2626", borderColor: "#dc2626" }}>🗑️ 삭제 ({selectedLots.size})</Button>}
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
@@ -802,6 +820,18 @@ export default function InventoryPage() {
                 setEditFields({ lot: d.lot, product: d.product, maker: d.maker, sector: d.sector ?? SECTORS[0], remark: d.remark === "신규" ? "" : (d.remark ?? "") });
               }}>✏️ 정보 수정</Button>
             )}
+            {admin && <Button variant="secondary" onClick={() => setDeleteConfirm(true)} loading={deleteLoading} style={{ color: "#dc2626", borderColor: "#dc2626" }}>🗑️ 삭제 ({selectedLots.size})</Button>}
+          </div>
+        )}
+        {deleteConfirm && (
+          <div className="mt-3 p-3 bg-red-50 rounded-lg border border-red-200">
+            <p className="text-sm text-red-800 font-medium mb-2">
+              선택한 {selectedLots.size}드럼을 재고에서 영구 삭제합니다. 되돌릴 수 없습니다.
+            </p>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={doDeleteDrums} loading={deleteLoading} style={{ background: "#dc2626" }}>삭제 확인</Button>
+              <Button variant="secondary" size="sm" onClick={() => setDeleteConfirm(false)}>취소</Button>
+            </div>
           </div>
         )}
       </div>

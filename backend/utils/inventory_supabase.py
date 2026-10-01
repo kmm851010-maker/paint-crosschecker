@@ -427,6 +427,31 @@ def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: 
     return True
 
 
+def delete_drums(drums: list):
+    """관리자 전용 - 드럼을 재고에서 직접 삭제 후 이력 기록."""
+    now = _kst_now()
+    lots = [d["lot"] for d in drums]
+    # 이력 기록
+    history_rows = [
+        {
+            "lot": d["lot"],
+            "product": d.get("product", ""),
+            "maker": d.get("maker", ""),
+            "prev_sector": d.get("sector", ""),
+            "new_sector": "삭제",
+            "recorded_at": now,
+            "source": "admin_delete",
+        }
+        for d in drums
+    ]
+    for i in range(0, len(history_rows), 500):
+        _sb().table("inventory_history").insert(history_rows[i:i + 500]).execute()
+    # 재고에서 삭제
+    for i in range(0, len(lots), 500):
+        _sb().table("inventory").delete().in_("lot", lots[i:i + 500]).execute()
+    return {"deleted": lots}
+
+
 # ── 품명 화이트리스트 ──
 
 def upsert_product_whitelist(products: list):

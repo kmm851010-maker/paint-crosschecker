@@ -783,6 +783,22 @@ async def set_scan_disabled_endpoint(req: ScanDisabledRequest):
     return {"success": True, "count": len(drums), "disabled": req.disabled}
 
 
+class DeleteDrumsRequest(BaseModel):
+    drums: list[DrumItem]
+
+
+@app.post("/api/inventory/delete-drums")
+async def delete_drums_endpoint(req: DeleteDrumsRequest):
+    """관리자 전용 - 드럼 직접 삭제"""
+    from utils.inventory_supabase import delete_drums
+    drums = [d.model_dump() for d in req.drums]
+    try:
+        result = delete_drums(drums)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, **result}
+
+
 class ReturnStatusRequest(BaseModel):
     drums: list[DrumItem]
     status: str  # "Y" → 반품대기, "" → 해제
