@@ -228,7 +228,7 @@ export default function InventoryPage() {
   const [histLoading, setHistLoading] = useState(false);
   const [histSearch, setHistSearch] = useState("");
   const [histTab, setHistTab] = useState<"신규등록" | "라인입고" | "반품완료" | "삭제">("신규등록");
-  const [histSortCol, setHistSortCol] = useState<string | null>(null);
+  const [histSortCol, setHistSortCol] = useState<string | null>("product");
   const [histSortAsc, setHistSortAsc] = useState(true);
   const [histSelectedKeys, setHistSelectedKeys] = useState<Set<string>>(new Set());
   const [histRevertLoading, setHistRevertLoading] = useState(false);
@@ -864,7 +864,12 @@ export default function InventoryPage() {
       ? [...items].sort((a, b) => {
           const av = String((a as unknown as Record<string, unknown>)[histSortCol] ?? "");
           const bv = String((b as unknown as Record<string, unknown>)[histSortCol] ?? "");
-          return histSortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+          const primary = histSortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+          // 품명 정렬 시 같은 품명 내에서 일시 오름차순 보조 정렬
+          if (primary === 0 && histSortCol === "product") {
+            return (a.timestamp ?? "").localeCompare(b.timestamp ?? "");
+          }
+          return primary;
         })
       : items;
     const fromDate = histFrom.replace(/-/g, "");
