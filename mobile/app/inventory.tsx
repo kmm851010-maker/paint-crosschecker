@@ -52,12 +52,19 @@ const toLetter = (c: string) => LETTER_FIX[c] ?? c;
 // - 월 자리: I↔1, B↔8, G↔6 허용; 세리프 없는 I는 1/|/! 로 오인식 가능 → 모두 I로 정규화
 // - 일련번호: I↔1, O↔0 허용 (B/S는 오매칭 위험으로 제외)
 const LOT_RE = /[GDKSYP56][0-9]{2}[A-L1|!][0-9OI]{5}/;
+// 스캔 시점 기준 현재년도(2자리)와 이전 2년까지만 유효 (예: 26년 기준 → 24,25,26)
+const _cy = new Date().getFullYear() % 100;
+const VALID_LOT_YEARS = new Set([_cy, (_cy - 1 + 100) % 100, (_cy - 2 + 100) % 100]);
 function normalizeLot(raw: string): string {
   const a = raw.split("");
   a[0] = ({ "5": "S", "6": "G" }[a[0]] ?? a[0]);          // 제조사: 무조건 영어
   a[3] = ({ "1": "I", "|": "I", "!": "I" }[a[3]] ?? a[3]); // 월: 세로 1자 모양 → I
   for (let i = 4; i <= 8; i++) a[i] = a[i] === "I" ? "1" : a[i] === "O" ? "0" : a[i]; // 일련번호: I→1, O→0만
-  return a.join("");
+  const result = a.join("");
+  // 연도(index 1~2)가 유효 범위 밖이면 오인식으로 판단 → 빈 문자열 반환
+  const yy = parseInt(result.slice(1, 3), 10);
+  if (!VALID_LOT_YEARS.has(yy)) return "";
+  return result;
 }
 
 // 품명: 영어1 + 숫자1 + 영어1 + (영어|숫자)1 + 숫자2 + 영어1 = 7자
@@ -164,13 +171,19 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
     if (idx !== -1) {
       const after = allText.slice(idx + kw.length).replace(/[-\s]/g, "").toUpperCase();
       const m = after.match(LOT_RE);
-      if (m) { lot = normalizeLot(m[0]); break; }
+      if (m) {
+        const normalized = normalizeLot(m[0]);
+        if (normalized) { lot = normalized; break; } // 연도 범위 벗어나면 건너뜀
+      }
     }
   }
   if (!lot) {
-    // 키워드로 못 찾으면 전체 텍스트에서 패턴 매칭
-    const lotMatch = flat.match(LOT_RE);
-    if (lotMatch) lot = normalizeLot(lotMatch[0]);
+    // 키워드로 못 찾으면 전체 텍스트에서 패턴 매칭 — 유효 연도 후보만 사용
+    const allLotMatches = [...flat.matchAll(new RegExp(LOT_RE.source, "g"))];
+    for (const m of allLotMatches) {
+      const normalized = normalizeLot(m[0]);
+      if (normalized) { lot = normalized; break; }
+    }
   }
 
   // 2. 품명 추출 — 다단계 우선순위
