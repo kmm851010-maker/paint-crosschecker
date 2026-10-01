@@ -64,8 +64,9 @@ function normalizeLot(raw: string): string {
 // 숫자 자리(2,5,6번째)에만 I/O 허용 — B,S는 화학명(KOCOSOL 등) 오매칭 유발로 제외
 // 영어 자리(1,3,7번째)는 [A-Z] 유지 — 확장 시 false positive 폭증
 const ITEM_RE = /[A-Z][0-9IO][A-Z][A-Z0-9][0-9IO]{2}[A-Z]/g;
-// OCR에서 브랜드명이 품명으로 오인식되는 것을 차단하는 블랙리스트
-const BRAND_BLACKLIST = ["NOROO", "SAMHWA", "KCC"];
+// OCR에서 브랜드명/관리코드가 품명으로 오인식되는 것을 차단하는 블랙리스트
+// SJC: 대한(노루) 라벨 관리코드 (SJC00131A 등), KOCOSOL: 노루 원료명
+const BRAND_BLACKLIST = ["NOROO", "SAMHWA", "KCC", "SJC", "KOCOSOL", "DIMETHYL", "ADIPATE"];
 function isBrandText(text: string): boolean {
   return BRAND_BLACKLIST.some(b => text.toUpperCase().includes(b));
 }
@@ -73,8 +74,8 @@ function isBrandText(text: string): boolean {
 const PRODUCT_CORRECTIONS: Record<string, string> = {
   "E7GZ31H": "E7G231H",
 };
-// 라벨에 존재하지 않으나 OCR이 오인식하는 품명 블랙리스트
-const PRODUCT_BLACKLIST = new Set(["S0L150P", "L1AX00H"]);
+// 라벨에 존재하지 않으나 OCR이 오인식하는 품명 블랙리스트 (대한/노루 SJC코드 오인식 포함)
+const PRODUCT_BLACKLIST = new Set(["S0L150P", "L1AX00H", "S0OI005", "S0LE01M", "S1C004S", "S0C001S", "S0C0013"]);
 function normalizeProduct(raw: string): string {
   const a = raw.split("");
   // 숫자 자리(index 1,4,5)만 정규화: I→1, O→0
@@ -161,10 +162,26 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
 
   // 우선순위 1: 대시 포함 라벨 패턴 (예: P-7Y61-2Y → P7Y612Y)
   // 이 형식은 라벨 대형 인쇄 텍스트에만 나타남 — false positive 거의 없음
-  const LABEL_DASH_RE = /([A-Z])-([0-9][A-Z][0-9]{2})-([0-9][A-Z])/;
+  const LABEL_DASH_RE = /([A-Z])\s*[-–]\s*([0-9][A-Z][0-9]{2})\s*[-–]\s*([0-9][A-Z])/;
   const dashMatch = allText.toUpperCase().match(LABEL_DASH_RE);
   if (dashMatch) {
     product = normalizeProduct(dashMatch[1] + dashMatch[2] + dashMatch[3]);
+  }
+
+  // 우선순위 1.5: 대시 없는 라벨 대형 텍스트 패턴 — 폰트 큰 블록 우선 탐색
+  // 대시를 OCR이 놓쳤을 때 커버 (예: P1A573K)
+  if (!product) {
+    const NODASH_RE = /\b([A-Z])([0-9][A-Z][0-9]{2})([0-9][A-Z])\b/;
+    const blocksByFont = [...blocks].sort((a: any, b: any) => {
+      const aH = (a.frame?.height ?? 0) / Math.max(a.lines?.length ?? 1, 1);
+      const bH = (b.frame?.height ?? 0) / Math.max(b.lines?.length ?? 1, 1);
+      return bH - aH;
+    });
+    for (const block of blocksByFont) {
+      if (isBrandText(block.text)) continue;
+      const m = block.text.toUpperCase().replace(/\s/g, "").match(NODASH_RE);
+      if (m) { product = normalizeProduct(m[1] + m[2] + m[3]); break; }
+    }
   }
 
   // 우선순위 2: "CODE NO" / "CODE" 키워드 직후 패턴 (삼화 등)
