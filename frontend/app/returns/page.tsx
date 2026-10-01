@@ -325,7 +325,7 @@ export default function ReturnsPage() {
               const keys = await caches.keys();
               await Promise.all(keys.map(k => caches.delete(k)));
             }
-            window.location.reload();
+            window.location.href = window.location.pathname + "?t=" + Date.now();
           }}>
             <RefreshCw size={15} />
           </Button>
