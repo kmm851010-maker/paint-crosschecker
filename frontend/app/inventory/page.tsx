@@ -1005,9 +1005,10 @@ export default function InventoryPage() {
                             <th key={col} className="py-2 px-3 text-left">
                               <button
                                 onClick={() => { if (histSortCol === col) setHistSortAsc(a => !a); else { setHistSortCol(col); setHistSortAsc(true); } }}
-                                className={cn("text-xs font-semibold hover:text-purple-700 whitespace-nowrap", active ? "text-purple-700" : "text-gray-500")}
+                                className={cn("text-xs font-semibold hover:text-purple-700 whitespace-nowrap flex items-center gap-0.5", active ? "text-purple-700" : "text-gray-500")}
                               >
-                                {label}{active ? (histSortAsc ? " ▲" : " ▼") : ""}
+                                {label}
+                                <span className="text-[10px] leading-none">{active ? (histSortAsc ? "▲" : "▼") : "↕"}</span>
                               </button>
                             </th>
                           );
