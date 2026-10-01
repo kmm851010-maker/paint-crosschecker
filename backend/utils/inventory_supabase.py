@@ -52,15 +52,28 @@ def _kst_now() -> str:
 def parse_barcode(raw_text: str):
     """바코드 텍스트에서 LOT 번호 추출 및 제조사/품명 파싱."""
     import re
+    import datetime
     text = raw_text.strip().upper()
     # 9자리 영숫자 패턴
     matches = re.findall(r"[A-Z]\d{8}", text)
     if not matches:
         return None
-    lot = matches[0]
-    maker_code = lot[0]
-    maker = MAKERS.get(maker_code, "알 수 없음")
-    return {"lot": lot, "product": "", "maker": maker}
+
+    # 스캔 시점 기준 현재년도(2자리), 이전 2년까지만 유효
+    current_yy = datetime.datetime.utcnow().year % 100  # e.g. 26
+    valid_years = {(current_yy - i) % 100 for i in range(3)}  # {24, 25, 26}
+
+    for candidate in matches:
+        try:
+            lot_yy = int(candidate[1:3])
+        except ValueError:
+            continue
+        if lot_yy in valid_years:
+            maker_code = candidate[0]
+            maker = MAKERS.get(maker_code, "알 수 없음")
+            return {"lot": candidate, "product": "", "maker": maker}
+
+    return None
 
 
 def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existing: bool = False, source: str = "daily"):
