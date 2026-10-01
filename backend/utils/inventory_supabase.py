@@ -193,8 +193,10 @@ def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existi
             "checkout_skipped": checkout_skipped}
 
 
-def checkout_drums(drums: list):
-    """라인입고 처리 - 재고에서 제거하고 이력 기록 (배치 처리)."""
+def checkout_drums(drums: list, sector: str = CHECKOUT_SECTOR):
+    """라인입고/반품완료 처리 - 재고에서 제거하고 이력 기록 (배치 처리).
+    sector: 실제 출고 섹터 ("라인입고" 또는 "반품완료") — 이력에 정확히 기록됨.
+    """
     now = _kst_now()
     sb = _sb()
 
@@ -219,7 +221,7 @@ def checkout_drums(drums: list):
             "product": drum_map[lot].get("product", ""),
             "maker": drum_map[lot].get("maker", ""),
             "prev_sector": sector_map[lot],
-            "new_sector": CHECKOUT_SECTOR,
+            "new_sector": sector,
             "recorded_at": now,
         }
         for lot in lots_to_delete

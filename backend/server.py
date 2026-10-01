@@ -732,7 +732,7 @@ async def inventory_register(req: InventoryRegisterRequest):
     drums = [d.model_dump() for d in req.drums]
     try:
         if req.sector in (CHECKOUT_SECTOR, RETURN_SECTOR):
-            checkout_drums(drums)
+            checkout_drums(drums, sector=req.sector)
             return {"success": True, "count": len(drums), "sector": req.sector, "already_same": [], "moved": len(drums)}
         else:
             source = "incoming" if req.remark == "신규" else req.move_type
