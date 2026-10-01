@@ -55,8 +55,8 @@ export async function setScanDisabled(drums: Partial<DrumItem>[], disabled: bool
   return data;
 }
 
-export async function deleteDrums(drums: Partial<DrumItem>[]) {
-  const { data } = await api.post("/api/inventory/delete-drums", { drums });
+export async function deleteDrums(drums: Partial<DrumItem>[], reason: string) {
+  const { data } = await api.post("/api/inventory/delete-drums", { drums, reason });
   return data as { success: boolean; deleted: string[] };
 }
 

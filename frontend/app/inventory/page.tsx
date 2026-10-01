@@ -227,7 +227,7 @@ export default function InventoryPage() {
   const [histData, setHistData] = useState<HistoryItem[] | null>(null);
   const [histLoading, setHistLoading] = useState(false);
   const [histSearch, setHistSearch] = useState("");
-  const [histTab, setHistTab] = useState<"신규등록" | "라인입고" | "반품완료">("신규등록");
+  const [histTab, setHistTab] = useState<"신규등록" | "라인입고" | "반품완료" | "삭제">("신규등록");
   const [histSortCol, setHistSortCol] = useState<string | null>(null);
   const [histSortAsc, setHistSortAsc] = useState(true);
   const [histSelectedKeys, setHistSelectedKeys] = useState<Set<string>>(new Set());
@@ -235,6 +235,7 @@ export default function InventoryPage() {
   const [histRevertConfirm, setHistRevertConfirm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
 
   // ── 대량 등록 state ──
   const [bulkItems, setBulkItems] = useState<BulkItem[]>([]);
@@ -362,10 +363,11 @@ export default function InventoryPage() {
   async function doDeleteDrums() {
     setDeleteLoading(true);
     try {
-      const result = await deleteDrums(selectedDrums);
+      const result = await deleteDrums(selectedDrums, deleteReason);
       toast.success(`${result.deleted.length}드럼 삭제 완료`);
       clearSelection();
       setDeleteConfirm(false);
+      setDeleteReason("");
       fetchSectors();
     } catch {
       toast.error("삭제 실패");
@@ -824,13 +826,24 @@ export default function InventoryPage() {
           </div>
         )}
         {deleteConfirm && (
-          <div className="mt-3 p-3 bg-red-50 rounded-lg border border-red-200">
-            <p className="text-sm text-red-800 font-medium mb-2">
+          <div className="mt-3 p-3 bg-red-50 rounded-lg border border-red-200 space-y-2">
+            <p className="text-sm text-red-800 font-medium">
               선택한 {selectedLots.size}드럼을 재고에서 영구 삭제합니다. 되돌릴 수 없습니다.
             </p>
+            <input
+              type="text"
+              value={deleteReason}
+              onChange={e => setDeleteReason(e.target.value)}
+              placeholder="삭제 사유를 입력하세요 (필수)"
+              className="w-full border border-red-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+            />
             <div className="flex gap-2">
-              <Button size="sm" onClick={doDeleteDrums} loading={deleteLoading} style={{ background: "#dc2626" }}>삭제 확인</Button>
-              <Button variant="secondary" size="sm" onClick={() => setDeleteConfirm(false)}>취소</Button>
+              <Button size="sm" onClick={doDeleteDrums} loading={deleteLoading}
+                style={{ background: deleteReason.trim() ? "#dc2626" : "#aaa", cursor: deleteReason.trim() ? "pointer" : "not-allowed" }}
+                disabled={!deleteReason.trim()}>
+                삭제 확인
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => { setDeleteConfirm(false); setDeleteReason(""); }}>취소</Button>
             </div>
           </div>
         )}
@@ -843,7 +856,8 @@ export default function InventoryPage() {
     const actNew = histFiltered.filter(h => h.action === "신규등록");
     const actLine = histFiltered.filter(h => h.action === "라인입고");
     const actRet = histFiltered.filter(h => h.action === "반품완료");
-    const tabData = { "신규등록": actNew, "라인입고": actLine, "반품완료": actRet };
+    const actDel = histFiltered.filter(h => h.action === "삭제");
+    const tabData = { "신규등록": actNew, "라인입고": actLine, "반품완료": actRet, "삭제": actDel };
     const sectorKey = histTab === "신규등록" ? "to_sector" : "from_sector";
     const items = tabData[histTab];
     const sortedItems = histSortCol
@@ -920,6 +934,14 @@ export default function InventoryPage() {
                   {t} ({tabData[t].length})
                 </button>
               ))}
+              {admin && (
+                <button onClick={() => { setHistTab("삭제"); setHistSelectedKeys(new Set()); setHistRevertConfirm(false); }}
+                  className={cn("px-3 py-1.5 text-sm font-medium rounded-t transition-colors",
+                    histTab === "삭제" ? "bg-white border border-b-white border-red-200 text-red-700 -mb-px" : "text-red-400 hover:text-red-600"
+                  )}>
+                  삭제 ({tabData["삭제"].length})
+                </button>
+              )}
             </div>
 
             {items.length === 0 ? (
@@ -970,7 +992,7 @@ export default function InventoryPage() {
                           { col: "lot", label: "LOT" },
                           { col: "product", label: "품명" },
                           { col: "maker", label: "제조사" },
-                          { col: sectorKey, label: histTab === "신규등록" ? "섹터" : "이전섹터" },
+                          { col: sectorKey, label: histTab === "신규등록" ? "섹터" : histTab === "삭제" ? "삭제사유" : "이전섹터" },
                         ].map(({ col, label }) => {
                           const active = histSortCol === col;
                           return (
@@ -1014,10 +1036,11 @@ export default function InventoryPage() {
                               <td className={cn("py-1.5 px-3 text-sm", isReverted && "line-through")}>{h.product}</td>
                               <td className={cn("py-1.5 px-3 text-xs text-gray-600", isReverted && "line-through")}>{h.maker}</td>
                               <td className="py-1.5 px-3 text-xs text-gray-600">
-                                {isReverted
-                                  ? <span className="line-through">{h.from_sector}</span>
-                                  : histTab === "신규등록" ? h.to_sector : h.from_sector}
-                                {isReverted && <span className="ml-1 text-red-500 font-medium">[철회]</span>}
+                                {histTab === "삭제"
+                                  ? <span className="text-red-600">{(h.to_sector ?? "").replace(/^삭제:?\s*/, "") || "-"}</span>
+                                  : isReverted
+                                    ? <><span className="line-through">{h.from_sector}</span><span className="ml-1 text-red-500 font-medium">[철회]</span></>
+                                    : histTab === "신규등록" ? h.to_sector : h.from_sector}
                               </td>
                             </tr>
                           );

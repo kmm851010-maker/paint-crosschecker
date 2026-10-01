@@ -292,7 +292,9 @@ def get_inventory_history(from_dt: str, to_dt: str):
         to_sector = r.get("new_sector", "")
         if from_sector == "미등록":
             continue
-        if to_sector == CHECKOUT_SECTOR:
+        if r.get("source") == "admin_delete" or to_sector.startswith("삭제"):
+            action = "삭제"
+        elif to_sector == CHECKOUT_SECTOR:
             action = "라인입고"
         elif to_sector == RETURN_SECTOR:
             action = "반품완료"
@@ -440,10 +442,11 @@ def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: 
     return True
 
 
-def delete_drums(drums: list):
+def delete_drums(drums: list, reason: str = ""):
     """관리자 전용 - 드럼을 재고에서 직접 삭제 후 이력 기록."""
     now = _kst_now()
     lots = [d["lot"] for d in drums]
+    new_sector_val = f"삭제: {reason}" if reason else "삭제"
     # 이력 기록
     history_rows = [
         {
@@ -451,7 +454,7 @@ def delete_drums(drums: list):
             "product": d.get("product", ""),
             "maker": d.get("maker", ""),
             "prev_sector": d.get("sector", ""),
-            "new_sector": "삭제",
+            "new_sector": new_sector_val,
             "recorded_at": now,
             "source": "admin_delete",
         }

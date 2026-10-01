@@ -785,6 +785,7 @@ async def set_scan_disabled_endpoint(req: ScanDisabledRequest):
 
 class DeleteDrumsRequest(BaseModel):
     drums: list[DrumItem]
+    reason: str = ""
 
 
 @app.post("/api/inventory/delete-drums")
@@ -793,7 +794,7 @@ async def delete_drums_endpoint(req: DeleteDrumsRequest):
     from utils.inventory_supabase import delete_drums
     drums = [d.model_dump() for d in req.drums]
     try:
-        result = delete_drums(drums)
+        result = delete_drums(drums, reason=req.reason)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"success": True, **result}
