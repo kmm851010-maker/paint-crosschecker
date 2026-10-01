@@ -14,7 +14,7 @@ import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type SortMode = "섹터별" | "제조사별" | "품목별" | "LOT순" | "등록시간순";
+type SortMode = "섹터별" | "제조사별" | "품목별" | "등록시간순";
 type ReturnFilter = "" | "불량" | "기술" | "무상";
 type ConfirmType = "ret_done" | "ret_checkout" | null;
 
@@ -153,7 +153,6 @@ export default function ReturnsPage() {
       });
       return [...drums].sort((a, b) => (b.registered ?? "").localeCompare(a.registered ?? ""));
     }
-    if (sortMode === "LOT순") return [...drums].sort((a, b) => (a.lot ?? "").localeCompare(b.lot ?? ""));
     const key = { 섹터별: "sector", 제조사별: "maker", 품목별: "product" }[sortMode] as keyof DrumItem;
     return [...drums].sort((a, b) => {
       const av = String(a[key] ?? ""), bv = String(b[key] ?? "");
@@ -162,7 +161,7 @@ export default function ReturnsPage() {
   }, [returnDrums, returnFilter, search, sortMode, dtFrom, dtFromTime, dtTo, dtToTime]);
 
   const groupedEntries = useMemo<[string, DrumItem[]][]>(() => {
-    if (sortMode === "LOT순" || sortMode === "등록시간순") {
+    if (sortMode === "등록시간순") {
       return [["전체", filtered]];
     }
     const key = { 섹터별: "sector", 제조사별: "maker", 품목별: "product" }[sortMode] as keyof DrumItem;
@@ -296,7 +295,13 @@ export default function ReturnsPage() {
             <h1 className="text-xl font-bold text-gray-900">반품 관리</h1>
             <p className="text-sm text-gray-400">기술·불량·무상 반품 드럼 현황 및 처리</p>
           </div>
-          <Button variant="ghost" size="sm" onClick={fetchDrums} loading={loading}>
+          <Button variant="ghost" size="sm" onClick={async () => {
+            if ("caches" in window) {
+              const keys = await caches.keys();
+              await Promise.all(keys.map(k => caches.delete(k)));
+            }
+            window.location.reload();
+          }}>
             <RefreshCw size={15} />
           </Button>
         </div>
@@ -412,7 +417,7 @@ export default function ReturnsPage() {
         {/* ── 필터 + 정렬 ── */}
         <div className="flex flex-wrap items-center gap-2 mb-3">
           {/* Sort modes */}
-          {(["섹터별", "제조사별", "품목별", "LOT순", "등록시간순"] as SortMode[]).map(m => (
+          {(["섹터별", "제조사별", "품목별", "등록시간순"] as SortMode[]).map(m => (
             <button key={m} onClick={() => setSortMode(m)}
               className={cn("px-3 py-1 rounded-full text-xs font-medium transition-colors",
                 sortMode === m ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
@@ -490,7 +495,7 @@ export default function ReturnsPage() {
                 const allSel = drums.every(d => selectedLots.has(d.lot));
                 const selCnt = drums.filter(d => selectedLots.has(d.lot)).length;
 
-                if (sortMode === "LOT순" || sortMode === "등록시간순") {
+                if (sortMode === "등록시간순") {
                   return (
                     <div key={key} className="rounded-lg border border-gray-200 overflow-hidden">
                       <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-b border-gray-200">

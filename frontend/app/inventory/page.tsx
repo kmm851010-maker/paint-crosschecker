@@ -1233,7 +1233,13 @@ export default function InventoryPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-bold text-gray-900">재고 현황</h1>
-          <Button variant="ghost" size="sm" onClick={fetchSectors} loading={loading}>
+          <Button variant="ghost" size="sm" onClick={async () => {
+            if ("caches" in window) {
+              const keys = await caches.keys();
+              await Promise.all(keys.map(k => caches.delete(k)));
+            }
+            window.location.reload();
+          }}>
             <RefreshCw size={15} />
           </Button>
         </div>
