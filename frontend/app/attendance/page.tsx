@@ -547,7 +547,13 @@ export default function AttendancePage() {
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
-          <button onClick={() => window.location.reload()}
+          <button onClick={async () => {
+            if ("caches" in window) {
+              const keys = await caches.keys();
+              await Promise.all(keys.map(k => caches.delete(k)));
+            }
+            window.location.reload();
+          }}
             style={{ background: "#fff", border: "1px solid #d1d5db", borderRadius: 8, padding: "5px 10px", fontSize: 13, cursor: "pointer" }}>
             🔄
           </button>
