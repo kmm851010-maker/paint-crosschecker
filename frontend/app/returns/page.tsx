@@ -192,9 +192,10 @@ export default function ReturnsPage() {
     return (
       <button
         onClick={() => { if (colSort === col) setColSortAsc(a => !a); else { setColSort(col); setColSortAsc(true); } }}
-        className={cn("text-xs font-semibold hover:text-purple-700 whitespace-nowrap", active ? "text-purple-700" : "text-gray-500")}
+        className={cn("text-xs font-semibold hover:text-purple-700 whitespace-nowrap flex items-center gap-0.5", active ? "text-purple-700" : "text-gray-500")}
       >
-        {label}{active ? (colSortAsc ? " ▲" : " ▼") : ""}
+        {label}
+        <span className="text-[10px] leading-none">{active ? (colSortAsc ? "▲" : "▼") : "↕"}</span>
       </button>
     );
   }

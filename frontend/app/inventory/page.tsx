@@ -136,8 +136,9 @@ function DrumTable({ drums, selectedLots, onToggle, onToggleAll, showSector = fa
   function Hdr({ col, label }: { col: string; label: string }) {
     const active = sortCol === col;
     return (
-      <button onClick={() => handleSort(col)} className={cn("text-xs font-semibold hover:text-purple-700 whitespace-nowrap", active ? "text-purple-700" : "text-gray-500")}>
-        {label}{active ? (sortAsc ? " ▲" : " ▼") : ""}
+      <button onClick={() => handleSort(col)} className={cn("text-xs font-semibold hover:text-purple-700 whitespace-nowrap flex items-center gap-0.5", active ? "text-purple-700" : "text-gray-500")}>
+        {label}
+        <span className="text-[10px] leading-none">{active ? (sortAsc ? "▲" : "▼") : "↕"}</span>
       </button>
     );
   }
