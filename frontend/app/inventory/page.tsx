@@ -993,6 +993,7 @@ export default function InventoryPage() {
                           { col: "product", label: "품명" },
                           { col: "maker", label: "제조사" },
                           { col: sectorKey, label: histTab === "신규등록" ? "섹터" : histTab === "삭제" ? "삭제사유" : "이전섹터" },
+                          ...(histTab === "반품완료" ? [{ col: "to_sector", label: "반품종류" }] : []),
                         ].map(({ col, label }) => {
                           const active = histSortCol === col;
                           return (
@@ -1042,6 +1043,11 @@ export default function InventoryPage() {
                                     ? <><span className="line-through">{h.from_sector}</span><span className="ml-1 text-red-500 font-medium">[철회]</span></>
                                     : histTab === "신규등록" ? h.to_sector : h.from_sector}
                               </td>
+                              {histTab === "반품완료" && (() => {
+                                const rs = (h.to_sector ?? "").replace(/^반품완료:?/, "").trim();
+                                const color = rs === "불량" ? "text-red-600" : rs === "기술" ? "text-yellow-600" : rs === "무상" ? "text-blue-600" : "text-gray-400";
+                                return <td className={cn("py-1.5 px-3 text-xs font-medium", color)}>{rs || "-"}</td>;
+                              })()}
                             </tr>
                           );
                         }

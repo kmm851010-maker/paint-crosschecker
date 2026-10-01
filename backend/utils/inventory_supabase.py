@@ -215,13 +215,20 @@ def checkout_drums(drums: list, sector: str = CHECKOUT_SECTOR):
     sb.table("inventory").delete().in_("lot", lots_to_delete).execute()
 
     # 3) 이력 일괄 삽입 (Supabase 최대 크기 대비 500개씩 청크)
+    # 반품완료 시 반품 종류(불량/기술/무상)를 new_sector에 포함 ("반품완료:불량" 형태)
+    def _build_new_sector(lot: str) -> str:
+        if sector != RETURN_SECTOR:
+            return sector
+        rs = drum_map[lot].get("returnStatus", "")
+        return f"{sector}:{rs}" if rs else sector
+
     history_rows = [
         {
             "lot": lot,
             "product": drum_map[lot].get("product", ""),
             "maker": drum_map[lot].get("maker", ""),
             "prev_sector": sector_map[lot],
-            "new_sector": sector,
+            "new_sector": _build_new_sector(lot),
             "recorded_at": now,
         }
         for lot in lots_to_delete
@@ -298,7 +305,7 @@ def get_inventory_history(from_dt: str, to_dt: str):
             action = "삭제"
         elif to_sector == CHECKOUT_SECTOR:
             action = "라인입고"
-        elif to_sector == RETURN_SECTOR:
+        elif to_sector == RETURN_SECTOR or to_sector.startswith(RETURN_SECTOR + ":"):
             action = "반품완료"
         elif not from_sector:
             action = "신규등록"

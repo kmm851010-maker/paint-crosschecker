@@ -695,6 +695,7 @@ class DrumItem(BaseModel):
     lot: str
     product: str
     maker: str
+    returnStatus: str = ""
     scanDisabled: bool = False
 
     @field_validator("scanDisabled", mode="before")
