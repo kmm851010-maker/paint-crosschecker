@@ -176,16 +176,58 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
   // 2. 품명 추출 — 다단계 우선순위
   let product = "";
 
-  // 우선순위 1: 대시 포함 라벨 패턴 (예: P-7Y61-2Y → P7Y612Y)
-  // 마지막 자리를 [A-Z0-9]로 확장 — OCR이 Z→2, B→8 등으로 읽어도 매칭
-  const LABEL_DASH_RE = /([A-Z])\s*[-–]\s*([0-9][A-Z][0-9]{2})\s*[-–]\s*([0-9][A-Z0-9])/;
-  // 마지막 자리 digit→letter 역교정 (Z→2, B→8, S→5, O→0 역방향)
+  // 마지막 자리 digit→letter 역교정 (Z→2, B→8, S→5 역방향)
   const DIGIT_TO_LETTER: Record<string, string> = { "2": "Z", "8": "B", "5": "S", "0": "O", "1": "I" };
   function fixLastLetter(raw: string): string {
     if (raw.length !== 7) return raw;
     const last = raw[6];
     return /[A-Z]/.test(last) ? raw : raw.slice(0, 6) + (DIGIT_TO_LETTER[last] ?? last);
   }
+
+  // 대한(NOROO) 라벨 판정 — LOT가 D로 시작하거나 "NOROO" 텍스트 존재
+  const isNoroo = lot.startsWith("D") || upper.includes("NOROO");
+
+  // ── 대한(NOROO) 전용 우선순위 ──
+  // NOROO 라벨의 제품명은 항상 상단 대형 폰트의 "X-NXNN-NX" 대시 패턴
+  // 대시 유무 및 마지막 자리 digit 모두 허용 → 대형 블록에서 최우선 추출
+  if (isNoroo) {
+    const NOROO_RE = /([A-Z])[-–\s]*([0-9][A-Z][0-9]{2})[-–\s]*([0-9][A-Z0-9])/;
+    const blocksByFont = [...nonSpecBlocks]
+      .filter(b => !isBrandText(b.text))
+      .sort((a: any, b: any) => {
+        const aH = (a.frame?.height ?? 0) / Math.max(a.lines?.length ?? 1, 1);
+        const bH = (b.frame?.height ?? 0) / Math.max(b.lines?.length ?? 1, 1);
+        return bH - aH;
+      });
+    for (const block of blocksByFont) {
+      const text = block.text.toUpperCase();
+      // 1차: 원본 텍스트에서 대시 패턴 탐색
+      const m1 = text.match(NOROO_RE);
+      if (m1) {
+        const p = normalizeProduct(fixLastLetter(m1[1] + m1[2] + m1[3]));
+        if (p) { product = p; break; }
+      }
+      // 2차: 대시·공백 제거 후 연속 패턴 탐색
+      const clean = text.replace(/[-\s]/g, "");
+      const m2 = clean.match(/([A-Z])([0-9][A-Z][0-9]{2})([0-9][A-Z0-9])/);
+      if (m2) {
+        const p = normalizeProduct(fixLastLetter(m2[1] + m2[2] + m2[3]));
+        if (p) { product = p; break; }
+      }
+    }
+    // NOROO 라벨에서 대형 블록으로 못 찾은 경우 — allText 전체에서 한 번 더 시도
+    if (!product) {
+      const m = allText.toUpperCase().match(NOROO_RE);
+      if (m) product = normalizeProduct(fixLastLetter(m[1] + m[2] + m[3]));
+    }
+    // NOROO 라벨은 하위 ITEM_RE 전체 스캔(우선순위 3·4) 제외 — 라벨 내 잡문자 오인식 방지
+    const norooMaker = lot ? (MAKER_MAP[lot[0]] ?? lot[0]) : "";
+    return { lot, product, maker: norooMaker, lotFound: lot.length > 0, productFound: product.length > 0 };
+  }
+
+  // 우선순위 1: 대시 포함 라벨 패턴 (예: P-7Y61-2Y → P7Y612Y)
+  // 마지막 자리를 [A-Z0-9]로 확장 — OCR이 Z→2, B→8 등으로 읽어도 매칭
+  const LABEL_DASH_RE = /([A-Z])\s*[-–]\s*([0-9][A-Z][0-9]{2})\s*[-–]\s*([0-9][A-Z0-9])/;
   const dashMatch = allText.toUpperCase().match(LABEL_DASH_RE);
   if (dashMatch) {
     product = normalizeProduct(fixLastLetter(dashMatch[1] + dashMatch[2] + dashMatch[3]));
@@ -194,7 +236,6 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
   // 우선순위 1.5: 대시 없는 라벨 대형 텍스트 패턴 — 폰트 큰 블록 우선 탐색
   // 대시를 제거하고 매칭 — OCR이 대시를 보존한 경우도 커버
   if (!product) {
-    // 마지막 자리 digit 허용 ([A-Z0-9]) — 역교정으로 복원
     const NODASH_RE = /\b([A-Z])([0-9][A-Z][0-9]{2})([0-9][A-Z0-9])\b/;
     const blocksByFont = [...nonSpecBlocks].sort((a: any, b: any) => {
       const aH = (a.frame?.height ?? 0) / Math.max(a.lines?.length ?? 1, 1);
@@ -203,7 +244,6 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
     });
     for (const block of blocksByFont) {
       if (isBrandText(block.text)) continue;
-      // 대시·공백 모두 제거 후 매칭 (OCR이 대시를 남긴 경우도 처리)
       const m = block.text.toUpperCase().replace(/[-\s]/g, "").match(NODASH_RE);
       if (m) { product = normalizeProduct(fixLastLetter(m[1] + m[2] + m[3])); break; }
     }
@@ -227,7 +267,7 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
       return bH - aH;
     });
     for (const block of blocksByFont) {
-      if (isBrandText(block.text)) continue; // 브랜드명 블록 스킵
+      if (isBrandText(block.text)) continue;
       const bf = block.text.replace(/[-\s]/g, "").toUpperCase();
       const matches = [...bf.matchAll(ITEM_RE)].map(m => normalizeProduct(m[0])).filter(Boolean);
       if (matches.length > 0) {
