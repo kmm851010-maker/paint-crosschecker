@@ -97,6 +97,10 @@ export default function ReturnsPage() {
   const [dtTo, setDtTo] = useState(kstToday());
   const [dtToTime, setDtToTime] = useState("23:30");
 
+  // ── Column sort ──
+  const [colSort, setColSort] = useState<string | null>(null);
+  const [colSortAsc, setColSortAsc] = useState(true);
+
   // ── Selection ──
   const [selectedLots, setSelectedLots] = useState<Set<string>>(new Set());
   const [confirmType, setConfirmType] = useState<ConfirmType>(null);
@@ -173,6 +177,27 @@ export default function ReturnsPage() {
     }
     return Object.entries(groups);
   }, [filtered, sortMode]);
+
+  function sortedDrums(drums: DrumItem[]) {
+    if (!colSort) return drums;
+    return [...drums].sort((a, b) => {
+      const av = String((a as unknown as Record<string, unknown>)[colSort] ?? "");
+      const bv = String((b as unknown as Record<string, unknown>)[colSort] ?? "");
+      return colSortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+    });
+  }
+
+  function HdrBtn({ col, label }: { col: string; label: string }) {
+    const active = colSort === col;
+    return (
+      <button
+        onClick={() => { if (colSort === col) setColSortAsc(a => !a); else { setColSort(col); setColSortAsc(true); } }}
+        className={cn("text-xs font-semibold hover:text-purple-700 whitespace-nowrap", active ? "text-purple-700" : "text-gray-500")}
+      >
+        {label}{active ? (colSortAsc ? " ▲" : " ▼") : ""}
+      </button>
+    );
+  }
 
   // ── Selection helpers ──────────────────────────────────────────────────────
   function toggleLot(lot: string) {
@@ -513,15 +538,15 @@ export default function ReturnsPage() {
                           <thead className="bg-gray-50 sticky top-0">
                             <tr>
                               <th className="w-8 py-2 px-2"></th>
-                              <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">품명</th>
-                              <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">LOT</th>
-                              <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">제조사</th>
+                              <th className="py-2 px-3 text-left"><HdrBtn col="product" label="품명" /></th>
+                              <th className="py-2 px-3 text-left"><HdrBtn col="lot" label="LOT" /></th>
+                              <th className="py-2 px-3 text-left"><HdrBtn col="maker" label="제조사" /></th>
                               <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">섹터</th>
-                              <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">등록시간</th>
+                              <th className="py-2 px-3 text-left"><HdrBtn col="registered" label="등록시간" /></th>
                             </tr>
                           </thead>
                           <tbody>
-                            {drums.map(d => <DrumRow key={d.lot} drum={d} checked={selectedLots.has(d.lot)} onToggle={() => toggleLot(d.lot)} showSector />)}
+                            {sortedDrums(drums).map(d => <DrumRow key={d.lot} drum={d} checked={selectedLots.has(d.lot)} onToggle={() => toggleLot(d.lot)} showSector />)}
                           </tbody>
                         </table>
                       </div>
@@ -550,15 +575,15 @@ export default function ReturnsPage() {
                           <thead className="bg-gray-50 sticky top-0">
                             <tr>
                               <th className="w-8 py-2 px-2"></th>
-                              <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">품명</th>
-                              <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">LOT</th>
-                              <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">제조사</th>
+                              <th className="py-2 px-3 text-left"><HdrBtn col="product" label="품명" /></th>
+                              <th className="py-2 px-3 text-left"><HdrBtn col="lot" label="LOT" /></th>
+                              <th className="py-2 px-3 text-left"><HdrBtn col="maker" label="제조사" /></th>
                               {showSector && <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">섹터</th>}
-                              <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">등록시간</th>
+                              <th className="py-2 px-3 text-left"><HdrBtn col="registered" label="등록시간" /></th>
                             </tr>
                           </thead>
                           <tbody>
-                            {drums.map(d => <DrumRow key={d.lot} drum={d} checked={selectedLots.has(d.lot)} onToggle={() => toggleLot(d.lot)} showSector={showSector} />)}
+                            {sortedDrums(drums).map(d => <DrumRow key={d.lot} drum={d} checked={selectedLots.has(d.lot)} onToggle={() => toggleLot(d.lot)} showSector={showSector} />)}
                           </tbody>
                         </table>
                       </div>
