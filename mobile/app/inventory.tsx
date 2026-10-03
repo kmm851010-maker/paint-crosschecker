@@ -601,8 +601,7 @@ export default function InventoryScreen() {
           }
         } else if (!parsed.productFound) {
           // 재고에 없고 품명도 못 읽음 → 퍼지 매칭 시도 후 수동 입력
-          const allText = result.blocks?.map((b: any) => b.text).join("
-") ?? "";
+          const allText = result.blocks?.map((b: any) => b.text).join("\n") ?? "";
           const candidates = extractProductCandidates(allText);
           const mergedApproved = new Set([...localApprovedRef.current, ...serverWhitelistRef.current]);
           const fuzzy = fuzzyMatchProduct(candidates, mergedApproved);
