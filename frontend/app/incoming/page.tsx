@@ -614,7 +614,7 @@ export default function IncomingPage() {
     () => results.filter(r => r.상태?.includes("확인필요")),
     [results]
   );
-const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완료");
+const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완료" && s !== "창고주위");
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (

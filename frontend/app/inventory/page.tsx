@@ -717,6 +717,7 @@ export default function InventoryPage() {
               <label className="text-xs text-gray-600 mb-1 block">섹터</label>
               <select className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" value={editFields.sector} onChange={e => setEditFields(f => ({ ...f, sector: e.target.value }))}>
                 {SECTORS.map(s => <option key={s}>{s}</option>)}
+                {editFields.sector === "창고주위" && <option key="창고주위">창고주위</option>}
               </select>
             </div>
           </div>
