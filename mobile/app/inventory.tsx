@@ -586,7 +586,21 @@ export default function InventoryScreen() {
       } else if (!parsed.lotFound) {
         _setScanError({ type: "noLot", detail: `라벨을 선명하게 비춰주세요 — LOT 인식 안됨` });
       } else if (!parsed.productFound) {
-        // LOT은 인식됐으나 품명 인식 실패 → 퍼지 매칭 시도 후 수동 입력
+        // LOT은 인식됐으나 품명 인식 실패 → 기존 재고에서 LOT 조회 후 퍼지 매칭 / 수동 입력
+        const existingByLot = Object.values(sectorDataRef.current)
+          .flatMap((drums: any[]) => drums)
+          .find((d: any) => d.lot === parsed.lot);
+        if (existingByLot) {
+          if (batchRef.current.some(d => d.lot === existingByLot.lot)) {
+            _setScanError({ type: "duplicate", detail: `중복 스캔: ${existingByLot.lot}` });
+          } else {
+            setBatch(prev => [...prev, { lot: existingByLot.lot, product: existingByLot.product, maker: existingByLot.maker }]);
+            triggerFeedback();
+            Vibration.vibrate(80);
+            _setScanError(null);
+          }
+          return;
+        }
         const allText = result.blocks?.map((b: any) => b.text).join("\n") ?? "";
         const candidates = extractProductCandidates(allText);
         const mergedApproved = new Set([...localApprovedRef.current, ...serverWhitelistRef.current]);
@@ -832,6 +846,13 @@ export default function InventoryScreen() {
         setBatch(prev => prev.some(d => d.lot === editingItem.lot) ? prev : [...prev, newItem]);
         setEditingItem(null);
       };
+      // 이미 재고에 있는 드럼이고 품명도 일치하면 검증 없이 바로 배치 추가 (섹터 이동)
+      const existingInInventory = Object.values(sectorDataRef.current)
+        .flatMap((drums: any[]) => drums)
+        .find((d: any) => d.lot === editingItem.lot);
+      if (existingInInventory && existingInInventory.product === editingItem.product) {
+        finalAdd(); return;
+      }
       const doLotCheck = (onOk: () => void) => {
         if (knownLotsRef.current.size > 0 && !knownLotsRef.current.has(editingItem.lot)) {
           Alert.alert(
