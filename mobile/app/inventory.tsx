@@ -692,6 +692,7 @@ export default function InventoryScreen() {
         } else {
           addDrum();
         }
+        }
       }
     } catch (e: any) {
       _setScanError({ type: "error", detail: `카메라/OCR 오류: ${e?.message ?? "알 수 없는 오류"}` });
