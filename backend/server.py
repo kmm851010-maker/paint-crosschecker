@@ -252,6 +252,35 @@ async def run_cross_check_multi(req: CrossCheckRequest):
     }
 
 
+# --- 이력 items로 교차검증 (파일 재파싱 없이) ---
+
+class CrossCheckWithItemsRequest(BaseModel):
+    plan_items: list  # 이미 파싱된 생산계획 items (plan_history에서 불러온 것)
+    erp_file: str
+    erp_filename: str
+
+
+@app.post("/api/cross-check-with-items")
+async def run_cross_check_with_items(req: CrossCheckWithItemsRequest):
+    """이전 추출 내역(plan_items)과 ERP 파일로 교차검증 (파일 재파싱 불필요)."""
+    key = get_api_key("")
+    plan_df = pd.DataFrame(req.plan_items)
+    erp_bytes = base64.b64decode(req.erp_file)
+    try:
+        erp_df = process_erp_file(erp_bytes, req.erp_filename, key)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ERP 분석 실패: {str(e)}")
+    result_df = cross_check(plan_df, erp_df)
+    summary = format_summary(result_df)
+    return {
+        "success": True,
+        "plan_items": req.plan_items,
+        "erp_items": erp_df.to_dict(orient="records"),
+        "results": result_df.to_dict(orient="records"),
+        "summary": summary,
+    }
+
+
 # --- 엑셀 다운로드 ---
 
 @app.post("/api/export-excel-multi")

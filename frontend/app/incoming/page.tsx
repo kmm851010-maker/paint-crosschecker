@@ -4,7 +4,7 @@ import AppShell from "@/components/AppShell";
 import Button from "@/components/ui/Button";
 import toast from "react-hot-toast";
 import {
-  parsePlan, crossCheckMulti, exportExcelMulti,
+  parsePlan, crossCheckMulti, crossCheckWithItems, exportExcelMulti,
   generateIncomingExcel, registerDrums, planConversion, erpFill,
   savePlanHistory, listPlanHistory, getPlanHistory,
   PlanHistorySummary,
@@ -487,15 +487,20 @@ export default function IncomingPage() {
 
   // ── Crosscheck ────────────────────────────────────────────────────────────
   async function handleCrossCheck() {
-    if (planFileB64s.length === 0 || !erpFile) return;
+    const hasFiles = planFileB64s.length > 0;
+    const hasItems = planItems.length > 0;
+    if ((!hasFiles && !hasItems) || !erpFile) return;
     setCcLoading(true);
     try {
       const erpB64 = await fileToBase64(erpFile);
       setErpFileB64({ data: erpB64, name: erpFile.name });
-      const data = await crossCheckMulti(
-        planFileB64s.map(e => e.data), planFileB64s.map(e => e.name),
-        erpB64, erpFile.name, ""
-      );
+      // 이력에서 불러온 경우(파일 없음) → plan_items 직접 전송
+      const data = hasFiles
+        ? await crossCheckMulti(
+            planFileB64s.map(e => e.data), planFileB64s.map(e => e.name),
+            erpB64, erpFile.name, ""
+          )
+        : await crossCheckWithItems(planItems, erpB64, erpFile.name);
       setResults(data.results ?? []);
       setSummary(data.summary ?? null);
       setReverseChecked(new Set());
@@ -523,13 +528,20 @@ export default function IncomingPage() {
 
   // ── Export Excel ──────────────────────────────────────────────────────────
   async function handleExportExcel() {
-    if (!erpFileB64 || planFileB64s.length === 0) return;
+    if (!erpFileB64 || results.length === 0) return;
     setExcelLoading(true);
     try {
-      const data = await exportExcelMulti(
-        planFileB64s.map(e => e.data), planFileB64s.map(e => e.name),
-        erpFileB64.data, erpFileB64.name, ""
-      );
+      let data;
+      if (planFileB64s.length > 0) {
+        data = await exportExcelMulti(
+          planFileB64s.map(e => e.data), planFileB64s.map(e => e.name),
+          erpFileB64.data, erpFileB64.name, ""
+        );
+      } else {
+        // 이력 불러온 경우 — 이미 교차검증 결과가 있으므로 ERP fill로 엑셀 생성
+        const filled = await erpFill(planTableData ?? { headers: [], rows: [] }, results);
+        data = filled;
+      }
       downloadBase64(data.excel_base64, `${kstDateStr()}입고교차검증.xlsx`);
     } catch {
       toast.error("엑셀 생성 실패");

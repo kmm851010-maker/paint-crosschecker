@@ -125,6 +125,15 @@ export async function erpFill(table_data: { headers: string[]; rows: unknown[][]
   return data as { success: boolean; headers: string[]; rows: string[][]; excel_base64: string };
 }
 
+export async function crossCheckWithItems(
+  plan_items: unknown[], erp_file: string, erp_filename: string
+) {
+  const { data } = await api.post("/api/cross-check-with-items", {
+    plan_items, erp_file, erp_filename,
+  }, { timeout: 120000 });
+  return data;
+}
+
 export async function crossCheckMulti(
   plan_files: string[], plan_filenames: string[],
   erp_file: string, erp_filename: string, api_key: string
