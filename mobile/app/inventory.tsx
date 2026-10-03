@@ -912,8 +912,8 @@ export default function InventoryScreen() {
           ) : (
             <>
               <Text style={styles.modalTitle}>{batch.length}드럼 → 섹터 선택</Text>
-              {/* 이동 종류 선택 (생산 후 재고 / 위치이동) */}
-              <View style={{ flexDirection: "row", justifyContent: "center", gap: 16, marginBottom: 10 }}>
+              {/* 이동 종류 선택 (생산 후 재고 / 위치이동) + 라인입고 버튼 */}
+              <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 16, marginBottom: 10 }}>
                 {([
                   { key: "daily" as const, label: "생산 후 재고" },
                   { key: "location" as const, label: "위치이동" },
@@ -936,6 +936,11 @@ export default function InventoryScreen() {
                     </TouchableOpacity>
                   );
                 })}
+                <TouchableOpacity
+                  onPress={() => handleSectorSelect(CHECKOUT)}
+                  style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: "#16A34A" }}>
+                  <Text style={{ color: "#fff", fontSize: 13, fontWeight: "700" }}>{CHECKOUT}</Text>
+                </TouchableOpacity>
               </View>
               {/* 반품 종류 선택 (1행 라디오) */}
               <View style={{ flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 12 }}>
@@ -969,9 +974,6 @@ export default function InventoryScreen() {
                     <Text style={styles.sectorBtnText}>{s}</Text>
                   </TouchableOpacity>
                 ))}
-                <TouchableOpacity style={[styles.sectorBtn, styles.checkoutBtn]} onPress={() => handleSectorSelect(CHECKOUT)}>
-                  <Text style={[styles.sectorBtnText, { color: "#fff" }]}>{CHECKOUT}</Text>
-                </TouchableOpacity>
               </ScrollView>
               <TouchableOpacity style={[styles.modalCancelBtn, { paddingBottom: 14 + insets.bottom }]} onPress={() => setMode("scanning")}>
                 <Text style={styles.modalCancelText}>돌아가기</Text>
