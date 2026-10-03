@@ -362,7 +362,7 @@ function ConversionDialog({
 export default function IncomingPage() {
   // ── Files ──
   const [planFiles, setPlanFiles] = useState<File[]>([]);
-  const [erpFile, setErpFile] = useState<File | null>(null);
+  const [erpFiles, setErpFiles] = useState<File[]>([]);
 
   // ── Plan state ──
   const [planItems, setPlanItems] = useState<PlanItem[]>([]);
@@ -377,7 +377,7 @@ export default function IncomingPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [ccLoading, setCcLoading] = useState(false);
   const [excelLoading, setExcelLoading] = useState(false);
-  const [erpFileB64, setErpFileB64] = useState<{ data: string; name: string } | null>(null);
+  const [erpFileB64s, setErpFileB64s] = useState<{ data: string; name: string }[]>([]);
   const [reverseChecked, setReverseChecked] = useState<Set<number>>(new Set());
 
   // ── ERP 입고반영 결과 ──
@@ -414,10 +414,10 @@ export default function IncomingPage() {
 
   // ── Reset ──────────────────────────────────────────────────────────────────
   function reset() {
-    setPlanFiles([]); setErpFile(null);
+    setPlanFiles([]); setErpFiles([]);
     setPlanItems([]); setPlanTableData(null); setPlanFileB64s([]);
     setResults([]); setSummary(null);
-    setErpFileB64(null); setReverseChecked(new Set());
+    setErpFileB64s([]); setReverseChecked(new Set());
     setNewRegDrums([]); setShowNewReg(false);
     setShowPlanTable(false); setShowConversion(false);
     setErpFillData(null); setErpFillEditRows(null);
@@ -489,18 +489,18 @@ export default function IncomingPage() {
   async function handleCrossCheck() {
     const hasFiles = planFileB64s.length > 0;
     const hasItems = planItems.length > 0;
-    if ((!hasFiles && !hasItems) || !erpFile) return;
+    if ((!hasFiles && !hasItems) || erpFiles.length === 0) return;
     setCcLoading(true);
     try {
-      const erpB64 = await fileToBase64(erpFile);
-      setErpFileB64({ data: erpB64, name: erpFile.name });
+      const encoded = await Promise.all(erpFiles.map(async f => ({ data: await fileToBase64(f), name: f.name })));
+      setErpFileB64s(encoded);
       // 이력에서 불러온 경우(파일 없음) → plan_items 직접 전송
       const data = hasFiles
         ? await crossCheckMulti(
             planFileB64s.map(e => e.data), planFileB64s.map(e => e.name),
-            erpB64, erpFile.name, ""
+            encoded.map(e => e.data), encoded.map(e => e.name), ""
           )
-        : await crossCheckWithItems(planItems, erpB64, erpFile.name);
+        : await crossCheckWithItems(planItems, encoded.map(e => e.data), encoded.map(e => e.name));
       setResults(data.results ?? []);
       setSummary(data.summary ?? null);
       setReverseChecked(new Set());
@@ -528,14 +528,14 @@ export default function IncomingPage() {
 
   // ── Export Excel ──────────────────────────────────────────────────────────
   async function handleExportExcel() {
-    if (!erpFileB64 || results.length === 0) return;
+    if (erpFileB64s.length === 0 || results.length === 0) return;
     setExcelLoading(true);
     try {
       let data;
       if (planFileB64s.length > 0) {
         data = await exportExcelMulti(
           planFileB64s.map(e => e.data), planFileB64s.map(e => e.name),
-          erpFileB64.data, erpFileB64.name, ""
+          erpFileB64s.map(e => e.data), erpFileB64s.map(e => e.name), ""
         );
       } else {
         // 이력 불러온 경우 — 이미 교차검증 결과가 있으므로 ERP fill로 엑셀 생성
@@ -552,9 +552,17 @@ export default function IncomingPage() {
 
   // ── 신규 입고처리 ─────────────────────────────────────────────────────────
   async function handleNewRegExtract() {
-    if (!erpFile) return;
+    if (erpFiles.length === 0) return;
     try {
-      const drums = await extractDrumsFromExcel(erpFile);
+      const allDrums = await Promise.all(erpFiles.map(f => extractDrumsFromExcel(f)));
+      // 여러 파일 결과 합치기 (LOT 중복 제거)
+      const seen = new Set<string>();
+      const drums: ExtractedDrum[] = [];
+      for (const batch of allDrums) {
+        for (const d of batch) {
+          if (!seen.has(d.lot)) { seen.add(d.lot); drums.push(d); }
+        }
+      }
       if (drums.length === 0) {
         toast.error("ERP 파일에서 LOT를 추출하지 못했습니다.");
         return;
@@ -723,19 +731,33 @@ const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완�
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h2 className="font-semibold text-gray-800 mb-3">② ERP 입고명세서</h2>
             <label className="block mb-3">
-              <span className="text-xs text-gray-500">엑셀(.xlsx, .csv) 또는 화면 캡처 이미지</span>
+              <span className="text-xs text-gray-500">엑셀(.xlsx, .csv) 최대 5개 선택 가능</span>
               <input
                 type="file"
+                multiple
                 accept=".xlsx,.xls,.csv,.jpg,.jpeg,.png,.webp"
                 className="mt-1 block w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
-                onChange={e => { setErpFile(e.target.files?.[0] ?? null); setResults([]); setSummary(null); }}
+                onChange={e => {
+                  const files = Array.from(e.target.files ?? []).slice(0, 5);
+                  setErpFiles(files); setResults([]); setSummary(null); setErpFileB64s([]);
+                }}
               />
             </label>
+            {erpFiles.length > 0 && (
+              <ul className="mb-3 space-y-0.5">
+                {erpFiles.map((f, i) => (
+                  <li key={i} className="flex items-center gap-1.5 text-xs text-gray-600">
+                    <span className="text-gray-400">{i + 1}.</span>
+                    <span className="truncate">{f.name}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
             <div className="flex flex-col gap-2">
               <Button
                 onClick={handleCrossCheck}
                 loading={ccLoading}
-                disabled={!erpFile || planItems.length === 0}
+                disabled={erpFiles.length === 0 || planItems.length === 0}
                 className="w-full"
               >
                 교차검증
@@ -743,7 +765,7 @@ const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완�
               <Button
                 variant="secondary"
                 onClick={handleNewRegExtract}
-                disabled={!erpFile}
+                disabled={erpFiles.length === 0}
                 className="w-full"
               >
                 신규 입고처리
@@ -1017,7 +1039,7 @@ const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완�
         )}
 
         {/* ── 신규 입고처리 ── */}
-        {erpFileB64 && results.length > 0 && (
+        {erpFileB64s.length > 0 && results.length > 0 && (
           <div className="mt-6 bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="font-semibold text-gray-800 mb-2">신규 입고처리</h3>
             <p className="text-sm text-gray-500 mb-3">ERP 파일에서 드럼을 추출하여 재고에 등록합니다.</p>
