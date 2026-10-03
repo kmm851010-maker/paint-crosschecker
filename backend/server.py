@@ -210,9 +210,23 @@ async def get_plan_history(plan_id: int):
 class CrossCheckRequest(BaseModel):
     plan_files: list[str]
     plan_filenames: list[str]
-    erp_file: str
-    erp_filename: str
+    erp_file: str = ""           # 단일 파일 (legacy)
+    erp_filename: str = ""
+    erp_files: list[str] = []    # 복수 파일 (최대 5개)
+    erp_filenames: list[str] = []
     api_key: str = ""
+
+
+def _parse_erp_files(erp_files: list, erp_filenames: list, erp_file: str, erp_filename: str, key: str) -> "pd.DataFrame":
+    """단일/복수 ERP 파일을 파싱 후 합쳐서 반환."""
+    pairs = list(zip(erp_files, erp_filenames)) if erp_files else [(erp_file, erp_filename)]
+    dfs = []
+    for b64, fname in pairs:
+        try:
+            dfs.append(process_erp_file(base64.b64decode(b64), fname, key))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"ERP 분석 실패 ({fname}): {str(e)}")
+    return pd.concat(dfs, ignore_index=True) if len(dfs) > 1 else dfs[0]
 
 
 @app.post("/api/cross-check-multi")
@@ -231,15 +245,8 @@ async def run_cross_check_multi(req: CrossCheckRequest):
             raise HTTPException(status_code=500, detail=f"생산계획서 분석 실패: {str(e)}")
 
     plan_df = pd.DataFrame(all_plan_rows)
+    erp_df = _parse_erp_files(req.erp_files, req.erp_filenames, req.erp_file, req.erp_filename, key)
 
-    # ERP 분석
-    erp_bytes = base64.b64decode(req.erp_file)
-    try:
-        erp_df = process_erp_file(erp_bytes, req.erp_filename, key)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"ERP 분석 실패: {str(e)}")
-
-    # 교차검증
     result_df = cross_check(plan_df, erp_df)
     summary = format_summary(result_df)
 
@@ -255,9 +262,11 @@ async def run_cross_check_multi(req: CrossCheckRequest):
 # --- 이력 items로 교차검증 (파일 재파싱 없이) ---
 
 class CrossCheckWithItemsRequest(BaseModel):
-    plan_items: list  # 이미 파싱된 생산계획 items (plan_history에서 불러온 것)
-    erp_file: str
-    erp_filename: str
+    plan_items: list
+    erp_file: str = ""
+    erp_filename: str = ""
+    erp_files: list[str] = []
+    erp_filenames: list[str] = []
 
 
 @app.post("/api/cross-check-with-items")
@@ -265,9 +274,8 @@ async def run_cross_check_with_items(req: CrossCheckWithItemsRequest):
     """이전 추출 내역(plan_items)과 ERP 파일로 교차검증 (파일 재파싱 불필요)."""
     key = get_api_key("")
     plan_df = pd.DataFrame(req.plan_items)
-    erp_bytes = base64.b64decode(req.erp_file)
     try:
-        erp_df = process_erp_file(erp_bytes, req.erp_filename, key)
+        erp_df = _parse_erp_files(req.erp_files, req.erp_filenames, req.erp_file, req.erp_filename, key)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ERP 분석 실패: {str(e)}")
     result_df = cross_check(plan_df, erp_df)
@@ -298,8 +306,7 @@ async def export_excel_multi(req: CrossCheckRequest):
             raise HTTPException(status_code=500, detail=f"분석 실패: {str(e)}")
 
     plan_df = pd.DataFrame(all_plan_rows)
-    erp_bytes = base64.b64decode(req.erp_file)
-    erp_df = process_erp_file(erp_bytes, req.erp_filename, key)
+    erp_df = _parse_erp_files(req.erp_files, req.erp_filenames, req.erp_file, req.erp_filename, key)
     result_df = cross_check(plan_df, erp_df)
     excel_bytes = generate_report(result_df)
 

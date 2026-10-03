@@ -126,30 +126,30 @@ export async function erpFill(table_data: { headers: string[]; rows: unknown[][]
 }
 
 export async function crossCheckWithItems(
-  plan_items: unknown[], erp_file: string, erp_filename: string
+  plan_items: unknown[], erp_files: string[], erp_filenames: string[]
 ) {
   const { data } = await api.post("/api/cross-check-with-items", {
-    plan_items, erp_file, erp_filename,
+    plan_items, erp_files, erp_filenames,
   }, { timeout: 120000 });
   return data;
 }
 
 export async function crossCheckMulti(
   plan_files: string[], plan_filenames: string[],
-  erp_file: string, erp_filename: string, api_key: string
+  erp_files: string[], erp_filenames: string[], api_key: string
 ) {
   const { data } = await api.post("/api/cross-check-multi", {
-    plan_files, plan_filenames, erp_file, erp_filename, api_key
+    plan_files, plan_filenames, erp_files, erp_filenames, api_key
   }, { timeout: 120000 });
   return data;
 }
 
 export async function exportExcelMulti(
   plan_files: string[], plan_filenames: string[],
-  erp_file: string, erp_filename: string, api_key: string
+  erp_files: string[], erp_filenames: string[], api_key: string
 ) {
   const { data } = await api.post("/api/export-excel-multi", {
-    plan_files, plan_filenames, erp_file, erp_filename, api_key
+    plan_files, plan_filenames, erp_files, erp_filenames, api_key
   }, { timeout: 120000 });
   return data;
 }
