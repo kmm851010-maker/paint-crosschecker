@@ -641,35 +641,57 @@ export default function InventoryScreen() {
       return;
     }
     setShowIngoPrompt(false);
-    setMode("scanning");
-    setLoading(true);
-    const savedReturnType = returnType;
-    const savedMoveType = moveType;
-    setReturnType("");
-    setMoveType("daily");
-    try {
-      const drumsToSend = sector === "입고존"
-        ? batch.map(d => ({ ...d, scanDisabled: scanDis ?? false }))
-        : batch;
-      const result = await registerDrums(drumsToSend, sector, sector === CHECKOUT ? "daily" : savedMoveType);
-      const count = batch.length;
-      if (savedReturnType && sector !== CHECKOUT) {
-        await setDrumReturnStatus(drumsToSend, savedReturnType);
+
+    // 저장 실행 함수
+    const doSave = async () => {
+      setMode("scanning");
+      setLoading(true);
+      const savedReturnType = returnType;
+      const savedMoveType = moveType;
+      setReturnType("");
+      setMoveType("daily");
+      try {
+        const drumsToSend = sector === "입고존"
+          ? batch.map(d => ({ ...d, scanDisabled: scanDis ?? false }))
+          : batch;
+        const result = await registerDrums(drumsToSend, sector, sector === CHECKOUT ? "daily" : savedMoveType);
+        const count = batch.length;
+        if (savedReturnType && sector !== CHECKOUT) {
+          await setDrumReturnStatus(drumsToSend, savedReturnType);
+        }
+        setBatch([]);
+        setIngoScanDisabled(false);
+        if (sector === CHECKOUT) {
+          _alert("저장 완료", `${count}드럼 라인입고 처리 완료`);
+        } else if (savedReturnType) {
+          _alert("저장 완료", `${count}드럼 → ${sector} 등록
+반품유형: ${savedReturnType}`);
+        } else {
+          _alert("저장 완료", `${count}드럼 → ${sector} 등록 완료
+계속 스캔할 수 있습니다.`);
+        }
+      } catch (e: any) {
+        _alert("저장 실패", e.message);
+      } finally {
+        setLoading(false);
       }
-      setBatch([]);
-      setIngoScanDisabled(false);
-      if (sector === CHECKOUT) {
-        _alert("저장 완료", `${count}드럼 라인입고 처리 완료`);
-      } else if (savedReturnType) {
-        _alert("저장 완료", `${count}드럼 → ${sector} 등록\n반품유형: ${savedReturnType}`);
-      } else {
-        _alert("저장 완료", `${count}드럼 → ${sector} 등록 완료\n계속 스캔할 수 있습니다.`);
-      }
-    } catch (e: any) {
-      _alert("저장 실패", e.message);
-    } finally {
-      setLoading(false);
-    }
+    };
+
+    // 확인 팝업
+    const moveLabel = sector === CHECKOUT ? "라인입고" : moveType === "location" ? "위치이동" : "재고이동";
+    const returnLabel = returnType && sector !== CHECKOUT ? `
+반품유형: ${returnType}` : "";
+    Alert.alert(
+      "저장 확인",
+      `총 ${batch.length}개 → ${sector}
+[${moveLabel}]${returnLabel}
+
+맞습니까?`,
+      [
+        { text: "아니오", style: "cancel", onPress: () => setMode("sectorPick") },
+        { text: "예", onPress: doSave },
+      ]
+    );
   };
 
   // ── 재고 현황 조회 ──
