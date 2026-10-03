@@ -190,6 +190,18 @@ export async function getKnownLots(): Promise<string[]> {
   } catch { return []; }
 }
 
+export async function getKnownLotsMap(): Promise<Map<string, { product: string; maker: string }>> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/inventory/known-lots-map`);
+    const data = await res.json();
+    const map = new Map<string, { product: string; maker: string }>();
+    for (const item of (data.lots ?? [])) {
+      map.set(item.lot, { product: item.product, maker: item.maker });
+    }
+    return map;
+  } catch { return new Map(); }
+}
+
 export async function getProductWhitelist(): Promise<string[]> {
   try {
     const response = await fetch(`${API_BASE_URL}/api/inventory/product-whitelist`);

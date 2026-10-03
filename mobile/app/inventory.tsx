@@ -30,7 +30,7 @@ import { VolumeManager } from "react-native-volume-manager";
 import { APPROVED_PRODUCTS } from "../src/constants/approvedProducts";
 
 const ASYNC_KEY_APPROVED = "user_approved_products_v1";
-import { registerDrums, getSectorInventory, setDrumReturnStatus, getProductWhitelist, getKnownLots, type DrumItem } from "../src/services/api";
+import { registerDrums, getSectorInventory, setDrumReturnStatus, getProductWhitelist, getKnownLots, getKnownLotsMap, type DrumItem } from "../src/services/api";
 
 // ── 제조사 코드 ──
 const MAKER_MAP: Record<string, string> = {
@@ -416,7 +416,8 @@ export default function InventoryScreen() {
   const alertActiveRef = useRef(false); // Alert 팝업 표시 중 여부 (runOcr 내 클로저용)
   const localApprovedRef = useRef<Set<string>>(new Set()); // 사용자 승인 신규 품목 (AsyncStorage 연동)
   const serverWhitelistRef = useRef<Set<string>>(new Set()); // 서버 ERP 화이트리스트
-  const knownLotsRef = useRef<Set<string>>(new Set()); // 입고 기준 LOT (OCR 경고용)
+  const knownLotsRef = useRef<Set<string>>(new Set());
+  const knownDrumsMapRef = useRef<Map<string, { product: string; maker: string }>>(new Map()); // 입고 기준 LOT (OCR 경고용)
   const [knownLotsError, setKnownLotsError] = useState(false); // 기준 LOT 로드 실패
 
   // 앱 시작 시 사용자 승인 품목 + 서버 화이트리스트 + 기준 LOT 로드
@@ -444,6 +445,9 @@ export default function InventoryScreen() {
     });
     getSectorInventory().then(data => {
       setSectorData(data);
+    }).catch(() => {});
+    getKnownLotsMap().then(map => {
+      knownDrumsMapRef.current = map;
     }).catch(() => {});
   }, []);
 
@@ -603,9 +607,21 @@ export default function InventoryScreen() {
             _setScanError(null);
           }
         } else {
-          // 재고에 없는 드럼 → 수동 입력 (LOT 채워진 상태)
-          _setScanError({ type: "noProduct", detail: `재고 미등록 LOT — 직접 입력해주세요 (${parsed.lot})` });
-          setEditingItem({ index: -1, lot: parsed.lot, product: "" });
+          // 현재 재고엔 없지만 과거 이력에서 LOT 조회
+          const historical = knownDrumsMapRef.current.get(parsed.lot);
+          if (historical && historical.product) {
+            if (batchRef.current.some(d => d.lot === parsed.lot)) {
+              _setScanError({ type: "duplicate", detail: `중복 스캔: ${parsed.lot}` });
+            } else {
+              setBatch(prev => [...prev, { lot: parsed.lot, product: historical.product, maker: historical.maker }]);
+              triggerFeedback();
+              Vibration.vibrate(80);
+              _setScanError(null);
+            }
+          } else {
+            _setScanError({ type: "noProduct", detail: `재고 미등록 LOT — 직접 입력해주세요 (${parsed.lot})` });
+            setEditingItem({ index: -1, lot: parsed.lot, product: "" });
+          }
         }
       }
     } catch (e: any) {

@@ -1005,6 +1005,34 @@ async def get_known_lots():
     return {"lots": list(all_lots)}
 
 
+@app.get("/api/inventory/known-lots-map")
+async def get_known_lots_map():
+    """LOT → {product, maker} 맵 반환: 현재 재고 + 최근 2년 이력 (라인입고된 것 포함)."""
+    from utils.inventory_supabase import _sb
+    import datetime as _dt
+    now_kst = _dt.datetime.utcnow() + _dt.timedelta(hours=9)
+    cutoff = (now_kst - _dt.timedelta(days=730)).strftime("%Y-%m-%d")
+    sb = _sb()
+    lot_map: dict = {}
+    # 현재 재고
+    inv_res = sb.table("inventory").select("lot,product,maker").execute()
+    for r in inv_res.data:
+        if r.get("lot"):
+            lot_map[r["lot"]] = {"product": r.get("product", ""), "maker": r.get("maker", "")}
+    # 최근 2년 이력 (현재 재고에 없는 LOT 보완)
+    page_size = 1000
+    offset = 0
+    while True:
+        res = sb.table("inventory_history").select("lot,product,maker").gte("recorded_at", cutoff).range(offset, offset + page_size - 1).execute()
+        for r in res.data:
+            if r.get("lot") and r["lot"] not in lot_map:
+                lot_map[r["lot"]] = {"product": r.get("product", ""), "maker": r.get("maker", "")}
+        if len(res.data) < page_size:
+            break
+        offset += page_size
+    return {"lots": [{"lot": k, "product": v["product"], "maker": v["maker"]} for k, v in lot_map.items()]}
+
+
 class ParseReturnListRequest(BaseModel):
     file_data: str  # base64
     filename: str
