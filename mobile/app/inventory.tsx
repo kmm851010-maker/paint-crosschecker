@@ -442,6 +442,9 @@ export default function InventoryScreen() {
     }).catch(() => {
       setKnownLotsError(true);
     });
+    getSectorInventory().then(data => {
+      setSectorData(data);
+    }).catch(() => {});
   }, []);
 
   // torchModeRef를 torchMode와 동기화
