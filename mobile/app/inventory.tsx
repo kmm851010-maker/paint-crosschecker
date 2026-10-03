@@ -586,7 +586,7 @@ export default function InventoryScreen() {
       } else if (!parsed.lotFound) {
         _setScanError({ type: "noLot", detail: `라벨을 선명하게 비춰주세요 — LOT 인식 안됨` });
       } else {
-        // LOT 인식됨 → 기존 재고에서 먼저 조회 (품명 OCR 결과 무시)
+        // LOT 인식됨 → 재고에서 먼저 조회, 없으면 수동 입력 (품명 OCR 시도 없음)
         const existingByLot = Object.values(sectorDataRef.current)
           .flatMap((drums: any[]) => drums)
           .find((d: any) => d.lot === parsed.lot);
@@ -599,99 +599,10 @@ export default function InventoryScreen() {
             Vibration.vibrate(80);
             _setScanError(null);
           }
-        } else if (!parsed.productFound) {
-          // 재고에 없고 품명도 못 읽음 → 퍼지 매칭 시도 후 수동 입력
-          const allText = result.blocks?.map((b: any) => b.text).join("\n") ?? "";
-          const candidates = extractProductCandidates(allText);
-          const mergedApproved = new Set([...localApprovedRef.current, ...serverWhitelistRef.current]);
-          const fuzzy = fuzzyMatchProduct(candidates, mergedApproved);
-          if (fuzzy) {
-            _setScanError({ type: "noProduct", detail: `품명 불명확 — "${fuzzy.match}" 확인 필요` });
-            cooldownRef.current = true;
-            alertActiveRef.current = true;
-            Alert.alert(
-              "품명 확인",
-              `라벨이 훼손되어 품명을 정확히 읽지 못했습니다.
-
-혹시 이 품목인가요?
-
-▶ ${fuzzy.match}`,
-              [
-                { text: "아니오", style: "cancel", onPress: () => {
-                  alertActiveRef.current = false;
-                  cooldownRef.current = false;
-                  setEditingItem({ index: -1, lot: parsed.lot, product: "" });
-                }},
-                { text: "맞습니다", onPress: () => {
-                  alertActiveRef.current = false;
-                  cooldownRef.current = false;
-                  const drumItem: DrumItem = { lot: parsed.lot, product: fuzzy.match, maker: parsed.maker };
-                  setBatch(prev => prev.some(d => d.lot === parsed.lot) ? prev : [...prev, drumItem]);
-                  triggerFeedback();
-                  Vibration.vibrate(80);
-                  _setScanError(null);
-                }},
-              ]
-            );
-          } else {
-            _setScanError({ type: "noProduct", detail: `품명 인식 안됨 — 직접 입력해주세요 (${parsed.lot})` });
-            setEditingItem({ index: -1, lot: parsed.lot, product: "" });
-          }
-        } else if (batchRef.current.some(d => d.lot === parsed.lot)) {
-          _setScanError({ type: "duplicate", detail: `중복 스캔: ${parsed.lot}` });
         } else {
-        const drumItem: DrumItem = { lot: parsed.lot, product: parsed.product, maker: parsed.maker };
-
-        const addDrum = () => {
-          if (!APPROVED_PRODUCTS.has(parsed.product) && !localApprovedRef.current.has(parsed.product) && !serverWhitelistRef.current.has(parsed.product)) {
-            // 미등록 품목 — 사용자 확인 후 저장
-            _setScanError(null);
-            cooldownRef.current = true;
-            alertActiveRef.current = true;
-            Alert.alert(
-              "미등록 품목",
-              `"${parsed.product}" 은(는) 승인 목록에 없는 품목입니다.\n신규 제품이거나 잘못 인식된 제품일 수 있습니다.\n\n신규 제품으로 저장하시겠습니까?`,
-              [
-                { text: "취소", style: "cancel", onPress: () => { alertActiveRef.current = false; cooldownRef.current = false; } },
-                { text: "저장", onPress: () => {
-                    localApprovedRef.current.add(parsed.product);
-                    AsyncStorage.getItem(ASYNC_KEY_APPROVED).then(val => {
-                      const arr: string[] = val ? JSON.parse(val) : [];
-                      if (!arr.includes(parsed.product)) { arr.push(parsed.product); AsyncStorage.setItem(ASYNC_KEY_APPROVED, JSON.stringify(arr)); }
-                    }).catch(() => {});
-                    setBatch(prev => [...prev, drumItem]);
-                    triggerFeedback();
-                    alertActiveRef.current = false;
-                    cooldownRef.current = true;
-                    setTimeout(() => { cooldownRef.current = false; }, 1500);
-                  },
-                },
-              ]
-            );
-          } else {
-            _setScanError(null);
-            triggerFeedback();
-            cooldownRef.current = true;
-            setTimeout(() => { cooldownRef.current = false; }, 1500);
-            setBatch(prev => [...prev, drumItem]);
-          }
-        };
-
-        // 기준 LOT 로드됐고 처음 보는 LOT이면 경고
-        if (knownLotsRef.current.size > 0 && !knownLotsRef.current.has(parsed.lot)) {
-          cooldownRef.current = true;
-          alertActiveRef.current = true;
-          Alert.alert(
-            "LOT번호 확인",
-            `입고된 내역이 없는 LOT번호입니다.\n\nLOT: ${parsed.lot}\n\n제품 라벨의 LOT번호를 확인 후 계속하시겠습니까?`,
-            [
-              { text: "취소", style: "cancel", onPress: () => { alertActiveRef.current = false; cooldownRef.current = false; } },
-              { text: "확인", onPress: () => { alertActiveRef.current = false; cooldownRef.current = false; addDrum(); } },
-            ]
-          );
-        } else {
-          addDrum();
-        }
+          // 재고에 없는 드럼 → 수동 입력 (LOT 채워진 상태)
+          _setScanError({ type: "noProduct", detail: `재고 미등록 LOT — 직접 입력해주세요 (${parsed.lot})` });
+          setEditingItem({ index: -1, lot: parsed.lot, product: "" });
         }
       }
     } catch (e: any) {
