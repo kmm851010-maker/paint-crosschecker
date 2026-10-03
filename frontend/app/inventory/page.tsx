@@ -606,7 +606,14 @@ export default function InventoryPage() {
   ];
 
   // ── Render helpers ─────────────────────────────────────────────────────────
-  const groupEntries = Object.entries(groupedDrums);
+  const groupEntries = sortMode === "섹터별"
+    ? Object.entries(groupedDrums).sort(([a], [b]) => {
+        const ai = SECTORS.indexOf(a); const bi = SECTORS.indexOf(b);
+        if (ai === -1 && bi === -1) return a.localeCompare(b);
+        if (ai === -1) return 1; if (bi === -1) return -1;
+        return ai - bi;
+      })
+    : Object.entries(groupedDrums);
   const showCardGrid = sortMode === "섹터별" || sortMode === "품목별";
   const showExpander = sortMode === "제조사별";
   const showSectorCol = sortMode !== "섹터별";
