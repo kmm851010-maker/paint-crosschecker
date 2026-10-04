@@ -1369,8 +1369,48 @@ export default function InventoryPage() {
             if (!bySector[s]) bySector[s] = [];
             bySector[s].push(d);
           }
+          const ghostSelected = selectedDrums.filter(d => d.returnStatus?.startsWith("무적"));
           return (
             <div>
+              {/* 무적관리 액션바 */}
+              {ghostSelected.length > 0 && (
+                <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  {editDrum ? (
+                    <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <p className="text-sm font-semibold text-blue-800 mb-3">✏️ {editDrum.product} ({editDrum.lot}) 정보 수정</p>
+                      <div className="grid grid-cols-2 gap-3 mb-3">
+                        <div><label className="text-xs text-gray-500 mb-1 block">LOT</label><input value={editFields.lot} onChange={e => setEditFields(p => ({ ...p, lot: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm" /></div>
+                        <div><label className="text-xs text-gray-500 mb-1 block">품명</label><input value={editFields.product} onChange={e => setEditFields(p => ({ ...p, product: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm" /></div>
+                        <div><label className="text-xs text-gray-500 mb-1 block">제조사</label><select value={editFields.maker} onChange={e => setEditFields(p => ({ ...p, maker: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm">{MAKER_LIST.map(m => <option key={m}>{m}</option>)}</select></div>
+                        <div><label className="text-xs text-gray-500 mb-1 block">섹터</label><select value={editFields.sector} onChange={e => setEditFields(p => ({ ...p, sector: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm">{SECTORS.map(s => <option key={s}>{s}</option>)}{editFields.sector === "창고주위" && <option key="창고주위">창고주위</option>}</select></div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button onClick={doEditSave} loading={actionLoading}>💾 저장</Button>
+                        <Button variant="secondary" onClick={() => setEditDrum(null)}>취소</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <span className="text-sm text-gray-600">{ghostSelected.length}드럼 선택됨</span>
+                      <Button onClick={() => setConfirmType("checkout")} loading={actionLoading}>라인입고 ({ghostSelected.length})</Button>
+                      {ghostSelected.length === 1 && (
+                        <Button variant="secondary" onClick={() => {
+                          const d = ghostSelected[0];
+                          setEditDrum(d);
+                          setEditFields({ lot: d.lot, product: d.product, maker: d.maker, sector: d.sector ?? SECTORS[0], remark: d.remark === "신규" ? "" : (d.remark ?? "") });
+                        }}>✏️ 정보 수정</Button>
+                      )}
+                      <Button variant="secondary" onClick={clearSelection}>선택 해제</Button>
+                    </div>
+                  )}
+                  {confirmType === "checkout" && (
+                    <div className="mt-3 flex gap-2">
+                      <Button onClick={() => doAction(confirmType)} loading={actionLoading}>✅ 라인입고 확인</Button>
+                      <Button variant="secondary" onClick={() => setConfirmType(null)}>❌ 취소</Button>
+                    </div>
+                  )}
+                </div>
+              )}
               {ghostDrums.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-12">무적 드럼 없음</p>
               ) : (
@@ -1385,6 +1425,7 @@ export default function InventoryPage() {
                         <table className="min-w-full text-sm">
                           <thead className="bg-gray-50">
                             <tr>
+                              <th className="py-2 px-2 text-center w-8"></th>
                               <th className="py-2 px-3 text-left text-xs text-gray-500">구분</th>
                               <th className="py-2 px-3 text-left text-xs text-gray-500">LOT</th>
                               <th className="py-2 px-3 text-left text-xs text-gray-500">품명</th>
@@ -1395,8 +1436,10 @@ export default function InventoryPage() {
                           <tbody>
                             {drums.map(d => {
                               const loc = d.returnStatus?.split(":")?.[1] ?? "";
+                              const sel = selectedLots.has(d.lot);
                               return (
-                              <tr key={d.lot} className="border-t border-gray-100 hover:bg-gray-50">
+                              <tr key={d.lot} onClick={() => toggleLot(d.lot)} className={cn("border-t border-gray-100 hover:bg-purple-50 cursor-pointer transition-colors", sel && "bg-purple-50")}>
+                                <td className="py-1.5 px-2 text-center" onClick={e => e.stopPropagation()}><input type="checkbox" checked={sel} onChange={() => toggleLot(d.lot)} /></td>
                                 <td className="py-1.5 px-3 text-xs font-semibold text-gray-700">{loc}</td>
                                 <td className="py-1.5 px-3 font-mono text-xs">{d.lot}</td>
                                 <td className="py-1.5 px-3">{d.product}</td>
