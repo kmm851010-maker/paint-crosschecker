@@ -1275,6 +1275,9 @@ export default function InventoryScreen() {
         key = drum.returnStatus === "불량" ? "🔴 불량반품"
             : drum.returnStatus === "기술" ? "🟡 기술반품"
             : drum.returnStatus === "무상" ? "🔵 무상반품"
+            : drum.returnStatus === "무적:인천" ? "⚫ 무적 (인천)"
+            : drum.returnStatus === "무적:당진" ? "⚫ 무적 (당진)"
+            : drum.returnStatus?.startsWith("무적") ? "⚫ 무적"
             : "⬜ 정상";
       }
       if (!grouped[key]) grouped[key] = [];
@@ -1285,7 +1288,7 @@ export default function InventoryScreen() {
       for (const k of Object.keys(grouped)) grouped[k].sort((a: any, b: any) => a.lot.localeCompare(b.lot));
     }
     // 그룹 키 정렬
-    const RETURN_ORDER = ["🔴 불량반품", "🟡 기술반품", "🔵 무상반품", "⬜ 정상"];
+    const RETURN_ORDER = ["🔴 불량반품", "🟡 기술반품", "🔵 무상반품", "⚫ 무적 (인천)", "⚫ 무적 (당진)", "⚫ 무적", "⬜ 정상"];
     const groupKeys = Object.keys(grouped).sort((a, b) =>
       sortMode === "return"
         ? RETURN_ORDER.indexOf(a) - RETURN_ORDER.indexOf(b)
@@ -1541,6 +1544,7 @@ export default function InventoryScreen() {
                         const returnBg = drum.returnStatus === "불량" ? "#FEE2E2"
                           : drum.returnStatus === "기술" ? "#FEF9C3"
                           : drum.returnStatus === "무상" ? "#DBEAFE"
+                          : drum.returnStatus?.startsWith("무적") ? "#E5E7EB"
                           : undefined;
                         return (
                           <TouchableOpacity
@@ -1554,7 +1558,7 @@ export default function InventoryScreen() {
                             })}
                           >
                             <Text style={styles.checkBox}>{isSelected ? "☑" : "☐"}</Text>
-                            <Text style={styles.statusProduct}>{drum.product}</Text>
+                            <Text style={styles.statusProduct}>{drum.returnStatus?.startsWith("무적") ? "⚫ " : ""}{drum.product}</Text>
                             <Text style={styles.statusLot}>{drum.lot}</Text>
                             <Text style={[styles.drumMaker, { flex: 1.5 }]}>{drum.maker}</Text>
                             {sortMode !== "sector" && sortMode !== "lot" && (
