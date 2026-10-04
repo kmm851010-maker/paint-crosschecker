@@ -897,7 +897,7 @@ export default function InventoryScreen() {
 
   // ── 섹터 선택 모달 ──
   const SectorModal = () => (
-    <Modal visible={mode === "sectorPick"} animationType="slide" transparent>
+    <Modal visible={mode === "sectorPick" && sectorConfirm === null} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
         <View style={styles.modalCard}>
           {showIngoPrompt ? (
@@ -1151,38 +1151,6 @@ export default function InventoryScreen() {
             <Text style={styles.savingText}>저장 중...</Text>
           </View>
         )}
-
-        {/* 섹터 저장 확인 모달 */}
-        <Modal visible={sectorConfirm !== null} animationType="fade" transparent>
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalCard, { alignItems: "center", paddingVertical: 28, paddingHorizontal: 24 }]}>
-              <Text style={{ fontSize: 15, color: "#374151", marginBottom: 8 }}>
-                총 <Text style={{ fontWeight: "700" }}>{sectorConfirm?.count}개</Text> → <Text style={{ fontWeight: "700" }}>{sectorConfirm?.sector}</Text>
-              </Text>
-              {sectorConfirm?.moveType === "daily" ? (
-                <Text style={{ fontSize: 22, fontWeight: "900", color: "#DC2626", marginBottom: 6 }}>생산 후 재고</Text>
-              ) : (
-                <Text style={{ fontSize: 22, fontWeight: "900", color: "#2563EB", marginBottom: 6 }}>위치이동</Text>
-              )}
-              {sectorConfirm?.returnType ? (
-                <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>
-                  반품유형: {sectorConfirm.returnType.startsWith("무적") ? `무적 (${sectorConfirm.returnType.split(":")[1]})` : sectorConfirm.returnType}
-                </Text>
-              ) : <View style={{ marginBottom: 16 }} />}
-              <Text style={{ fontSize: 16, fontWeight: "600", color: "#111827", marginBottom: 24 }}>맞습니까?</Text>
-              <View style={{ flexDirection: "row", gap: 12 }}>
-                <TouchableOpacity style={{ flex: 1, paddingVertical: 12, backgroundColor: "#6B7280", borderRadius: 8, alignItems: "center" }}
-                  onPress={() => { setSectorConfirm(null); setMode("sectorPick"); }}>
-                  <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>아니오</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={{ flex: 1, paddingVertical: 12, backgroundColor: COLORS.primary, borderRadius: 8, alignItems: "center" }}
-                  onPress={() => { const fn = sectorConfirm?.onConfirm; setSectorConfirm(null); fn?.(); }}>
-                  <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>예</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
 
         {/* 스캔 로그 모달 */}
         <Modal visible={showScanLog} animationType="slide" transparent>
@@ -1853,6 +1821,38 @@ export default function InventoryScreen() {
         </View>
       )}
       <SectorModal />
+
+      {/* 섹터 저장 확인 모달 */}
+      <Modal visible={sectorConfirm !== null} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { alignItems: "center", paddingVertical: 28, paddingHorizontal: 24 }]}>
+            <Text style={{ fontSize: 15, color: "#374151", marginBottom: 8 }}>
+              총 <Text style={{ fontWeight: "700" }}>{sectorConfirm?.count}개</Text> → <Text style={{ fontWeight: "700" }}>{sectorConfirm?.sector}</Text>
+            </Text>
+            {sectorConfirm?.moveType === "daily" ? (
+              <Text style={{ fontSize: 22, fontWeight: "900", color: "#DC2626", marginBottom: 6 }}>생산 후 재고</Text>
+            ) : (
+              <Text style={{ fontSize: 22, fontWeight: "900", color: "#2563EB", marginBottom: 6 }}>위치이동</Text>
+            )}
+            {sectorConfirm?.returnType ? (
+              <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>
+                반품유형: {sectorConfirm.returnType.startsWith("무적") ? `무적 (${sectorConfirm.returnType.split(":")[1]})` : sectorConfirm.returnType}
+              </Text>
+            ) : <View style={{ marginBottom: 16 }} />}
+            <Text style={{ fontSize: 16, fontWeight: "600", color: "#111827", marginBottom: 24 }}>맞습니까?</Text>
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <TouchableOpacity style={{ flex: 1, paddingVertical: 12, backgroundColor: "#6B7280", borderRadius: 8, alignItems: "center" }}
+                onPress={() => setSectorConfirm(null)}>
+                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>아니오</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={{ flex: 1, paddingVertical: 12, backgroundColor: COLORS.primary, borderRadius: 8, alignItems: "center" }}
+                onPress={() => { const fn = sectorConfirm?.onConfirm; setSectorConfirm(null); fn?.(); }}>
+                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>예</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={editingItem !== null} animationType="fade" transparent>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
