@@ -1275,15 +1275,10 @@ export default function InventoryScreen() {
         )
       : allDrums;
 
-    // 반품 필터 적용 (해당 반품 항목 상단 배치)
+    // 반품 필터 적용 (해당 항목만 표시)
     const matchesReturnFilter = (d: any) =>
       returnFilter === "무적" ? d.returnStatus?.startsWith("무적") : d.returnStatus === returnFilter;
-    let processed = [...filtered];
-    if (returnFilter) {
-      const matching = processed.filter(matchesReturnFilter);
-      const rest = processed.filter(d => !matchesReturnFilter(d));
-      processed = [...matching, ...rest];
-    }
+    const processed = returnFilter ? filtered.filter(matchesReturnFilter) : [...filtered];
 
     // 그룹화
     const grouped: Record<string, typeof processed> = {};
