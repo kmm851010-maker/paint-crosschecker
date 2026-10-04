@@ -1370,6 +1370,56 @@ export default function InventoryPage() {
             bySector[s].push(d);
           }
           const ghostSelected = selectedDrums.filter(d => d.returnStatus?.startsWith("무적"));
+          const sortedSectorEntries = Object.entries(bySector).sort(([a], [b]) => {
+            const ai = SECTORS.indexOf(a); const bi = SECTORS.indexOf(b);
+            if (ai === -1 && bi === -1) return a.localeCompare(b);
+            if (ai === -1) return 1; if (bi === -1) return -1;
+            return ai - bi;
+          });
+
+          function renderGhostDrumTable(drums: DrumItem[]) {
+            return (
+              <div className="overflow-x-auto rounded border border-gray-200 max-h-[450px] overflow-y-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="py-2 px-2 text-center w-8">
+                        <input type="checkbox"
+                          checked={drums.length > 0 && drums.every(d => selectedLots.has(d.lot))}
+                          onChange={() => {
+                            const lots = drums.map(d => d.lot);
+                            const allSel = lots.every(l => selectedLots.has(l));
+                            toggleAll(lots, !allSel);
+                          }} />
+                      </th>
+                      <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">구분</th>
+                      <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">LOT</th>
+                      <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">품명</th>
+                      <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">제조사</th>
+                      <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">등록일</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drums.map(d => {
+                      const loc = d.returnStatus?.split(":")?.[1] ?? "";
+                      const sel = selectedLots.has(d.lot);
+                      return (
+                        <tr key={d.lot} onClick={() => toggleLot(d.lot)} className={cn("border-t border-gray-100 hover:bg-purple-50 cursor-pointer transition-colors", sel && "bg-purple-50")}>
+                          <td className="py-1.5 px-2 text-center" onClick={e => e.stopPropagation()}><input type="checkbox" checked={sel} onChange={() => toggleLot(d.lot)} /></td>
+                          <td className="py-1.5 px-3 text-xs font-semibold text-gray-700">{loc}</td>
+                          <td className="py-1.5 px-3 font-mono text-xs">{d.lot}</td>
+                          <td className="py-1.5 px-3">{d.product}</td>
+                          <td className="py-1.5 px-3 text-gray-600 text-xs">{d.maker}</td>
+                          <td className="py-1.5 px-3 text-gray-500 text-xs">{d.registered?.slice(0, 10)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          }
+
           return (
             <div>
               {/* 무적관리 액션바 */}
@@ -1411,48 +1461,52 @@ export default function InventoryPage() {
                   )}
                 </div>
               )}
+
               {ghostDrums.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-12">무적 드럼 없음</p>
               ) : (
-                Object.entries(bySector)
-                  .sort(([a], [b]) => { const ai = SECTORS.indexOf(a); const bi = SECTORS.indexOf(b); return ai === -1 ? 1 : bi === -1 ? -1 : ai - bi; })
-                  .map(([sector, drums]) => (
-                    <div key={sector} className="mb-4">
-                      <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1">
-                        <span>⚫</span>{sector} — {drums.length}드럼
-                      </h3>
-                      <div className="overflow-x-auto rounded-lg border border-gray-200">
-                        <table className="min-w-full text-sm">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="py-2 px-2 text-center w-8"></th>
-                              <th className="py-2 px-3 text-left text-xs text-gray-500">구분</th>
-                              <th className="py-2 px-3 text-left text-xs text-gray-500">LOT</th>
-                              <th className="py-2 px-3 text-left text-xs text-gray-500">품명</th>
-                              <th className="py-2 px-3 text-left text-xs text-gray-500">제조사</th>
-                              <th className="py-2 px-3 text-left text-xs text-gray-500">등록일</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {drums.map(d => {
-                              const loc = d.returnStatus?.split(":")?.[1] ?? "";
-                              const sel = selectedLots.has(d.lot);
-                              return (
-                              <tr key={d.lot} onClick={() => toggleLot(d.lot)} className={cn("border-t border-gray-100 hover:bg-purple-50 cursor-pointer transition-colors", sel && "bg-purple-50")}>
-                                <td className="py-1.5 px-2 text-center" onClick={e => e.stopPropagation()}><input type="checkbox" checked={sel} onChange={() => toggleLot(d.lot)} /></td>
-                                <td className="py-1.5 px-3 text-xs font-semibold text-gray-700">{loc}</td>
-                                <td className="py-1.5 px-3 font-mono text-xs">{d.lot}</td>
-                                <td className="py-1.5 px-3">{d.product}</td>
-                                <td className="py-1.5 px-3 text-gray-600 text-xs">{d.maker}</td>
-                                <td className="py-1.5 px-3 text-gray-500 text-xs">{d.registered?.slice(0, 10)}</td>
-                              </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
+                <div>
+                  {/* 섹터 카드 그리드 */}
+                  {(() => {
+                    const rows: [string, DrumItem[]][][] = [];
+                    for (let i = 0; i < sortedSectorEntries.length; i += 3) rows.push(sortedSectorEntries.slice(i, i + 3));
+                    return rows.map((row, ri) => (
+                      <div key={ri}>
+                        <div className="grid grid-cols-3 gap-3 mb-2">
+                          {row.map(([key, drums]) => {
+                            const selCnt = drums.filter(d => selectedLots.has(d.lot)).length;
+                            const isActive = activeGroup === key;
+                            return (
+                              <button key={key} onClick={() => setActiveGroup(isActive ? null : key)}
+                                className={cn("p-3 rounded-lg border text-left transition-colors text-sm",
+                                  isActive
+                                    ? "bg-blue-50 border-blue-400 text-blue-800"
+                                    : "bg-white border-gray-200 hover:border-purple-300 hover:bg-purple-50 text-gray-700"
+                                )}>
+                                <div className="font-semibold truncate">⚫ {key}</div>
+                                <div className="text-xs text-gray-500 mt-0.5">
+                                  {drums.length}드럼
+                                  {selCnt > 0 && <span className="ml-2 text-purple-600 font-medium">✓{selCnt}</span>}
+                                </div>
+                              </button>
+                            );
+                          })}
+                          {row.length < 3 && Array.from({ length: 3 - row.length }).map((_, i) => <div key={i} />)}
+                        </div>
+                        {row.some(([k]) => k === activeGroup) && activeGroup && bySector[activeGroup] && (
+                          <div className="mb-4 rounded-lg border-l-4 border-blue-500 bg-blue-50/50 p-3">
+                            <div className="flex items-center gap-2 mb-3">
+                              <span className="font-semibold text-blue-800 text-sm">
+                                ⚫ {activeGroup} — {bySector[activeGroup].length}드럼
+                              </span>
+                            </div>
+                            {renderGhostDrumTable(bySector[activeGroup])}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))
+                    ));
+                  })()}
+                </div>
               )}
             </div>
           );
