@@ -31,6 +31,7 @@ import { APPROVED_PRODUCTS } from "../src/constants/approvedProducts";
 
 const ASYNC_KEY_APPROVED = "user_approved_products_v1";
 const ASYNC_KEY_SECTOR_CACHE = "sector_inventory_cache_v1";
+const ASYNC_KEY_KNOWN_DRUMS_CACHE = "known_drums_cache_v1";
 import { registerDrums, getSectorInventory, setDrumReturnStatus, getProductWhitelist, getKnownLots, getKnownLotsMap, type DrumItem } from "../src/services/api";
 
 // ── 제조사 코드 ──
@@ -467,8 +468,28 @@ export default function InventoryScreen() {
         AsyncStorage.setItem(ASYNC_KEY_SECTOR_CACHE, JSON.stringify(data)).catch(() => {});
       }).catch(() => { setDataReady(true); });
     });
-    // 이력 맵은 백그라운드 로딩
-    getKnownLotsMap().then(map => { knownDrumsMapRef.current = map; }).catch(() => {});
+    // 입고 이력 맵: 로컬 캐시 즉시 로드 → 서버 데이터 누적 병합 저장
+    AsyncStorage.getItem(ASYNC_KEY_KNOWN_DRUMS_CACHE).then(cached => {
+      if (cached) {
+        try {
+          const arr: { lot: string; product: string; maker: string }[] = JSON.parse(cached);
+          arr.forEach(r => { if (!knownDrumsMapRef.current.has(r.lot)) knownDrumsMapRef.current.set(r.lot, { product: r.product, maker: r.maker }); });
+        } catch {}
+      }
+      // 서버에서 최신 데이터 받아서 로컬 캐시에 누적 (기존 데이터 유지, 신규만 추가)
+      getKnownLotsMap().then(serverMap => {
+        serverMap.forEach((v, lot) => { if (!knownDrumsMapRef.current.has(lot)) knownDrumsMapRef.current.set(lot, v); });
+        // 누적된 전체 맵을 저장
+        const arr = Array.from(knownDrumsMapRef.current.entries()).map(([lot, v]) => ({ lot, ...v }));
+        AsyncStorage.setItem(ASYNC_KEY_KNOWN_DRUMS_CACHE, JSON.stringify(arr)).catch(() => {});
+      }).catch(() => {});
+    }).catch(() => {
+      getKnownLotsMap().then(serverMap => {
+        knownDrumsMapRef.current = serverMap;
+        const arr = Array.from(serverMap.entries()).map(([lot, v]) => ({ lot, ...v }));
+        AsyncStorage.setItem(ASYNC_KEY_KNOWN_DRUMS_CACHE, JSON.stringify(arr)).catch(() => {});
+      }).catch(() => {});
+    });
   }, []);
 
   // torchModeRef를 torchMode와 동기화
