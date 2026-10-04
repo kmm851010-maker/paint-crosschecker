@@ -249,6 +249,10 @@ export default function InventoryPage() {
   const [batchMoveSector, setBatchMoveSector] = useState("창고");
   const [batchMoveType, setBatchMoveType] = useState<"daily" | "location">("daily");
 
+  // ── 무적관리 state ──
+  const [ghostSortMode, setGhostSortMode] = useState<"섹터별" | "제조사별" | "품목별" | "등록시간순">("섹터별");
+  const [ghostActiveGroup, setGhostActiveGroup] = useState<string | null>(null);
+
   useEffect(() => { setAdmin(isAdmin()); }, []);
   useEffect(() => { fetchSectors(); }, []);
 
@@ -1383,19 +1387,32 @@ export default function InventoryPage() {
         {/* ── 무적관리 ── */}
         {activeTab === "ghost" && (() => {
           const ghostDrums = allDrums.filter(d => d.returnStatus?.startsWith("무적"));
-          const bySector: Record<string, DrumItem[]> = {};
-          for (const d of ghostDrums) {
-            const s = d.sector ?? "(없음)";
-            if (!bySector[s]) bySector[s] = [];
-            bySector[s].push(d);
-          }
           const ghostSelected = selectedDrums.filter(d => d.returnStatus?.startsWith("무적"));
-          const sortedSectorEntries = Object.entries(bySector).sort(([a], [b]) => {
-            const ai = SECTORS.indexOf(a); const bi = SECTORS.indexOf(b);
-            if (ai === -1 && bi === -1) return a.localeCompare(b);
-            if (ai === -1) return 1; if (bi === -1) return -1;
-            return ai - bi;
-          });
+
+          const ghostGrouped = (() => {
+            if (ghostSortMode === "등록시간순") {
+              const sorted = [...ghostDrums].sort((a, b) => ((b.registered || "").localeCompare(a.registered || "")));
+              return { "전체 (등록시간순)": sorted };
+            }
+            const key = ghostSortMode === "섹터별" ? "sector" : ghostSortMode === "제조사별" ? "maker" : "product";
+            const groups: Record<string, DrumItem[]> = {};
+            for (const d of ghostDrums) {
+              const k = (d as unknown as Record<string, unknown>)[key] as string ?? "(없음)";
+              if (!groups[k]) groups[k] = [];
+              groups[k].push(d);
+            }
+            for (const k of Object.keys(groups)) groups[k].sort((a, b) => (a.lot ?? "").localeCompare(b.lot ?? ""));
+            return groups;
+          })();
+
+          const ghostEntries: [string, DrumItem[]][] = ghostSortMode === "섹터별"
+            ? Object.entries(ghostGrouped).sort(([a], [b]) => {
+                const ai = SECTORS.indexOf(a); const bi = SECTORS.indexOf(b);
+                if (ai === -1 && bi === -1) return a.localeCompare(b);
+                if (ai === -1) return 1; if (bi === -1) return -1;
+                return ai - bi;
+              })
+            : Object.entries(ghostGrouped);
 
           function renderGhostDrumTable(drums: DrumItem[]) {
             return (
@@ -1416,6 +1433,7 @@ export default function InventoryPage() {
                       <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">LOT</th>
                       <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">품명</th>
                       <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">제조사</th>
+                      {ghostSortMode !== "섹터별" && <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">섹터</th>}
                       <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">등록일</th>
                     </tr>
                   </thead>
@@ -1430,6 +1448,7 @@ export default function InventoryPage() {
                           <td className="py-1.5 px-3 font-mono text-xs">{d.lot}</td>
                           <td className="py-1.5 px-3">{d.product}</td>
                           <td className="py-1.5 px-3 text-gray-600 text-xs">{d.maker}</td>
+                          {ghostSortMode !== "섹터별" && <td className="py-1.5 px-3 text-gray-600 text-xs">{d.sector}</td>}
                           <td className="py-1.5 px-3 text-gray-500 text-xs">{d.registered?.slice(0, 10)}</td>
                         </tr>
                       );
@@ -1440,9 +1459,23 @@ export default function InventoryPage() {
             );
           }
 
+          const showCardGrid = ghostSortMode === "섹터별" || ghostSortMode === "품목별";
+
           return (
             <div>
-              {/* 무적관리 액션바 */}
+              {/* 정렬 모드 버튼 */}
+              <div className="flex flex-wrap gap-1 mb-3">
+                {(["섹터별", "제조사별", "품목별", "등록시간순"] as const).map(m => (
+                  <button key={m} onClick={() => { setGhostSortMode(m); setGhostActiveGroup(null); }}
+                    className={cn("px-3 py-1 rounded-full text-xs font-medium transition-colors",
+                      ghostSortMode === m ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    )}>
+                    {m}
+                  </button>
+                ))}
+              </div>
+
+              {/* 액션바 */}
               {ghostSelected.length > 0 && (
                 <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
                   {editDrum ? (
@@ -1495,26 +1528,25 @@ export default function InventoryPage() {
 
               {ghostDrums.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-12">무적 드럼 없음</p>
-              ) : (
+              ) : showCardGrid ? (
                 <div>
-                  {/* 섹터 카드 그리드 */}
                   {(() => {
                     const rows: [string, DrumItem[]][][] = [];
-                    for (let i = 0; i < sortedSectorEntries.length; i += 3) rows.push(sortedSectorEntries.slice(i, i + 3));
+                    for (let i = 0; i < ghostEntries.length; i += 3) rows.push(ghostEntries.slice(i, i + 3));
                     return rows.map((row, ri) => (
                       <div key={ri}>
                         <div className="grid grid-cols-3 gap-3 mb-2">
                           {row.map(([key, drums]) => {
                             const selCnt = drums.filter(d => selectedLots.has(d.lot)).length;
-                            const isActive = activeGroup === key;
+                            const isActive = ghostActiveGroup === key;
                             return (
-                              <button key={key} onClick={() => setActiveGroup(isActive ? null : key)}
+                              <button key={key} onClick={() => setGhostActiveGroup(isActive ? null : key)}
                                 className={cn("p-3 rounded-lg border text-left transition-colors text-sm",
                                   isActive
                                     ? "bg-blue-50 border-blue-400 text-blue-800"
                                     : "bg-white border-gray-200 hover:border-purple-300 hover:bg-purple-50 text-gray-700"
                                 )}>
-                                <div className="font-semibold truncate">⚫ {key}</div>
+                                <div className="font-semibold truncate">{ghostSortMode === "섹터별" ? "⚫ " : ""}{key}</div>
                                 <div className="text-xs text-gray-500 mt-0.5">
                                   {drums.length}드럼
                                   {selCnt > 0 && <span className="ml-2 text-purple-600 font-medium">✓{selCnt}</span>}
@@ -1524,20 +1556,35 @@ export default function InventoryPage() {
                           })}
                           {row.length < 3 && Array.from({ length: 3 - row.length }).map((_, i) => <div key={i} />)}
                         </div>
-                        {row.some(([k]) => k === activeGroup) && activeGroup && bySector[activeGroup] && (
+                        {row.some(([k]) => k === ghostActiveGroup) && ghostActiveGroup && ghostGrouped[ghostActiveGroup] && (
                           <div className="mb-4 rounded-lg border-l-4 border-blue-500 bg-blue-50/50 p-3">
-                            <div className="flex items-center gap-2 mb-3">
-                              <span className="font-semibold text-blue-800 text-sm">
-                                ⚫ {activeGroup} — {bySector[activeGroup].length}드럼
-                              </span>
-                            </div>
-                            {renderGhostDrumTable(bySector[activeGroup])}
+                            <span className="font-semibold text-blue-800 text-sm block mb-3">
+                              {ghostSortMode === "섹터별" ? "⚫ " : ""}{ghostActiveGroup} — {ghostGrouped[ghostActiveGroup].length}드럼
+                            </span>
+                            {renderGhostDrumTable(ghostGrouped[ghostActiveGroup])}
                           </div>
                         )}
                       </div>
                     ));
                   })()}
                 </div>
+              ) : ghostSortMode === "제조사별" ? (
+                <div className="space-y-2">
+                  {ghostEntries.map(([key, drums]) => (
+                    <details key={key} className="border border-gray-200 rounded-lg">
+                      <summary className="px-4 py-2.5 cursor-pointer select-none font-medium text-sm hover:bg-gray-50">
+                        {key} — {drums.length}드럼
+                        {drums.filter(d => selectedLots.has(d.lot)).length > 0 &&
+                          <span className="ml-2 text-purple-600 text-xs">✓{drums.filter(d => selectedLots.has(d.lot)).length}</span>}
+                      </summary>
+                      <div className="p-3 border-t border-gray-100">
+                        {renderGhostDrumTable(drums)}
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              ) : (
+                renderGhostDrumTable(ghostEntries.flatMap(([, d]) => d))
               )}
             </div>
           );
