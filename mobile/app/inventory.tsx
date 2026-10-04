@@ -30,6 +30,7 @@ import { VolumeManager } from "react-native-volume-manager";
 import { APPROVED_PRODUCTS } from "../src/constants/approvedProducts";
 
 const ASYNC_KEY_APPROVED = "user_approved_products_v1";
+const ASYNC_KEY_SECTOR_CACHE = "sector_inventory_cache_v1";
 import { registerDrums, getSectorInventory, setDrumReturnStatus, getProductWhitelist, getKnownLots, getKnownLotsMap, type DrumItem } from "../src/services/api";
 
 // ── 제조사 코드 ──
@@ -444,12 +445,29 @@ export default function InventoryScreen() {
     }).catch(() => {
       setKnownLotsError(true);
     });
-    // 현재 재고 로드 완료 시 바로 앱 진입 (필수)
-    getSectorInventory().then(data => {
-      setSectorData(data);
-      setDataReady(true);
-    }).catch(() => { setDataReady(true); });
-    // 이력 맵은 백그라운드 로딩 (OCR 중 lot 조회용, 재고 로드 후 준비됨)
+    // 캐시 우선 로드 → 즉시 진입, 서버 데이터는 백그라운드 갱신
+    AsyncStorage.getItem(ASYNC_KEY_SECTOR_CACHE).then(cached => {
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          setSectorData(parsed);
+          setDataReady(true); // 캐시 있으면 즉시 진입
+        } catch {}
+      }
+      // 서버에서 최신 데이터 갱신 (캐시 없으면 로딩 화면 유지)
+      getSectorInventory().then(data => {
+        setSectorData(data);
+        setDataReady(true); // 캐시 없던 경우도 여기서 진입
+        AsyncStorage.setItem(ASYNC_KEY_SECTOR_CACHE, JSON.stringify(data)).catch(() => {});
+      }).catch(() => { setDataReady(true); });
+    }).catch(() => {
+      getSectorInventory().then(data => {
+        setSectorData(data);
+        setDataReady(true);
+        AsyncStorage.setItem(ASYNC_KEY_SECTOR_CACHE, JSON.stringify(data)).catch(() => {});
+      }).catch(() => { setDataReady(true); });
+    });
+    // 이력 맵은 백그라운드 로딩
     getKnownLotsMap().then(map => { knownDrumsMapRef.current = map; }).catch(() => {});
   }, []);
 
