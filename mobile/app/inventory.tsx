@@ -444,10 +444,13 @@ export default function InventoryScreen() {
     }).catch(() => {
       setKnownLotsError(true);
     });
-    Promise.all([
-      getSectorInventory().then(data => { setSectorData(data); }).catch(() => {}),
-      getKnownLotsMap().then(map => { knownDrumsMapRef.current = map; }).catch(() => {}),
-    ]).then(() => setDataReady(true));
+    // 현재 재고 로드 완료 시 바로 앱 진입 (필수)
+    getSectorInventory().then(data => {
+      setSectorData(data);
+      setDataReady(true);
+    }).catch(() => { setDataReady(true); });
+    // 이력 맵은 백그라운드 로딩 (OCR 중 lot 조회용, 재고 로드 후 준비됨)
+    getKnownLotsMap().then(map => { knownDrumsMapRef.current = map; }).catch(() => {});
   }, []);
 
   // torchModeRef를 torchMode와 동기화
@@ -1298,7 +1301,8 @@ export default function InventoryScreen() {
     // 반품 필터 전체선택용
     const returnFilterDrums = returnFilter ? allDrums.filter(matchesReturnFilter) : [];
     const selectedDrums = allDrums.filter(d => selectedLots.has(d.lot));
-    const allInReturn = selectedDrums.length > 0 && selectedDrums.every(d => !!d.returnStatus);
+    const allGhost = selectedDrums.length > 0 && selectedDrums.every(d => d.returnStatus?.startsWith("무적"));
+    const allInReturn = selectedDrums.length > 0 && selectedDrums.every(d => d.returnStatus && !d.returnStatus.startsWith("무적"));
     const noneInReturn = selectedDrums.every(d => !d.returnStatus);
 
     return (
@@ -1582,6 +1586,40 @@ export default function InventoryScreen() {
           {statusTab === "sector" && selectedLots.size > 0 && (
             <View style={[styles.checkoutBar, { paddingBottom: 12 + insets.bottom, flexWrap: "wrap", gap: 6 }]}>
               <Text style={[styles.checkoutBarText, { width: "100%", marginBottom: 2 }]}>{selectedLots.size}드럼 선택됨</Text>
+              {/* 무적 항목만 선택됐을 때: 라인입고 / 무적해제 */}
+              {allGhost && (
+                <>
+                  <TouchableOpacity style={[styles.checkoutBarBtn, { flex: 1 }]} disabled={loading}
+                    onPress={() => Alert.alert("라인입고 확인", `선택하신 ${selectedDrums.length}드럼을 라인입고 처리합니다.\n목록에서 삭제됩니다. 계속하시겠습니까?`, [
+                      { text: "취소", style: "cancel" },
+                      { text: "확인", style: "destructive", onPress: async () => {
+                        setLoading(true);
+                        try {
+                          await registerDrums(selectedDrums, CHECKOUT);
+                          setSelectedLots(new Set());
+                          setSectorData(await getSectorInventory());
+                          Alert.alert("완료", `${selectedDrums.length}드럼 라인입고`);
+                        } catch (e: any) { Alert.alert("실패", (e as any).message); }
+                        finally { setLoading(false); }
+                      }},
+                    ])}>
+                    <Text style={styles.checkoutBarBtnText}>라인입고</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.checkoutBarBtn, { backgroundColor: "#6B7280", flex: 1 }]} disabled={loading}
+                    onPress={async () => {
+                      setLoading(true);
+                      try {
+                        await setDrumReturnStatus(selectedDrums, "");
+                        setSelectedLots(new Set());
+                        setSectorData(await getSectorInventory());
+                        Alert.alert("완료", `${selectedDrums.length}드럼 무적 해제`);
+                      } catch (e: any) { Alert.alert("실패", (e as any).message); }
+                      finally { setLoading(false); }
+                    }}>
+                    <Text style={styles.checkoutBarBtnText}>무적 해제</Text>
+                  </TouchableOpacity>
+                </>
+              )}
               {/* 반품 항목만 선택됐을 때: 반품완료 / 반품 해제 / 라인입고 */}
               {allInReturn && (
                 <>
