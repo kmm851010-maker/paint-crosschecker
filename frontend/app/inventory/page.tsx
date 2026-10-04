@@ -329,7 +329,7 @@ export default function InventoryPage() {
   function clearSelection() { setSelectedLots(new Set()); setConfirmType(null); setEditDrum(null); }
 
   const selectedDrums = useMemo(() => allDrums.filter(d => selectedLots.has(d.lot)), [allDrums, selectedLots]);
-  const allInReturn = selectedDrums.length > 0 && selectedDrums.every(d => d.returnStatus);
+  const allInReturn = selectedDrums.length > 0 && selectedDrums.every(d => d.returnStatus && !d.returnStatus.startsWith("무적"));
 
   // ── Action handlers ────────────────────────────────────────────────────────
   async function doAction(type: "checkout" | "checkout_r" | "return_done") {
