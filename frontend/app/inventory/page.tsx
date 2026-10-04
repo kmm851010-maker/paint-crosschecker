@@ -1362,7 +1362,6 @@ export default function InventoryPage() {
           }
           return (
             <div>
-              <p className="text-sm text-gray-500 mb-4">전산에 없는 무적 드럼 목록 — 총 <strong>{ghostDrums.length}</strong>드럼</p>
               {ghostDrums.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-12">무적 드럼 없음</p>
               ) : (
