@@ -1825,7 +1825,7 @@ export default function InventoryScreen() {
       {/* 섹터 저장 확인 모달 */}
       <Modal visible={sectorConfirm !== null} animationType="fade" transparent>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { alignItems: "center", paddingVertical: 28, paddingHorizontal: 24 }]}>
+          <View style={[styles.modalCard, { alignItems: "center", paddingTop: 28, paddingBottom: 52, paddingHorizontal: 24 }]}>
             <Text style={{ fontSize: 15, color: "#374151", marginBottom: 8 }}>
               총 <Text style={{ fontWeight: "700" }}>{sectorConfirm?.count}개</Text> → <Text style={{ fontWeight: "700" }}>{sectorConfirm?.sector}</Text>
             </Text>
