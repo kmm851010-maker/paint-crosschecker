@@ -443,6 +443,13 @@ def update_drum_fields(old_lot: str, new_lot: str, new_product: str, new_maker: 
         "lot": new_lot, "product": new_product,
         "maker": new_maker, "sector": new_sector, "registered_at": now, "updated_at": now, "remark": new_remark,
     }).eq("lot", old_lot).execute()
+
+    # 기존 이력 레코드도 갱신 (일일재고가 history를 직접 읽으므로 품명/LOT 수정 반영)
+    hist_update: dict = {"product": new_product, "maker": new_maker}
+    if new_lot != old_lot:
+        hist_update["lot"] = new_lot
+    _sb().table("inventory_history").update(hist_update).eq("lot", old_lot).execute()
+
     _sb().table("inventory_history").insert({
         "lot": new_lot, "product": new_product, "maker": new_maker,
         "prev_sector": old_sector, "new_sector": new_sector, "recorded_at": now,
