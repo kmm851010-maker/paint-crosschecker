@@ -469,25 +469,37 @@ export default function InventoryScreen() {
       }).catch(() => { setDataReady(true); });
     });
     // 입고 이력 맵: 로컬 캐시 즉시 로드 → 서버 데이터 누적 병합 저장
+    // LOT 연도(index 1~2)로 2년 초과 항목 자동 삭제 (예: 2026 기준 → 2023 이전 삭제)
+    const _cutoffYY = (new Date().getFullYear() % 100) - 2;
+    const isWithin2Years = (lot: string) => {
+      const yy = parseInt(lot.slice(1, 3), 10);
+      return !isNaN(yy) && yy >= _cutoffYY;
+    };
+    const saveKnownDrumsCache = () => {
+      const arr = Array.from(knownDrumsMapRef.current.entries())
+        .filter(([lot]) => isWithin2Years(lot))
+        .map(([lot, v]) => ({ lot, ...v }));
+      AsyncStorage.setItem(ASYNC_KEY_KNOWN_DRUMS_CACHE, JSON.stringify(arr)).catch(() => {});
+    };
     AsyncStorage.getItem(ASYNC_KEY_KNOWN_DRUMS_CACHE).then(cached => {
       if (cached) {
         try {
           const arr: { lot: string; product: string; maker: string }[] = JSON.parse(cached);
-          arr.forEach(r => { if (!knownDrumsMapRef.current.has(r.lot)) knownDrumsMapRef.current.set(r.lot, { product: r.product, maker: r.maker }); });
+          arr.forEach(r => {
+            if (isWithin2Years(r.lot) && !knownDrumsMapRef.current.has(r.lot))
+              knownDrumsMapRef.current.set(r.lot, { product: r.product, maker: r.maker });
+          });
         } catch {}
       }
       // 서버에서 최신 데이터 받아서 로컬 캐시에 누적 (기존 데이터 유지, 신규만 추가)
       getKnownLotsMap().then(serverMap => {
         serverMap.forEach((v, lot) => { if (!knownDrumsMapRef.current.has(lot)) knownDrumsMapRef.current.set(lot, v); });
-        // 누적된 전체 맵을 저장
-        const arr = Array.from(knownDrumsMapRef.current.entries()).map(([lot, v]) => ({ lot, ...v }));
-        AsyncStorage.setItem(ASYNC_KEY_KNOWN_DRUMS_CACHE, JSON.stringify(arr)).catch(() => {});
+        saveKnownDrumsCache();
       }).catch(() => {});
     }).catch(() => {
       getKnownLotsMap().then(serverMap => {
         knownDrumsMapRef.current = serverMap;
-        const arr = Array.from(serverMap.entries()).map(([lot, v]) => ({ lot, ...v }));
-        AsyncStorage.setItem(ASYNC_KEY_KNOWN_DRUMS_CACHE, JSON.stringify(arr)).catch(() => {});
+        saveKnownDrumsCache();
       }).catch(() => {});
     });
   }, []);
