@@ -374,7 +374,7 @@ export default function InventoryScreen() {
   const [scanManual, setScanManual] = useState(false);
   const [ingoScanDisabled, setIngoScanDisabled] = useState(false);
   const [showIngoPrompt, setShowIngoPrompt] = useState(false);
-  const [returnType, setReturnType] = useState<"불량"|"기술"|"무상"|"무적"|"">(""); // 섹터 선택 시 반품 종류
+  const [returnType, setReturnType] = useState<"불량"|"기술"|"무상"|"무적:인천"|"무적:당진"|"">(""); // 섹터 선택 시 반품 종류
   const [moveType, setMoveType] = useState<"daily"|"location">("daily"); // 생산 후 재고 / 위치이동
   const [showBatchMoveModal, setShowBatchMoveModal] = useState(false);
   const [expandedSectors, setExpandedSectors] = useState<Set<string>>(new Set());
@@ -664,8 +664,9 @@ export default function InventoryScreen() {
         if (sector === CHECKOUT) {
           _alert("저장 완료", `${count}드럼 라인입고 처리 완료`);
         } else if (savedReturnType) {
+          const rtLabel = savedReturnType.startsWith("무적") ? `무적 (${savedReturnType.split(":")[1]})` : savedReturnType;
           _alert("저장 완료", `${count}드럼 → ${sector} 등록
-반품유형: ${savedReturnType}`);
+반품유형: ${rtLabel}`);
         } else {
           _alert("저장 완료", `${count}드럼 → ${sector} 등록 완료
 계속 스캔할 수 있습니다.`);
@@ -679,8 +680,9 @@ export default function InventoryScreen() {
 
     // 확인 팝업
     const moveLabel = sector === CHECKOUT ? "라인입고" : moveType === "location" ? "위치이동" : "재고이동";
+    const rtDisplay = returnType.startsWith("무적") ? `무적 (${returnType.split(":")[1]})` : returnType;
     const returnLabel = returnType && sector !== CHECKOUT ? `
-반품유형: ${returnType}` : "";
+반품유형: ${rtDisplay}` : "";
     Alert.alert(
       "저장 확인",
       `총 ${batch.length}개 → ${sector}
@@ -913,10 +915,10 @@ export default function InventoryScreen() {
                   <Text style={{ color: "#fff", fontSize: 13, fontWeight: "700" }}>{CHECKOUT}</Text>
                 </TouchableOpacity>
               </View>
-              {/* 반품 종류 선택 (1행 라디오) */}
-              <View style={{ flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 12 }}>
-                {(["불량", "기술", "무상", "무적"] as const).map(t => {
-                  const color = t === "불량" ? "#EF4444" : t === "기술" ? "#F59E0B" : t === "무상" ? "#3B82F6" : "#111827";
+              {/* 반품 종류 선택 — 불량/기술/무상 */}
+              <View style={{ flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 6 }}>
+                {(["불량", "기술", "무상"] as const).map(t => {
+                  const color = t === "불량" ? "#EF4444" : t === "기술" ? "#F59E0B" : "#3B82F6";
                   const selected = returnType === t;
                   return (
                     <TouchableOpacity
@@ -935,6 +937,32 @@ export default function InventoryScreen() {
                         backgroundColor: selected ? color : "transparent",
                       }} />
                       <Text style={{ color: selected ? color : "#9CA3AF", fontSize: 13, fontWeight: "600" }}>{t}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {/* ⚫ 무적 — 별도 행 */}
+              <View style={{ flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 12 }}>
+                {(["무적:인천", "무적:당진"] as const).map(t => {
+                  const selected = returnType === t;
+                  const label = t === "무적:인천" ? "⚫ 무적 (인천)" : "⚫ 무적 (당진)";
+                  return (
+                    <TouchableOpacity
+                      key={t}
+                      onPress={() => setReturnType(selected ? "" : t)}
+                      style={{
+                        flexDirection: "row", alignItems: "center", gap: 4,
+                        paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+                        borderWidth: 1.5,
+                        borderColor: selected ? "#374151" : "#4B5563",
+                        backgroundColor: selected ? "#11182733" : "transparent",
+                      }}>
+                      <View style={{
+                        width: 14, height: 14, borderRadius: 7, borderWidth: 1.5,
+                        borderColor: selected ? "#111827" : "#6B7280",
+                        backgroundColor: selected ? "#111827" : "transparent",
+                      }} />
+                      <Text style={{ color: selected ? "#F3F4F6" : "#9CA3AF", fontSize: 13, fontWeight: "600" }}>{label}</Text>
                     </TouchableOpacity>
                   );
                 })}
