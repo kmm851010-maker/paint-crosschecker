@@ -213,7 +213,7 @@ export default function InventoryPage() {
   const [confirmType, setConfirmType] = useState<ConfirmType>(null);
   const [ghostPickOpen, setGhostPickOpen] = useState(false);
   const [editDrum, setEditDrum] = useState<DrumItem | null>(null);
-  const [editFields, setEditFields] = useState({ lot: "", product: "", maker: "", sector: "", remark: "" });
+  const [editFields, setEditFields] = useState({ lot: "", product: "", maker: "", sector: "", remark: "", ghostLoc: "" });
   // 등록시간순 date range
   const [dtFrom, setDtFrom] = useState(kstYesterday());
   const [dtFromTime, setDtFromTime] = useState("00:00");
@@ -433,6 +433,13 @@ export default function InventoryPage() {
         new_sector: editFields.sector,
         new_remark: editFields.remark.trim(),
       });
+      // 무적 드럼이고 구분(인천/당진)이 변경된 경우 returnStatus도 업데이트
+      if (editDrum.returnStatus?.startsWith("무적") && editFields.ghostLoc) {
+        const newStatus = `무적:${editFields.ghostLoc}`;
+        if (newStatus !== editDrum.returnStatus) {
+          await setReturnStatus([{ ...editDrum, lot: editFields.lot.trim() || editDrum.lot }], newStatus);
+        }
+      }
       toast.success("수정 완료!");
       setEditDrum(null);
       clearSelection();
@@ -730,6 +737,19 @@ export default function InventoryPage() {
               </select>
             </div>
           </div>
+          {editDrum.returnStatus?.startsWith("무적") && (
+            <div className="mb-3">
+              <label className="text-xs text-gray-600 mb-1 block">⚫ 무적 구분</label>
+              <div className="flex gap-4">
+                {["인천", "당진"].map(loc => (
+                  <label key={loc} className="flex items-center gap-1.5 cursor-pointer">
+                    <input type="radio" checked={editFields.ghostLoc === loc} onChange={() => setEditFields(f => ({ ...f, ghostLoc: loc }))} />
+                    <span className="text-sm font-medium">{loc}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="mb-3">
             <label className="text-xs text-gray-600 mb-1 block">비고</label>
             <input className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" value={editFields.remark} onChange={e => setEditFields(f => ({ ...f, remark: e.target.value }))} />
@@ -815,7 +835,7 @@ export default function InventoryPage() {
               <Button variant="secondary" onClick={() => {
                 const d = selectedDrums[0];
                 setEditDrum(d);
-                setEditFields({ lot: d.lot, product: d.product, maker: d.maker, sector: d.sector ?? SECTORS[0], remark: d.remark === "신규" ? "" : (d.remark ?? "") });
+                setEditFields({ lot: d.lot, product: d.product, maker: d.maker, sector: d.sector ?? SECTORS[0], remark: d.remark === "신규" ? "" : (d.remark ?? ""), ghostLoc: d.returnStatus?.split(":")?.[1] ?? "" });
               }}>✏️ 정보 수정</Button>
             )}
             {admin && <Button variant="secondary" onClick={() => setDeleteConfirm(true)} loading={deleteLoading} style={{ color: "#dc2626", borderColor: "#dc2626" }}>🗑️ 삭제 ({selectedLots.size})</Button>}
@@ -839,7 +859,7 @@ export default function InventoryPage() {
               <Button variant="secondary" onClick={() => {
                 const d = selectedDrums[0];
                 setEditDrum(d);
-                setEditFields({ lot: d.lot, product: d.product, maker: d.maker, sector: d.sector ?? SECTORS[0], remark: d.remark === "신규" ? "" : (d.remark ?? "") });
+                setEditFields({ lot: d.lot, product: d.product, maker: d.maker, sector: d.sector ?? SECTORS[0], remark: d.remark === "신규" ? "" : (d.remark ?? ""), ghostLoc: d.returnStatus?.split(":")?.[1] ?? "" });
               }}>✏️ 정보 수정</Button>
             )}
             {admin && <Button variant="secondary" onClick={() => setDeleteConfirm(true)} loading={deleteLoading} style={{ color: "#dc2626", borderColor: "#dc2626" }}>🗑️ 삭제 ({selectedLots.size})</Button>}
@@ -1434,6 +1454,17 @@ export default function InventoryPage() {
                         <div><label className="text-xs text-gray-500 mb-1 block">제조사</label><select value={editFields.maker} onChange={e => setEditFields(p => ({ ...p, maker: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm">{MAKER_LIST.map(m => <option key={m}>{m}</option>)}</select></div>
                         <div><label className="text-xs text-gray-500 mb-1 block">섹터</label><select value={editFields.sector} onChange={e => setEditFields(p => ({ ...p, sector: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm">{SECTORS.map(s => <option key={s}>{s}</option>)}{editFields.sector === "창고주위" && <option key="창고주위">창고주위</option>}</select></div>
                       </div>
+                      <div className="mb-3">
+                        <label className="text-xs text-gray-500 mb-1 block">⚫ 무적 구분</label>
+                        <div className="flex gap-4">
+                          {["인천", "당진"].map(loc => (
+                            <label key={loc} className="flex items-center gap-1.5 cursor-pointer">
+                              <input type="radio" checked={editFields.ghostLoc === loc} onChange={() => setEditFields(f => ({ ...f, ghostLoc: loc }))} />
+                              <span className="text-sm font-medium">{loc}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
                       <div className="flex gap-2">
                         <Button onClick={doEditSave} loading={actionLoading}>💾 저장</Button>
                         <Button variant="secondary" onClick={() => setEditDrum(null)}>취소</Button>
@@ -1447,7 +1478,7 @@ export default function InventoryPage() {
                         <Button variant="secondary" onClick={() => {
                           const d = ghostSelected[0];
                           setEditDrum(d);
-                          setEditFields({ lot: d.lot, product: d.product, maker: d.maker, sector: d.sector ?? SECTORS[0], remark: d.remark === "신규" ? "" : (d.remark ?? "") });
+                          setEditFields({ lot: d.lot, product: d.product, maker: d.maker, sector: d.sector ?? SECTORS[0], remark: d.remark === "신규" ? "" : (d.remark ?? ""), ghostLoc: d.returnStatus?.split(":")?.[1] ?? "" });
                         }}>✏️ 정보 수정</Button>
                       )}
                       <Button variant="secondary" onClick={clearSelection}>선택 해제</Button>
