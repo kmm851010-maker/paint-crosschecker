@@ -363,13 +363,14 @@ export default function InventoryScreen() {
   const [mode, setMode] = useState<Mode>("idle");
   const [batch, setBatch] = useState<DrumItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [dataReady, setDataReady] = useState(false);
   const [sectorData, setSectorData] = useState<Record<string, any[]>>({});
   const [editingItem, setEditingItem] = useState<{ index: number; lot: string; product: string } | null>(null);
   const MAX_BULK_LOTS = 30;
   const [manualBulk, setManualBulk] = useState<{ product: string; lots: string[] } | null>(null);
   const [searchText, setSearchText] = useState("");
   const [sortMode, setSortMode] = useState<"maker"|"sector"|"lot"|"product"|"return">("sector");
-  const [returnFilter, setReturnFilter] = useState<"무상"|"기술"|"불량"|"">(""); 
+  const [returnFilter, setReturnFilter] = useState<"무상"|"기술"|"불량"|"무적"|"">("");
   const [selectedLots, setSelectedLots] = useState<Set<string>>(new Set());
   const [scanManual, setScanManual] = useState(false);
   const [ingoScanDisabled, setIngoScanDisabled] = useState(false);
@@ -443,12 +444,10 @@ export default function InventoryScreen() {
     }).catch(() => {
       setKnownLotsError(true);
     });
-    getSectorInventory().then(data => {
-      setSectorData(data);
-    }).catch(() => {});
-    getKnownLotsMap().then(map => {
-      knownDrumsMapRef.current = map;
-    }).catch(() => {});
+    Promise.all([
+      getSectorInventory().then(data => { setSectorData(data); }).catch(() => {}),
+      getKnownLotsMap().then(map => { knownDrumsMapRef.current = map; }).catch(() => {}),
+    ]).then(() => setDataReady(true));
   }, []);
 
   // torchModeRef를 torchMode와 동기화
@@ -1256,10 +1255,12 @@ export default function InventoryScreen() {
       : allDrums;
 
     // 반품 필터 적용 (해당 반품 항목 상단 배치)
+    const matchesReturnFilter = (d: any) =>
+      returnFilter === "무적" ? d.returnStatus?.startsWith("무적") : d.returnStatus === returnFilter;
     let processed = [...filtered];
     if (returnFilter) {
-      const matching = processed.filter(d => d.returnStatus === returnFilter);
-      const rest = processed.filter(d => d.returnStatus !== returnFilter);
+      const matching = processed.filter(matchesReturnFilter);
+      const rest = processed.filter(d => !matchesReturnFilter(d));
       processed = [...matching, ...rest];
     }
 
@@ -1295,7 +1296,7 @@ export default function InventoryScreen() {
         : a.localeCompare(b)
     );
     // 반품 필터 전체선택용
-    const returnFilterDrums = returnFilter ? allDrums.filter((d: any) => d.returnStatus === returnFilter) : [];
+    const returnFilterDrums = returnFilter ? allDrums.filter(matchesReturnFilter) : [];
     const selectedDrums = allDrums.filter(d => selectedLots.has(d.lot));
     const allInReturn = selectedDrums.length > 0 && selectedDrums.every(d => !!d.returnStatus);
     const noneInReturn = selectedDrums.every(d => !d.returnStatus);
@@ -1444,6 +1445,7 @@ export default function InventoryScreen() {
               { key: "무상", label: "🔵무상", color: "#2563EB" },
               { key: "기술", label: "🟡기술", color: "#D97706" },
               { key: "불량", label: "🔴불량", color: "#DC2626" },
+              { key: "무적", label: "⚫무적", color: "#374151" },
             ] as const).map((f) => (
               <TouchableOpacity
                 key={f.key}
@@ -1457,7 +1459,7 @@ export default function InventoryScreen() {
           {/* 반품 필터 활성 시: 전체선택 버튼 */}
           {returnFilter !== "" && returnFilterDrums.length > 0 && (
             <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 4, gap: 8, backgroundColor: "#F9FAFB", borderBottomWidth: 1, borderBottomColor: "#E5E7EB" }}>
-              <Text style={{ fontSize: 12, color: "#555" }}>{returnFilter}반품 {returnFilterDrums.length}건</Text>
+              <Text style={{ fontSize: 12, color: "#555" }}>{returnFilter === "무적" ? "⚫무적" : `${returnFilter}반품`} {returnFilterDrums.length}건</Text>
               {sortMode !== "maker" ? (
                 <TouchableOpacity
                   style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: COLORS.primary, borderRadius: 6 }}
@@ -1502,7 +1504,7 @@ export default function InventoryScreen() {
                       {/* 그룹별 전체선택 (토글) */}
                       {(() => {
                         const grpDrums = returnFilter !== ""
-                          ? grouped[key].filter((d: any) => d.returnStatus === returnFilter)
+                          ? grouped[key].filter(matchesReturnFilter)
                           : grouped[key];
                         if (grpDrums.length === 0) return null;
                         const allGrpSelected = grpDrums.every((d: any) => selectedLots.has(d.lot));
@@ -1735,6 +1737,17 @@ export default function InventoryScreen() {
           </Modal>
         </View>
       </>
+    );
+  }
+
+  // ── 데이터 로딩 화면 ──
+  if (!dataReady) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#111827" }}>
+        <Stack.Screen options={{ title: "KG OPS — 재고 관리" }} />
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={{ color: "#9CA3AF", marginTop: 16, fontSize: 15 }}>데이터 로드 중...</Text>
+      </View>
     );
   }
 
