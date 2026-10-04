@@ -370,7 +370,7 @@ export default function InventoryScreen() {
   const MAX_BULK_LOTS = 30;
   const [manualBulk, setManualBulk] = useState<{ product: string; lots: string[] } | null>(null);
   const [searchText, setSearchText] = useState("");
-  const [sortMode, setSortMode] = useState<"maker"|"sector"|"lot"|"product"|"return">("sector");
+  const [sortMode, setSortMode] = useState<"maker"|"sector"|"lot"|"product">("sector");
   const [returnFilter, setReturnFilter] = useState<"무상"|"기술"|"불량"|"무적"|"">("");
   const [selectedLots, setSelectedLots] = useState<Set<string>>(new Set());
   const [scanManual, setScanManual] = useState(false);
@@ -1289,19 +1289,10 @@ export default function InventoryScreen() {
     const grouped: Record<string, typeof processed> = {};
     for (const drum of processed) {
       let key: string;
-      if (sortMode === "maker")   key = drum.maker || "미상";
+      if (sortMode === "maker")        key = drum.maker || "미상";
       else if (sortMode === "sector")  key = drum.sector || "미분류";
       else if (sortMode === "lot")     key = "전체 (LOT순)";
-      else if (sortMode === "product") key = drum.product || "미상";
-      else /* return */ {
-        key = drum.returnStatus === "불량" ? "🔴 불량반품"
-            : drum.returnStatus === "기술" ? "🟡 기술반품"
-            : drum.returnStatus === "무상" ? "🔵 무상반품"
-            : drum.returnStatus === "무적:인천" ? "⚫ 무적 (인천)"
-            : drum.returnStatus === "무적:당진" ? "⚫ 무적 (당진)"
-            : drum.returnStatus?.startsWith("무적") ? "⚫ 무적"
-            : "⬜ 정상";
-      }
+      else                             key = drum.product || "미상";
       if (!grouped[key]) grouped[key] = [];
       grouped[key].push(drum);
     }
@@ -1310,12 +1301,7 @@ export default function InventoryScreen() {
       for (const k of Object.keys(grouped)) grouped[k].sort((a: any, b: any) => a.lot.localeCompare(b.lot));
     }
     // 그룹 키 정렬
-    const RETURN_ORDER = ["🔴 불량반품", "🟡 기술반품", "🔵 무상반품", "⚫ 무적 (인천)", "⚫ 무적 (당진)", "⚫ 무적", "⬜ 정상"];
-    const groupKeys = Object.keys(grouped).sort((a, b) =>
-      sortMode === "return"
-        ? RETURN_ORDER.indexOf(a) - RETURN_ORDER.indexOf(b)
-        : a.localeCompare(b)
-    );
+    const groupKeys = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
     // 반품 필터 전체선택용
     const returnFilterDrums = returnFilter ? allDrums.filter(matchesReturnFilter) : [];
     const selectedDrums = allDrums.filter(d => selectedLots.has(d.lot));
@@ -1452,7 +1438,6 @@ export default function InventoryScreen() {
               { key: "sector", label: "섹터" },
               { key: "lot", label: "로트" },
               { key: "product", label: "품명" },
-              { key: "return", label: "반품" },
             ] as const).map((m) => (
               <TouchableOpacity
                 key={m.key}
