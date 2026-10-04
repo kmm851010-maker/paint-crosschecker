@@ -707,9 +707,7 @@ export default function InventoryScreen() {
         const drumsToSend = sector === "입고존"
           ? batch.map(d => ({ ...d, scanDisabled: scanDis ?? false }))
           : batch;
-        // 반품/무적 등록 시 move_type 강제 "location" (일일재고 미포함)
-        const effectiveMoveType = sector === CHECKOUT ? "daily" : savedReturnType ? "location" : savedMoveType;
-        const result = await registerDrums(drumsToSend, sector, effectiveMoveType);
+        const result = await registerDrums(drumsToSend, sector, sector === CHECKOUT ? "daily" : savedMoveType);
         const count = batch.length;
         if (savedReturnType && sector !== CHECKOUT) {
           await setDrumReturnStatus(drumsToSend, savedReturnType);
