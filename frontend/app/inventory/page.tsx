@@ -35,7 +35,7 @@ const LOT_PAT = /^[A-Z][A-Z0-9]{7,11}$/;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function retEmoji(status: string) {
-  return status === "불량" ? "🔴" : status === "기술" ? "🟡" : status === "무상" ? "🔵" : status === "무적" ? "⚫" : "";
+  return status === "불량" ? "🔴" : status === "기술" ? "🟡" : status === "무상" ? "🔵" : status?.startsWith("무적") ? "⚫" : "";
 }
 function kstToday() { return new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10); }
 function kstYesterday() { return new Date(Date.now() + 9 * 3600000 - 86400000).toISOString().slice(0, 10); }
@@ -211,6 +211,7 @@ export default function InventoryPage() {
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [selectedLots, setSelectedLots] = useState<Set<string>>(new Set());
   const [confirmType, setConfirmType] = useState<ConfirmType>(null);
+  const [ghostPickOpen, setGhostPickOpen] = useState(false);
   const [editDrum, setEditDrum] = useState<DrumItem | null>(null);
   const [editFields, setEditFields] = useState({ lot: "", product: "", maker: "", sector: "", remark: "" });
   // 등록시간순 date range
@@ -825,7 +826,15 @@ export default function InventoryPage() {
             <Button variant="secondary" onClick={() => doReturn("불량")} loading={actionLoading}>🔴 불량반품 ({selectedLots.size})</Button>
             <Button variant="secondary" onClick={() => doReturn("기술")} loading={actionLoading}>🟡 기술반품 ({selectedLots.size})</Button>
             <Button variant="secondary" onClick={() => doReturn("무상")} loading={actionLoading}>🔵 무상반품 ({selectedLots.size})</Button>
-            <Button variant="secondary" onClick={() => doReturn("무적")} loading={actionLoading} style={{ color: "#111", borderColor: "#555" }}>⚫ 무적 ({selectedLots.size})</Button>
+            <Button variant="secondary" onClick={() => setGhostPickOpen(true)} loading={actionLoading} style={{ color: "#111", borderColor: "#555" }}>⚫ 무적 ({selectedLots.size})</Button>
+            {ghostPickOpen && (
+              <div className="flex items-center gap-2 ml-1">
+                <span className="text-xs text-gray-500">구분 선택:</span>
+                <button onClick={() => { setGhostPickOpen(false); doReturn("무적:인천"); }} className="px-3 py-1 text-xs rounded border border-gray-400 bg-white hover:bg-gray-100 font-medium">인천</button>
+                <button onClick={() => { setGhostPickOpen(false); doReturn("무적:당진"); }} className="px-3 py-1 text-xs rounded border border-gray-400 bg-white hover:bg-gray-100 font-medium">당진</button>
+                <button onClick={() => setGhostPickOpen(false)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+              </div>
+            )}
             {selectedLots.size === 1 && (
               <Button variant="secondary" onClick={() => {
                 const d = selectedDrums[0];
@@ -1353,7 +1362,7 @@ export default function InventoryPage() {
 
         {/* ── 무적관리 ── */}
         {activeTab === "ghost" && (() => {
-          const ghostDrums = allDrums.filter(d => d.returnStatus === "무적");
+          const ghostDrums = allDrums.filter(d => d.returnStatus?.startsWith("무적"));
           const bySector: Record<string, DrumItem[]> = {};
           for (const d of ghostDrums) {
             const s = d.sector ?? "(없음)";
@@ -1376,6 +1385,7 @@ export default function InventoryPage() {
                         <table className="min-w-full text-sm">
                           <thead className="bg-gray-50">
                             <tr>
+                              <th className="py-2 px-3 text-left text-xs text-gray-500">구분</th>
                               <th className="py-2 px-3 text-left text-xs text-gray-500">LOT</th>
                               <th className="py-2 px-3 text-left text-xs text-gray-500">품명</th>
                               <th className="py-2 px-3 text-left text-xs text-gray-500">제조사</th>
@@ -1383,14 +1393,18 @@ export default function InventoryPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {drums.map(d => (
+                            {drums.map(d => {
+                              const loc = d.returnStatus?.split(":")?.[1] ?? "";
+                              return (
                               <tr key={d.lot} className="border-t border-gray-100 hover:bg-gray-50">
+                                <td className="py-1.5 px-3 text-xs font-semibold text-gray-700">{loc}</td>
                                 <td className="py-1.5 px-3 font-mono text-xs">{d.lot}</td>
                                 <td className="py-1.5 px-3">{d.product}</td>
                                 <td className="py-1.5 px-3 text-gray-600 text-xs">{d.maker}</td>
                                 <td className="py-1.5 px-3 text-gray-500 text-xs">{d.registered?.slice(0, 10)}</td>
                               </tr>
-                            ))}
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
