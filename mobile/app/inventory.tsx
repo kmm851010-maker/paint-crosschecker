@@ -1690,8 +1690,8 @@ export default function InventoryScreen() {
                   </TouchableOpacity>
                 </>
               )}
-              {/* 일반 항목 선택: 라인입고 + 반품 3종 */}
-              {!allInReturn && (
+              {/* 일반 항목 선택: 라인입고 + 반품 3종 (무적/반품 선택 시 숨김) */}
+              {!allInReturn && !allGhost && (
                 <>
                   <TouchableOpacity style={[styles.checkoutBarBtn, { flex: 1 }]} disabled={loading}
                     onPress={() => Alert.alert("라인입고 확인", `선택하신 ${selectedDrums.length}드럼을 라인입고 처리합니다.
