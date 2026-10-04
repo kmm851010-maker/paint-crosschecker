@@ -374,7 +374,7 @@ export default function InventoryScreen() {
   const [scanManual, setScanManual] = useState(false);
   const [ingoScanDisabled, setIngoScanDisabled] = useState(false);
   const [showIngoPrompt, setShowIngoPrompt] = useState(false);
-  const [returnType, setReturnType] = useState<"불량"|"기술"|"무상"|"">(""); // 섹터 선택 시 반품 종류
+  const [returnType, setReturnType] = useState<"불량"|"기술"|"무상"|"무적"|"">(""); // 섹터 선택 시 반품 종류
   const [moveType, setMoveType] = useState<"daily"|"location">("daily"); // 생산 후 재고 / 위치이동
   const [showBatchMoveModal, setShowBatchMoveModal] = useState(false);
   const [expandedSectors, setExpandedSectors] = useState<Set<string>>(new Set());
@@ -915,8 +915,8 @@ export default function InventoryScreen() {
               </View>
               {/* 반품 종류 선택 (1행 라디오) */}
               <View style={{ flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 12 }}>
-                {(["불량", "기술", "무상"] as const).map(t => {
-                  const color = t === "불량" ? "#EF4444" : t === "기술" ? "#F59E0B" : "#3B82F6";
+                {(["불량", "기술", "무상", "무적"] as const).map(t => {
+                  const color = t === "불량" ? "#EF4444" : t === "기술" ? "#F59E0B" : t === "무상" ? "#3B82F6" : "#111827";
                   const selected = returnType === t;
                   return (
                     <TouchableOpacity

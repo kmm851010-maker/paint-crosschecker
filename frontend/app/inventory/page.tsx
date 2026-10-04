@@ -35,7 +35,7 @@ const LOT_PAT = /^[A-Z][A-Z0-9]{7,11}$/;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function retEmoji(status: string) {
-  return status === "불량" ? "🔴" : status === "기술" ? "🟡" : status === "무상" ? "🔵" : "";
+  return status === "불량" ? "🔴" : status === "기술" ? "🟡" : status === "무상" ? "🔵" : status === "무적" ? "⚫" : "";
 }
 function kstToday() { return new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10); }
 function kstYesterday() { return new Date(Date.now() + 9 * 3600000 - 86400000).toISOString().slice(0, 10); }
@@ -201,7 +201,7 @@ function DrumTable({ drums, selectedLots, onToggle, onToggleAll, showSector = fa
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function InventoryPage() {
   const [admin, setAdmin] = useState(false);
-  const [activeTab, setActiveTab] = useState<"sectors" | "history" | "bulk">("sectors");
+  const [activeTab, setActiveTab] = useState<"sectors" | "history" | "ghost" | "bulk">("sectors");
 
   // ── 섹터별 현황 state ──
   const [sectors, setSectors] = useState<Record<string, DrumItem[]>>({});
@@ -602,6 +602,7 @@ export default function InventoryPage() {
   const tabs = [
     { key: "sectors" as const, label: "섹터별 현황" },
     { key: "history" as const, label: "날짜별 이력" },
+    { key: "ghost" as const, label: "무적관리" },
     ...(admin ? [{ key: "bulk" as const, label: "대량 등록" }] : []),
   ];
 
@@ -824,6 +825,7 @@ export default function InventoryPage() {
             <Button variant="secondary" onClick={() => doReturn("불량")} loading={actionLoading}>🔴 불량반품 ({selectedLots.size})</Button>
             <Button variant="secondary" onClick={() => doReturn("기술")} loading={actionLoading}>🟡 기술반품 ({selectedLots.size})</Button>
             <Button variant="secondary" onClick={() => doReturn("무상")} loading={actionLoading}>🔵 무상반품 ({selectedLots.size})</Button>
+            <Button variant="secondary" onClick={() => doReturn("무적")} loading={actionLoading} style={{ color: "#111", borderColor: "#555" }}>⚫ 무적 ({selectedLots.size})</Button>
             {selectedLots.size === 1 && (
               <Button variant="secondary" onClick={() => {
                 const d = selectedDrums[0];
@@ -1348,6 +1350,57 @@ export default function InventoryPage() {
 
         {/* ── 날짜별 이력 ── */}
         {activeTab === "history" && renderHistoryTab()}
+
+        {/* ── 무적관리 ── */}
+        {activeTab === "ghost" && (() => {
+          const ghostDrums = allDrums.filter(d => d.returnStatus === "무적");
+          const bySector: Record<string, DrumItem[]> = {};
+          for (const d of ghostDrums) {
+            const s = d.sector ?? "(없음)";
+            if (!bySector[s]) bySector[s] = [];
+            bySector[s].push(d);
+          }
+          return (
+            <div>
+              <p className="text-sm text-gray-500 mb-4">전산에 없는 무적 드럼 목록 — 총 <strong>{ghostDrums.length}</strong>드럼</p>
+              {ghostDrums.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-12">무적 드럼 없음</p>
+              ) : (
+                Object.entries(bySector)
+                  .sort(([a], [b]) => { const ai = SECTORS.indexOf(a); const bi = SECTORS.indexOf(b); return ai === -1 ? 1 : bi === -1 ? -1 : ai - bi; })
+                  .map(([sector, drums]) => (
+                    <div key={sector} className="mb-4">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                        <span>⚫</span>{sector} — {drums.length}드럼
+                      </h3>
+                      <div className="overflow-x-auto rounded-lg border border-gray-200">
+                        <table className="min-w-full text-sm">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="py-2 px-3 text-left text-xs text-gray-500">LOT</th>
+                              <th className="py-2 px-3 text-left text-xs text-gray-500">품명</th>
+                              <th className="py-2 px-3 text-left text-xs text-gray-500">제조사</th>
+                              <th className="py-2 px-3 text-left text-xs text-gray-500">등록일</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {drums.map(d => (
+                              <tr key={d.lot} className="border-t border-gray-100 hover:bg-gray-50">
+                                <td className="py-1.5 px-3 font-mono text-xs">{d.lot}</td>
+                                <td className="py-1.5 px-3">{d.product}</td>
+                                <td className="py-1.5 px-3 text-gray-600 text-xs">{d.maker}</td>
+                                <td className="py-1.5 px-3 text-gray-500 text-xs">{d.registered?.slice(0, 10)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+          );
+        })()}
 
         {/* ── 대량 등록 ── */}
         {activeTab === "bulk" && admin && renderBulkTab()}
