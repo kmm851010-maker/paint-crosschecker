@@ -692,14 +692,18 @@ const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완�
                 추출
               </Button>
             )}
-            {planItems.length > 0 && (
+            {(planItems.length > 0 || !!planTableData?.headers?.length) && (
               <div className="mt-3 space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-green-700 font-medium">✓ {planItems.length}개 품목 추출됨</span>
+                  <span className="text-green-700 font-medium">
+                    ✓ {planItems.length > 0 ? `${planItems.length}개 품목 추출됨` : "변환결과 준비됨"}
+                  </span>
+                  {planItems.length > 0 && (
                   <button onClick={() => setShowPlanTable(v => !v)} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
                     {showPlanTable ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                     {showPlanTable ? "접기" : "목록 보기"}
                   </button>
+                  )}
                 </div>
                 {planTableData?.headers?.length ? (
                   <Button
