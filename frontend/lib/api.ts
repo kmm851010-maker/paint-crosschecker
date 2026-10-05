@@ -76,11 +76,6 @@ export async function revertCheckout(items: { lot: string; recorded_at: string }
   };
 }
 
-export async function parseBarcode(raw_text: string) {
-  const { data } = await api.post("/api/inventory/parse-barcode", { raw_text });
-  return data;
-}
-
 export async function parsePdfLots(file_data: string, filename: string, api_key = "") {
   const { data } = await api.post("/api/inventory/parse-pdf-lots", { file_data, filename, api_key });
   return data;
@@ -263,17 +258,6 @@ export async function getLeaves() {
 
 export async function saveLeaves(leave_list: LeaveItem[]) {
   const { data } = await api.post("/api/leaves", { leave_list });
-  return data;
-}
-
-// ── Schedule Notes ──
-export async function getScheduleNotes(name: string, year: number, month: number) {
-  const { data } = await api.get("/api/schedule-notes", { params: { name, year, month } });
-  return data.notes as Record<string, string>;
-}
-
-export async function saveScheduleNote(name: string, date: string, note: string) {
-  const { data } = await api.post("/api/schedule-notes", { name, date, note });
   return data;
 }
 
