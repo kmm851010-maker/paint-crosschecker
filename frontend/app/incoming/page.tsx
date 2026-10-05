@@ -6,10 +6,11 @@ import toast from "react-hot-toast";
 import {
   parsePlan, crossCheckMulti, crossCheckWithItems, exportExcelMulti,
   generateIncomingExcel, registerDrums, planConversion, erpFill,
-  savePlanHistory, listPlanHistory, getPlanHistory,
+  savePlanHistory, listPlanHistory, getPlanHistory, deletePlanHistory,
   PlanHistorySummary,
   DrumItem, SECTORS, MAKERS,
 } from "@/lib/api";
+import { isAdmin } from "@/lib/auth";
 import { fileToBase64, downloadBase64 } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { RefreshCw, Download, ChevronDown, ChevronUp, X } from "lucide-react";
@@ -661,10 +662,28 @@ const sectorOpts = SECTORS.filter(s => s !== "라인입고" && s !== "반품완�
                       <span className="text-xs text-gray-500">{h.recorded_at?.slice(11, 16)}</span>
                       <div className="text-xs text-gray-400 mt-0.5">{h.filenames?.join(", ")}</div>
                     </div>
-                    <Button size="sm" variant="secondary" loading={histLoadingId === h.id}
-                      onClick={() => loadFromHistory(h.id)}>
-                      불러오기
-                    </Button>
+                    <div className="flex gap-1.5">
+                      <Button size="sm" variant="secondary" loading={histLoadingId === h.id}
+                        onClick={() => loadFromHistory(h.id)}>
+                        불러오기
+                      </Button>
+                      {isAdmin() && (
+                        <Button size="sm" variant="ghost"
+                          className="text-red-400 hover:text-red-600 hover:bg-red-50"
+                          onClick={async () => {
+                            if (!confirm("이 추출 이력을 삭제할까요?")) return;
+                            try {
+                              await deletePlanHistory(h.id);
+                              setHistList(prev => prev ? prev.filter(x => x.id !== h.id) : prev);
+                              toast.success("삭제됐습니다.");
+                            } catch {
+                              toast.error("삭제 실패");
+                            }
+                          }}>
+                          삭제
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

@@ -110,6 +110,11 @@ export async function getPlanHistory(id: number) {
   return data as PlanHistoryDetail;
 }
 
+export async function deletePlanHistory(id: number) {
+  const { data } = await api.delete(`/api/plan-history/${id}`);
+  return data;
+}
+
 export async function planConversion(table_data: { headers: string[]; rows: unknown[][] }, plan_items: unknown[]) {
   const { data } = await api.post("/api/plan-conversion", { table_data, plan_items }, { timeout: 30000 });
   return data as { success: boolean; headers: string[]; rows: string[][]; excel_base64: string };
