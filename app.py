@@ -5268,7 +5268,7 @@ def page_inventory():
                     _maker_list = ["고려(KCC)", "대한(노루)", "건설(제비)", "삼화", "애경", "동주(PPG)"]
                     _cur_mkr_idx = _maker_list.index(_edit_drum["maker"]) if _edit_drum["maker"] in _maker_list else 0
                     _new_maker = _ec3.selectbox("제조사", _maker_list, index=_cur_mkr_idx, key="edit_mkr_inp")
-                    _sector_list = ["입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리", "8번자리", "9번자리", "반품자리", "창고주위", "창고"]
+                    _sector_list = ["입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C/8번자리", "7D~Z자리", "9번자리", "반품자리", "창고주위", "창고"]
                     _cur_sidx = _sector_list.index(_edit_drum["sector"]) if _edit_drum["sector"] in _sector_list else 0
                     _new_sector = _ec4.selectbox("섹터", _sector_list, index=_cur_sidx, key="edit_sec_inp")
                     _cur_remark = _edit_drum.get("remark", "")
@@ -5390,7 +5390,7 @@ def page_inventory():
     if _tab_bulk is not None:
         with _tab_bulk:
             _MAKERS_BULK = {"G": "고려(KCC)", "D": "대한(노루)", "K": "건설(제비)", "S": "삼화", "Y": "애경", "P": "동주(PPG)"}
-            _SECTOR_BULK = ["입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C자리", "7D~Z자리", "8번자리", "9번자리", "반품자리", "창고주위", "창고"]
+            _SECTOR_BULK = ["입고존", "신나자리", "0~3번자리", "4~6번자리", "7A~C/8번자리", "7D~Z자리", "9번자리", "반품자리", "창고주위", "창고"]
 
             st.caption("PDF 또는 이미지 파일에서 LOT번호+품명을 추출하여 대량 등록합니다.")
             _bulk_files = st.file_uploader(
