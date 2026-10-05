@@ -205,6 +205,17 @@ async def get_plan_history(plan_id: int):
     return res.data[0]
 
 
+@app.delete("/api/plan-history/{plan_id}")
+async def delete_plan_history(plan_id: int):
+    """생산계획서 추출 이력을 삭제합니다. (관리자 전용)"""
+    from utils.supabase_db import _sb
+    sb = _sb()
+    res = sb.table("plan_history").delete().eq("id", plan_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="이력을 찾을 수 없습니다.")
+    return {"ok": True}
+
+
 # --- 교차검증 ---
 
 class CrossCheckRequest(BaseModel):
