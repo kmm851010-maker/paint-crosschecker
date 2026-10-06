@@ -53,15 +53,20 @@ function shift2s2(dateMs: number, team: string): string {
   return _2S2_SHIFTS[phase][team] ?? "?";
 }
 
-// ── 4조2교대 (4팀 연속, 8일 사이클: 주주→휴휴→야야→휴휴) ──
+// ── 4조2교대 (A/B는 주간↔야간 교체, C는 항상주간, D는 항상야간) ──
 const _4S2_REF = Date.UTC(2026, 6, 27);
-const _4S2_CYCLE = ["주간", "주간", "휴무", "휴무", "야간", "야간", "휴무", "휴무"];
-const _4S2_OFFSET: Record<string, number> = { A: 1, B: 5, C: 7, D: 3 };
+const _4S2_TEAM_CYCLE: Record<string, string[]> = {
+  A: ["주간", "주간", "휴무", "휴무", "야간", "야간", "휴무", "휴무"],
+  B: ["주간", "주간", "휴무", "휴무", "야간", "야간", "휴무", "휴무"],
+  C: ["휴무", "휴무", "주간", "주간", "휴무", "휴무", "주간", "주간"],
+  D: ["휴무", "휴무", "야간", "야간", "휴무", "휴무", "야간", "야간"],
+};
+const _4S2_OFFSET: Record<string, number> = { A: 1, B: 5, C: 1, D: 1 };
 function shift4s2(dateMs: number, team: string): string {
   const daysSince = Math.floor((dateMs - _4S2_REF) / 86400000);
   const offset = _4S2_OFFSET[team] ?? 0;
   const phase = ((daysSince + offset) % 8 + 8) % 8;
-  return _4S2_CYCLE[phase];
+  return (_4S2_TEAM_CYCLE[team] ?? _4S2_TEAM_CYCLE.A)[phase];
 }
 
 // ── 교대형별 팀 목록 ──
