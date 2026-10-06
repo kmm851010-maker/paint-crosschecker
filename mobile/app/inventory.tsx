@@ -325,7 +325,18 @@ function filterAndProceed(
   setBatch: (fn: (prev: DrumItem[]) => DrumItem[]) => void,
   onProceed: () => void,
   alertActiveRef: React.MutableRefObject<boolean>,
+  processingRef?: React.MutableRefObject<boolean>,
 ) {
+  // OCR 처리 중이면 완료 후 전환 (깜빡임 방지)
+  if (processingRef?.current) {
+    const wait = setInterval(() => {
+      if (!processingRef.current) {
+        clearInterval(wait);
+        filterAndProceed(drums, setBatch, onProceed, alertActiveRef);
+      }
+    }, 50);
+    return;
+  }
   const invalid = drums.filter(d => !LOT_VALID.test(d.lot) || !ITEM_VALID.test(d.product));
   const valid   = drums.filter(d =>  LOT_VALID.test(d.lot) &&  ITEM_VALID.test(d.product));
 
@@ -1136,7 +1147,7 @@ export default function InventoryScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.doneSmallBtn, batch.length === 0 && styles.btnDisabled]}
-              onPress={() => { if (batch.length > 0) filterAndProceed(batch, setBatch, () => setMode("sectorPick"), alertActiveRef); }}
+              onPress={() => { if (batch.length > 0) filterAndProceed(batch, setBatch, () => setMode("sectorPick"), alertActiveRef, processingRef); }}
               disabled={batch.length === 0}
             >
               <Text style={styles.doneSmallBtnText}>완료 ({batch.length})</Text>
@@ -1917,7 +1928,7 @@ export default function InventoryScreen() {
         </TouchableOpacity>
 
         {batch.length > 0 && (
-          <TouchableOpacity style={[styles.btn, styles.registerBtn]} onPress={() => filterAndProceed(batch, setBatch, () => setMode("sectorPick"), alertActiveRef)} disabled={loading}>
+          <TouchableOpacity style={[styles.btn, styles.registerBtn]} onPress={() => filterAndProceed(batch, setBatch, () => setMode("sectorPick"), alertActiveRef, processingRef)} disabled={loading}>
             <Text style={styles.btnText}>섹터 선택 → 저장</Text>
           </TouchableOpacity>
         )}
