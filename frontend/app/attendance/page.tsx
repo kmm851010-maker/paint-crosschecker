@@ -819,7 +819,6 @@ export default function AttendancePage() {
                     const dateColor = (ci === 0 || isHol) ? "#E53935" : ci === 6 ? "#1565C0" : "#1f2937";
                     const bg = cell.isToday ? "#EFF6FF" : "#fff";
                     const workSlots = cell.slots.filter(s => s.shift !== "휴무");
-                    const text = workSlots.map(s => s.team).join(" ");
                     return (
                       <div key={ci} style={{ flex: 1, minHeight: 90, padding: "4px 2px 3px", background: bg, borderRight: "1px solid #e5e7eb", borderBottom: "1px solid #e5e7eb", textAlign: "center" }}>
                         <div style={{ lineHeight: 1, marginBottom: 2 }}>
@@ -836,9 +835,13 @@ export default function AttendancePage() {
                             {holName}
                           </div>
                         )}
-                        {text && (
-                          <div style={{ fontSize: 11, color: "#374151", fontWeight: 700, lineHeight: 1.4, marginTop: 2 }}>
-                            {text}
+                        {workSlots.length > 0 && (
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1, marginTop: 2 }}>
+                            {workSlots.map((s, si) => (
+                              <span key={si} style={{ fontSize: 11, fontWeight: 700, color: SHIFT_COLOR[s.shift] ?? "#374151", lineHeight: 1.3 }}>
+                                {s.team}{SHIFT_ABBR[s.shift] ?? ""}
+                              </span>
+                            ))}
                           </div>
                         )}
                       </div>
