@@ -808,7 +808,29 @@ export default function InventoryScreen() {
     }
 
     const doSave = () => {
-      const newItems: DrumItem[] = filledLots
+      // TEST 품명: 같은 이름 여러 개면 자동 연번 (기존 배치도 고려)
+      const resolvedLots = isTest ? (() => {
+        const nameCount: Record<string, number> = {};
+        filledLots.forEach(l => { nameCount[l] = (nameCount[l] ?? 0) + 1; });
+        // 기존 배치에서 각 이름의 최대 번호 파악
+        const maxNum: Record<string, number> = {};
+        batchRef.current.forEach(d => {
+          const m = d.lot.match(/^(.+)\s(\d+)$/);
+          if (m) maxNum[m[1]] = Math.max(maxNum[m[1]] ?? 0, parseInt(m[2], 10));
+        });
+        const counter: Record<string, number> = {};
+        return filledLots.map(l => {
+          if (nameCount[l] > 1 || batchRef.current.some(d => d.lot === l || d.lot.startsWith(`${l} `))) {
+            const start = maxNum[l] ?? 0;
+            counter[l] = (counter[l] ?? start) + 1;
+            maxNum[l] = counter[l];
+            return `${l} ${counter[l]}`;
+          }
+          return l;
+        });
+      })() : filledLots;
+
+      const newItems: DrumItem[] = resolvedLots
         .filter(l => !batchRef.current.some(d => d.lot === l))
         .map(l => ({ lot: l, product, maker: isTest ? "테스트" : (MAKER_MAP[l[0]] ?? "미상") }));
       const finalSave = () => { setBatch(prev => [...prev, ...newItems]); setManualBulk(null); };
