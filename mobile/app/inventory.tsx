@@ -393,6 +393,7 @@ export default function InventoryScreen() {
   const [sortMode, setSortMode] = useState<"maker"|"sector"|"lot"|"product">("sector");
   const [returnFilter, setReturnFilter] = useState<"무상"|"기술"|"불량"|"무적"|"">("");
   const [selectedLots, setSelectedLots] = useState<Set<string>>(new Set());
+  const [actionBarHeight, setActionBarHeight] = useState(120);
   const [scanManual, setScanManual] = useState(false);
   const [ingoScanDisabled, setIngoScanDisabled] = useState(false);
   const [showIngoPrompt, setShowIngoPrompt] = useState(false);
@@ -1389,6 +1390,7 @@ export default function InventoryScreen() {
     const allGhost = selectedDrums.length > 0 && selectedDrums.every(d => d.returnStatus?.startsWith("무적"));
     const allInReturn = selectedDrums.length > 0 && selectedDrums.every(d => d.returnStatus && !d.returnStatus.startsWith("무적"));
     const noneInReturn = selectedDrums.every(d => !d.returnStatus);
+    const allTestInReturn = allInReturn && selectedDrums.every(d => d.maker === "테스트");
 
     return (
       <>
@@ -1570,7 +1572,7 @@ export default function InventoryScreen() {
           )}
 
           {/* 목록 */}
-          <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: selectedLots.size > 0 ? 100 + insets.bottom : 40 }}>
+          <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: selectedLots.size > 0 ? actionBarHeight + 20 : 40 }}>
             {groupKeys.length === 0 ? (
               <Text style={styles.emptyText}>
                 {searchText ? "검색 결과 없음" : "보관 중인 드럼 없음"}
@@ -1684,7 +1686,7 @@ export default function InventoryScreen() {
 
           {/* 액션 버튼바 (섹터별 현황에서만) */}
           {statusTab === "sector" && selectedLots.size > 0 && (
-            <View style={[styles.checkoutBar, { paddingBottom: 12 + insets.bottom, flexWrap: "wrap", gap: 6 }]}>
+            <View style={[styles.checkoutBar, { paddingBottom: 12 + insets.bottom, flexWrap: "wrap", gap: 6 }]} onLayout={e => setActionBarHeight(e.nativeEvent.layout.height)}>
               <Text style={[styles.checkoutBarText, { width: "100%", marginBottom: 2 }]}>{selectedLots.size}드럼 선택됨</Text>
               {/* 무적 항목만 선택됐을 때: 라인입고 / 무적해제 */}
               {allGhost && (
@@ -1720,7 +1722,7 @@ export default function InventoryScreen() {
                   </TouchableOpacity>
                 </>
               )}
-              {/* 반품 항목만 선택됐을 때: 반품완료 / 반품 해제 / 라인입고 */}
+              {/* 반품 항목만 선택됐을 때: 반품완료 / 반품 해제(TEST 제외) / 라인입고 */}
               {allInReturn && (
                 <>
                   <TouchableOpacity style={[styles.checkoutBarBtn, { backgroundColor: "#6D28D9", flex: 1 }]} disabled={loading}
@@ -1740,19 +1742,21 @@ export default function InventoryScreen() {
                     ])}>
                     <Text style={styles.checkoutBarBtnText}>반품완료</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.checkoutBarBtn, { backgroundColor: "#6B7280", flex: 1 }]} disabled={loading}
-                    onPress={async () => {
-                      setLoading(true);
-                      try {
-                        await setDrumReturnStatus(selectedDrums, "");
-                        setSelectedLots(new Set());
-                        setSectorData(await getSectorInventory());
-                        Alert.alert("완료", `${selectedDrums.length}드럼 반품 해제`);
-                      } catch (e: any) { Alert.alert("실패", (e as any).message); }
-                      finally { setLoading(false); }
-                    }}>
-                    <Text style={styles.checkoutBarBtnText}>반품 해제</Text>
-                  </TouchableOpacity>
+                  {!allTestInReturn && (
+                    <TouchableOpacity style={[styles.checkoutBarBtn, { backgroundColor: "#6B7280", flex: 1 }]} disabled={loading}
+                      onPress={async () => {
+                        setLoading(true);
+                        try {
+                          await setDrumReturnStatus(selectedDrums, "");
+                          setSelectedLots(new Set());
+                          setSectorData(await getSectorInventory());
+                          Alert.alert("완료", `${selectedDrums.length}드럼 반품 해제`);
+                        } catch (e: any) { Alert.alert("실패", (e as any).message); }
+                        finally { setLoading(false); }
+                      }}>
+                      <Text style={styles.checkoutBarBtnText}>반품 해제</Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity style={[styles.checkoutBarBtn, { flex: 1 }]} disabled={loading}
                     onPress={() => Alert.alert("라인입고 확인", `선택하신 ${selectedDrums.length}드럼을 라인입고 처리합니다.
 목록에서 삭제됩니다. 계속하시겠습니까?`, [
