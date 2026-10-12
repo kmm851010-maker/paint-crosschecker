@@ -135,7 +135,7 @@ export default function ReturnsPage() {
 
   // ── Return drums only ──────────────────────────────────────────────────────
   const returnDrums = useMemo(
-    () => allDrums.filter(d => d.returnStatus),
+    () => allDrums.filter(d => d.returnStatus && !d.returnStatus.startsWith("무적")),
     [allDrums]
   );
 
