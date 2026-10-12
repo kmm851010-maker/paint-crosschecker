@@ -215,6 +215,7 @@ export default function ReturnsPage() {
   function deselectAll() { setSelectedLots(new Set()); setConfirmType(null); }
 
   const selectedDrums = useMemo(() => filtered.filter(d => selectedLots.has(d.lot)), [filtered, selectedLots]);
+  const allTestSelected = useMemo(() => selectedDrums.length > 0 && selectedDrums.every(d => d.maker === "테스트"), [selectedDrums]);
 
   // ── Actions ───────────────────────────────────────────────────────────────
   async function doAction(type: ConfirmType) {
@@ -627,9 +628,11 @@ export default function ReturnsPage() {
                     <Button onClick={() => setConfirmType("ret_done")} loading={actionLoading}>
                       ↩️ 반품완료 ({selectedLots.size})
                     </Button>
-                    <Button variant="secondary" onClick={doReturnCancel} loading={actionLoading}>
-                      🔓 반품 해제 ({selectedLots.size})
-                    </Button>
+                    {!allTestSelected && (
+                      <Button variant="secondary" onClick={doReturnCancel} loading={actionLoading}>
+                        🔓 반품 해제 ({selectedLots.size})
+                      </Button>
+                    )}
                     <Button variant="secondary" onClick={() => setConfirmType("ret_checkout")} loading={actionLoading}>
                       라인입고 ({selectedLots.size})
                     </Button>
