@@ -1621,14 +1621,30 @@ export default function InventoryScreen() {
                   </TouchableOpacity>
                   {expandedSectors.has(key) && (
                     <>
-                      <View style={styles.tableHeader}>
-                        <View style={{ width: 28 }} />
-                        <Text style={[styles.thCell, { flex: 1.5 }]}>품명</Text>
-                        <Text style={[styles.thCell, { flex: 2 }]}>LOT</Text>
-                        <Text style={[styles.thCell, { flex: 1.5 }]}>제조사</Text>
-                        {sortMode !== "sector" && sortMode !== "lot" && <Text style={[styles.thCell, { flex: 1.2 }]}>섹터</Text>}
-                        <Text style={[styles.thCell, { flex: 1.8 }]}>등록시간</Text>
-                      </View>
+                      {(() => {
+                        const grpDrums = returnFilter !== "" ? grouped[key].filter(matchesReturnFilter) : grouped[key];
+                        const allGrpSelected = grpDrums.length > 0 && grpDrums.every((d: any) => selectedLots.has(d.lot));
+                        return (
+                          <View style={styles.tableHeader}>
+                            <TouchableOpacity
+                              style={{ width: 28, alignItems: "center" }}
+                              onPress={() => setSelectedLots(prev => {
+                                const next = new Set(prev);
+                                if (allGrpSelected) { grpDrums.forEach((d: any) => next.delete(d.lot)); }
+                                else { grpDrums.forEach((d: any) => next.add(d.lot)); }
+                                return next;
+                              })}
+                            >
+                              <Text style={{ fontSize: 16 }}>{allGrpSelected ? "☑" : "☐"}</Text>
+                            </TouchableOpacity>
+                            <Text style={[styles.thCell, { flex: 1.5 }]}>품명</Text>
+                            <Text style={[styles.thCell, { flex: 2 }]}>LOT</Text>
+                            <Text style={[styles.thCell, { flex: 1.5 }]}>제조사</Text>
+                            {sortMode !== "sector" && sortMode !== "lot" && <Text style={[styles.thCell, { flex: 1.2 }]}>섹터</Text>}
+                            <Text style={[styles.thCell, { flex: 1.8 }]}>등록시간</Text>
+                          </View>
+                        );
+                      })()}
                       {grouped[key].map((drum: any, i: number) => {
                         const isSelected = selectedLots.has(drum.lot);
                         const returnBg = drum.returnStatus === "불량" ? "#FEE2E2"
