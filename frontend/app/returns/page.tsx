@@ -135,14 +135,17 @@ export default function ReturnsPage() {
 
   // ── Return drums only ──────────────────────────────────────────────────────
   const returnDrums = useMemo(
-    () => allDrums.filter(d => d.returnStatus && !d.returnStatus.startsWith("무적")),
+    () => allDrums.filter(d =>
+      d.maker === "테스트" ||
+      (d.returnStatus && !d.returnStatus.startsWith("무적"))
+    ),
     [allDrums]
   );
 
   // ── Filtered + grouped ────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     let drums = returnDrums;
-    if (returnFilter) drums = drums.filter(d => d.returnStatus === returnFilter);
+    if (returnFilter) drums = drums.filter(d => d.maker === "테스트" || d.returnStatus === returnFilter);
     if (search.trim()) {
       const s = search.trim().toUpperCase();
       drums = drums.filter(d => (d.lot ?? "").toUpperCase().includes(s) || (d.product ?? "").toUpperCase().includes(s));
