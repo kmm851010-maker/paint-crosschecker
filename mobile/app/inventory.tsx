@@ -310,9 +310,13 @@ function parseOcrBlocks(blocks: TextBlock[]): OcrParseResult {
 const LOT_VALID = /^[GDKSYP][0-9]{2}[A-L][0-9]{5}$/;
 const ITEM_VALID = /^[A-Z][0-9][A-Z][A-Z0-9][0-9]{2}[A-Z]$/;
 
+/** 품명이 "TEST"인 경우 — 비정규 품목으로 LOT 형식 검증 면제 */
+const isTestProduct = (product: string) => product.trim().toUpperCase() === "TEST";
+
 function validateBatch(drums: DrumItem[]): string[] {
   const warns: string[] = [];
   drums.forEach((d, i) => {
+    if (isTestProduct(d.product)) return; // TEST 품명은 형식 검증 제외
     const num = i + 1;
     if (!LOT_VALID.test(d.lot))     warns.push(`${num}번 LOT: "${d.lot}"`);
     if (!ITEM_VALID.test(d.product)) warns.push(`${num}번 품명: "${d.product}"`);
@@ -337,8 +341,8 @@ function filterAndProceed(
     }, 50);
     return;
   }
-  const invalid = drums.filter(d => !LOT_VALID.test(d.lot) || !ITEM_VALID.test(d.product));
-  const valid   = drums.filter(d =>  LOT_VALID.test(d.lot) &&  ITEM_VALID.test(d.product));
+  const invalid = drums.filter(d => !isTestProduct(d.product) && (!LOT_VALID.test(d.lot) || !ITEM_VALID.test(d.product)));
+  const valid   = drums.filter(d =>  isTestProduct(d.product) || ( LOT_VALID.test(d.lot) &&  ITEM_VALID.test(d.product)));
 
   if (invalid.length === 0) { onProceed(); return; }
 
@@ -784,23 +788,28 @@ export default function InventoryScreen() {
     const product = manualBulk.product.trim();
     if (!product) { Alert.alert("오류", "품명을 입력해주세요."); return; }
 
+    const isTest = isTestProduct(product);
     const filledLots = manualBulk.lots
-      .map(l => l.trim().toUpperCase().replace(/[^A-Z0-9]/g, ""))
+      .map(l => isTest ? l.trim() : l.trim().toUpperCase().replace(/[^A-Z0-9]/g, ""))
       .filter(l => l.length > 0);
 
     if (filledLots.length === 0) { Alert.alert("오류", "LOT번호를 1개 이상 입력해주세요."); return; }
 
-    const invalidLots = filledLots.filter(l => !LOT_VALID.test(l));
-    if (invalidLots.length > 0) {
-      Alert.alert("형식 오류", `올바르지 않은 LOT번호:\n${invalidLots.join("\n")}`);
-      return;
+    if (!isTest) {
+      const invalidLots = filledLots.filter(l => !LOT_VALID.test(l));
+      if (invalidLots.length > 0) {
+        Alert.alert("형식 오류", `올바르지 않은 LOT번호:\n${invalidLots.join("\n")}`);
+        return;
+      }
     }
 
     const doSave = () => {
       const newItems: DrumItem[] = filledLots
         .filter(l => !batchRef.current.some(d => d.lot === l))
-        .map(l => ({ lot: l, product, maker: MAKER_MAP[l[0]] ?? "미상" }));
+        .map(l => ({ lot: l, product, maker: isTest ? "테스트" : (MAKER_MAP[l[0]] ?? "미상") }));
       const finalSave = () => { setBatch(prev => [...prev, ...newItems]); setManualBulk(null); };
+      // TEST 품명: 입고이력 확인 없이 바로 저장
+      if (isTest) { finalSave(); return; }
       const unknownLots = knownLotsRef.current.size > 0
         ? filledLots.filter(l => !knownLotsRef.current.has(l))
         : [];
@@ -817,6 +826,9 @@ export default function InventoryScreen() {
         finalSave();
       }
     };
+
+    // TEST 품명: 승인품목 확인 없이 바로 저장
+    if (isTest) { doSave(); return; }
 
     if (!APPROVED_PRODUCTS.has(product) && !localApprovedRef.current.has(product)) {
       Alert.alert(
@@ -842,13 +854,20 @@ export default function InventoryScreen() {
   // ── 편집 모달 저장 핸들러 ──
   const handleEditSave = () => {
     if (!editingItem) return;
+    const isTest = isTestProduct(editingItem.product);
     const newItem: DrumItem = {
       lot: editingItem.lot,
       product: editingItem.product,
-      maker: MAKER_MAP[editingItem.lot[0]] ?? "미상",
+      maker: isTest ? "테스트" : (MAKER_MAP[editingItem.lot[0]] ?? "미상"),
     };
     if (editingItem.index === -1) {
       if (!editingItem.lot || !editingItem.product) return;
+      // TEST 품명: 검증 없이 즉시 배치 추가
+      if (isTest) {
+        setBatch(prev => prev.some(d => d.lot === editingItem.lot) ? prev : [...prev, newItem]);
+        setEditingItem(null);
+        return;
+      }
       const finalAdd = () => {
         setBatch(prev => prev.some(d => d.lot === editingItem.lot) ? prev : [...prev, newItem]);
         setEditingItem(null);
@@ -1103,7 +1122,7 @@ export default function InventoryScreen() {
                   >
                     <Text style={[styles.scanListNum, isLatest && { fontSize: 16, color: "#4AFF91" }]}>{batch.length - index}</Text>
                     <Text numberOfLines={1} style={isLatest ? styles.scanListProductLatest : styles.scanListProduct}>{item.product || "-"}</Text>
-                    <Text numberOfLines={1} style={isLatest ? styles.scanListLotLatest : styles.scanListLot}>{item.lot}</Text>
+                    <Text style={isLatest ? styles.scanListLotLatest : styles.scanListLot}>{item.lot}</Text>
                     <TouchableOpacity onPress={() => setBatch(prev => prev.filter(d => d.lot !== item.lot))}>
                       <Text style={[styles.scanListDelete, isLatest && { fontSize: 22 }]}>✕</Text>
                     </TouchableOpacity>
@@ -1208,16 +1227,22 @@ export default function InventoryScreen() {
                   value={editingItem?.product ?? ""}
                   onChangeText={v => setEditingItem(prev => prev ? { ...prev, product: v.toUpperCase().replace(/[^A-Z0-9]/g, "") } : prev)}
                   autoCapitalize="characters"
-                  placeholder="예) P7Y751Y"
+                  placeholder="예) P7Y751Y  (비정규품목: TEST)"
                   autoFocus={editingItem?.index === -1}
                 />
-                <Text style={styles.editLabel}>LOT번호</Text>
+                <Text style={styles.editLabel}>
+                  LOT번호{isTestProduct(editingItem?.product ?? "") ? " (한글/영문/숫자 자유입력)" : ""}
+                </Text>
                 <TextInput
                   style={styles.editInput}
                   value={editingItem?.lot ?? ""}
-                  onChangeText={v => setEditingItem(prev => prev ? { ...prev, lot: v.toUpperCase().replace(/[^A-Z0-9]/g, "") } : prev)}
-                  autoCapitalize="characters"
-                  placeholder="예) P26D03917"
+                  onChangeText={v => setEditingItem(prev => {
+                    if (!prev) return prev;
+                    const val = isTestProduct(prev.product) ? v : v.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                    return { ...prev, lot: val };
+                  })}
+                  autoCapitalize={isTestProduct(editingItem?.product ?? "") ? "none" : "characters"}
+                  placeholder={isTestProduct(editingItem?.product ?? "") ? "예) KCC 고려 캔1, 반품용 드럼" : "예) P26D03917"}
                 />
                 <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
                   <TouchableOpacity style={[styles.editBtn, { backgroundColor: "#888" }]} onPress={() => setEditingItem(null)}>
@@ -1265,11 +1290,11 @@ export default function InventoryScreen() {
                         onChangeText={v => setManualBulk(prev => {
                           if (!prev) return prev;
                           const next = [...prev.lots];
-                          next[idx] = v.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                          next[idx] = isTestProduct(prev.product) ? v : v.toUpperCase().replace(/[^A-Z0-9]/g, "");
                           return { ...prev, lots: next };
                         })}
-                        autoCapitalize="characters"
-                        placeholder="예) D26I24002"
+                        autoCapitalize={isTestProduct(manualBulk?.product ?? "") ? "none" : "characters"}
+                        placeholder={isTestProduct(manualBulk?.product ?? "") ? "예) KCC 고려 캔1" : "예) D26I24002"}
                         returnKeyType={idx < MAX_BULK_LOTS - 1 ? "next" : "done"}
                       />
                     </View>
@@ -1876,16 +1901,22 @@ export default function InventoryScreen() {
                 value={editingItem?.product ?? ""}
                 onChangeText={v => setEditingItem(prev => prev ? { ...prev, product: v.toUpperCase().replace(/[^A-Z0-9]/g, "") } : prev)}
                 autoCapitalize="characters"
-                placeholder="예) P7Y751Y"
+                placeholder="예) P7Y751Y  (비정규품목: TEST)"
                 autoFocus={editingItem?.index === -1}
               />
-              <Text style={styles.editLabel}>LOT번호</Text>
+              <Text style={styles.editLabel}>
+                LOT번호{isTestProduct(editingItem?.product ?? "") ? " (한글/영문/숫자 자유입력)" : ""}
+              </Text>
               <TextInput
                 style={styles.editInput}
                 value={editingItem?.lot ?? ""}
-                onChangeText={v => setEditingItem(prev => prev ? { ...prev, lot: v.toUpperCase().replace(/[^A-Z0-9]/g, "") } : prev)}
-                autoCapitalize="characters"
-                placeholder="예) P26D03917"
+                onChangeText={v => setEditingItem(prev => {
+                  if (!prev) return prev;
+                  const val = isTestProduct(prev.product) ? v : v.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                  return { ...prev, lot: val };
+                })}
+                autoCapitalize={isTestProduct(editingItem?.product ?? "") ? "none" : "characters"}
+                placeholder={isTestProduct(editingItem?.product ?? "") ? "예) KCC 고려 캔1, 반품용 드럼" : "예) P26D03917"}
               />
               <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
                 <TouchableOpacity style={[styles.editBtn, { backgroundColor: "#888" }]} onPress={() => setEditingItem(null)}>
@@ -1959,7 +1990,7 @@ const styles = StyleSheet.create({
   doneSmallBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
   scanListEmpty: { color: "#888", fontSize: 13, textAlign: "center", marginTop: 24 },
   scanListItem: {
-    flexDirection: "row", alignItems: "center",
+    flexDirection: "row", alignItems: "flex-start",
     paddingHorizontal: 12, paddingVertical: 8,
     borderBottomWidth: 1, borderBottomColor: "#2a2a2a", gap: 6,
   },
@@ -2028,10 +2059,10 @@ const styles = StyleSheet.create({
   batchTitle: { fontSize: 15, fontWeight: "700", color: COLORS.textPrimary },
   clearText: { fontSize: 13, color: COLORS.error, fontWeight: "600" },
   drumRow: {
-    flexDirection: "row", alignItems: "center",
+    flexDirection: "row", alignItems: "flex-start",
     paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: 6,
   },
-  drumLot: { flex: 2, fontSize: 12, fontWeight: "600", color: COLORS.textPrimary },
+  drumLot: { flex: 2, fontSize: 12, fontWeight: "600", color: COLORS.textPrimary, flexWrap: "wrap" },
   drumProduct: { flex: 1, fontSize: 12, color: COLORS.textSecondary },
   drumMaker: { flex: 1.5, fontSize: 11, color: COLORS.textSecondary },
   removeText: { fontSize: 12, color: COLORS.error, fontWeight: "600" },
