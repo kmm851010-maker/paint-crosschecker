@@ -175,17 +175,35 @@ function IncomingListDialog({
   const totalPlan = incItems.reduce((s, i) => s + (i.신규 ?? 0), 0);
   const totalPre = Object.values(preQty).reduce((s, v) => s + (parseInt(v) || 0), 0);
 
-  async function handleDownload(selectedOnly: boolean) {
+  function handleDownload(selectedOnly: boolean) {
     try {
       const targets = selectedOnly
         ? sortedItems.filter(({ origIdx }) => checked.has(origIdx))
         : sortedItems;
-      const items = targets.map(({ item, origIdx }) => ({
-        ...item,
-        기입고수량: parseInt(preQty[origIdx] ?? "") || 0,
-      }));
-      const data = await generateIncomingExcel(items);
-      downloadBase64(data.excel_base64, `${kstDateStr()}입고예정품목.xlsx`);
+
+      const rows: (string | number)[][] = [
+        ["No.", "품목코드", "제조사", "입고예정수량", "기입고수량", "비고"],
+        ...targets.map(({ item, origIdx }, i) => [
+          i + 1,
+          item.색상코드,
+          item.제조사,
+          item.신규 ?? 0,
+          parseInt(preQty[origIdx] ?? "") || 0,
+          item.비고 ?? "",
+        ]),
+      ];
+
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "입고예정");
+      const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+      const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${kstDateStr()}입고예정품목.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch {
       toast.error("입고예정 엑셀 생성 실패");
     }
