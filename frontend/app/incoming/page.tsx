@@ -120,6 +120,9 @@ async function extractDrumsFromExcel(file: File): Promise<ExtractedDrum[]> {
 }
 
 // ── IncomingListDialog ─────────────────────────────────────────────────────────
+type SortKey = "색상코드" | "제조사" | "신규" | "비고";
+type SortDir = "asc" | "desc";
+
 function IncomingListDialog({
   planItems,
   onClose,
@@ -132,22 +135,73 @@ function IncomingListDialog({
     [planItems]
   );
   const [preQty, setPreQty] = useState<Record<number, string>>({});
+  const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  // 원본 인덱스를 유지한 채 정렬
+  const sortedItems = useMemo(() => {
+    const indexed = incItems.map((item, origIdx) => ({ item, origIdx }));
+    if (!sortKey) return indexed;
+    return [...indexed].sort((a, b) => {
+      let av: string | number = "";
+      let bv: string | number = "";
+      if (sortKey === "신규") {
+        av = a.item.신규 ?? 0;
+        bv = b.item.신규 ?? 0;
+      } else {
+        av = String(a.item[sortKey] ?? "");
+        bv = String(b.item[sortKey] ?? "");
+      }
+      if (av < bv) return sortDir === "asc" ? -1 : 1;
+      if (av > bv) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [incItems, sortKey, sortDir]);
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  }
+
+  const allChecked = checked.size === incItems.length && incItems.length > 0;
+  const someChecked = checked.size > 0 && !allChecked;
+
+  function toggleAll() {
+    if (allChecked) setChecked(new Set());
+    else setChecked(new Set(incItems.map((_, i) => i)));
+  }
 
   const totalPlan = incItems.reduce((s, i) => s + (i.신규 ?? 0), 0);
   const totalPre = Object.values(preQty).reduce((s, v) => s + (parseInt(v) || 0), 0);
 
-  async function handleDownload() {
+  async function handleDownload(selectedOnly: boolean) {
     try {
-      const items = incItems.map((item, i) => ({
-        ...item,
-        기입고수량: parseInt(preQty[i] ?? "") || 0,
-      }));
+      const targets = selectedOnly
+        ? incItems.filter((_, i) => checked.has(i))
+        : incItems;
+      const items = targets.map((item, i) => {
+        const origIdx = incItems.indexOf(item);
+        return { ...item, 기입고수량: parseInt(preQty[origIdx] ?? "") || 0 };
+      });
       const data = await generateIncomingExcel(items);
       downloadBase64(data.excel_base64, `${kstDateStr()}입고예정품목.xlsx`);
     } catch {
       toast.error("입고예정 엑셀 생성 실패");
     }
   }
+
+  function SortIcon({ col }: { col: SortKey }) {
+    if (sortKey !== col) return <span className="ml-1 text-gray-300">↕</span>;
+    return <span className="ml-1 text-blue-500">{sortDir === "asc" ? "↑" : "↓"}</span>;
+  }
+
+  const sortableCols: { label: string; key: SortKey }[] = [
+    { label: "품목코드", key: "색상코드" },
+    { label: "제조사", key: "제조사" },
+    { label: "입고예정수량", key: "신규" },
+    { label: "비고", key: "비고" },
+  ];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
@@ -159,40 +213,82 @@ function IncomingListDialog({
           <h3 className="font-semibold text-gray-800">입고예정 품목 리스트</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
-        <div className="px-5 py-3 border-b border-gray-100 flex justify-end">
-          <Button variant="secondary" size="sm" onClick={handleDownload}>
-            <Download size={14} /> 입고예정 엑셀 다운로드
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2 justify-end">
+          {checked.size > 0 && (
+            <Button variant="secondary" size="sm" onClick={() => handleDownload(true)}>
+              <Download size={14} /> 선택 엑셀 다운로드 ({checked.size})
+            </Button>
+          )}
+          <Button variant="secondary" size="sm" onClick={() => handleDownload(false)}>
+            <Download size={14} /> 전체 엑셀 다운로드
           </Button>
         </div>
         <div className="overflow-auto flex-1 px-2">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 sticky top-0">
               <tr>
-                {["#", "품목코드", "제조사", "기입고수량", "입고예정수량", "비고"].map(h => (
-                  <th key={h} className="py-2 px-3 text-left text-xs font-semibold text-gray-500">{h}</th>
+                <th className="py-2 px-3">
+                  <input
+                    type="checkbox"
+                    checked={allChecked}
+                    ref={el => { if (el) el.indeterminate = someChecked; }}
+                    onChange={toggleAll}
+                    className="cursor-pointer"
+                  />
+                </th>
+                <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">#</th>
+                {sortableCols.map(({ label, key }) => (
+                  <th
+                    key={label}
+                    className="py-2 px-3 text-left text-xs font-semibold text-gray-500 cursor-pointer select-none hover:text-gray-700 whitespace-nowrap"
+                    onClick={() => toggleSort(key)}
+                  >
+                    {label}<SortIcon col={key} />
+                  </th>
                 ))}
+                <th className="py-2 px-3 text-left text-xs font-semibold text-gray-500">기입고수량</th>
               </tr>
             </thead>
             <tbody>
-              {incItems.map((item, i) => (
-                <tr key={i} className="border-t border-gray-100">
-                  <td className="py-1.5 px-3 text-xs text-gray-400">{i + 1}</td>
+              {sortedItems.map(({ item, origIdx }, displayIdx) => (
+                <tr
+                  key={origIdx}
+                  className={cn("border-t border-gray-100 cursor-pointer", checked.has(origIdx) ? "bg-blue-50" : "hover:bg-gray-50")}
+                  onClick={() => setChecked(prev => {
+                    const next = new Set(prev);
+                    next.has(origIdx) ? next.delete(origIdx) : next.add(origIdx);
+                    return next;
+                  })}
+                >
+                  <td className="py-1.5 px-3 text-center" onClick={e => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={checked.has(origIdx)}
+                      onChange={e => setChecked(prev => {
+                        const next = new Set(prev);
+                        e.target.checked ? next.add(origIdx) : next.delete(origIdx);
+                        return next;
+                      })}
+                      className="cursor-pointer"
+                    />
+                  </td>
+                  <td className="py-1.5 px-3 text-xs text-gray-400">{displayIdx + 1}</td>
                   <td className="py-1.5 px-3 font-mono text-xs font-medium">{item.색상코드}</td>
                   <td className="py-1.5 px-3 text-xs text-gray-600">{item.제조사}</td>
-                  <td className="py-1.5 px-3">
+                  <td className="py-1.5 px-3 text-xs text-center font-semibold">{item.신규}</td>
+                  <td className="py-1.5 px-3 text-xs text-gray-400">{item.비고 ?? ""}</td>
+                  <td className="py-1.5 px-3" onClick={e => e.stopPropagation()}>
                     <input
                       type="text"
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      value={preQty[i] ?? ""}
+                      value={preQty[origIdx] ?? ""}
                       placeholder="0"
-                      onChange={e => setPreQty(prev => ({ ...prev, [i]: e.target.value.replace(/[^0-9]/g, "") }))}
+                      onChange={e => setPreQty(prev => ({ ...prev, [origIdx]: e.target.value.replace(/[^0-9]/g, "") }))}
                       onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
                       className="w-16 border border-gray-300 rounded px-2 py-0.5 text-xs text-center"
                     />
                   </td>
-                  <td className="py-1.5 px-3 text-xs text-center font-semibold">{item.신규}</td>
-                  <td className="py-1.5 px-3 text-xs text-gray-400">{item.비고 ?? ""}</td>
                 </tr>
               ))}
             </tbody>
@@ -200,6 +296,7 @@ function IncomingListDialog({
         </div>
         <div className="px-5 py-3 border-t border-gray-200 bg-green-50 rounded-b-xl text-sm text-green-800 font-medium">
           총 {incItems.length}개 품목 | 입고예정: {totalPlan}개 | 기입고: {totalPre}개 | 잔여: {totalPlan - totalPre}개
+          {checked.size > 0 && <span className="ml-3 text-blue-700">({checked.size}개 선택됨)</span>}
         </div>
       </div>
     </div>
