@@ -178,12 +178,12 @@ function IncomingListDialog({
   async function handleDownload(selectedOnly: boolean) {
     try {
       const targets = selectedOnly
-        ? incItems.filter((_, i) => checked.has(i))
-        : incItems;
-      const items = targets.map((item, i) => {
-        const origIdx = incItems.indexOf(item);
-        return { ...item, 기입고수량: parseInt(preQty[origIdx] ?? "") || 0 };
-      });
+        ? sortedItems.filter(({ origIdx }) => checked.has(origIdx))
+        : sortedItems;
+      const items = targets.map(({ item, origIdx }) => ({
+        ...item,
+        기입고수량: parseInt(preQty[origIdx] ?? "") || 0,
+      }));
       const data = await generateIncomingExcel(items);
       downloadBase64(data.excel_base64, `${kstDateStr()}입고예정품목.xlsx`);
     } catch {
