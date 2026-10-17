@@ -16,6 +16,7 @@ import { fileToBase64, downloadBase64 } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { RefreshCw, Download, ChevronDown, ChevronUp, X } from "lucide-react";
 import * as XLSX from "xlsx";
+import type ExcelJS from "exceljs";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface PlanItem {
@@ -194,32 +195,73 @@ function IncomingListDialog({
 
   const totalPlan = incItems.reduce((s, i) => s + (i.신규 ?? 0), 0);
 
-  function handleDownload(selectedOnly: boolean) {
+  async function handleDownload(selectedOnly: boolean) {
+    const targets = selectedOnly
+      ? sortedItems.filter(({ origIdx }) => checked.has(origIdx))
+      : sortedItems;
     try {
-      const targets = selectedOnly
-        ? sortedItems.filter(({ origIdx }) => checked.has(origIdx))
-        : sortedItems;
+      const ExcelJS = (await import("exceljs")).default;
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("입고예정");
 
-      const rows: (string | number)[][] = [
-        ["No.", "품목코드", "제조사", "재고수량", "현재위치", "입고예정수량", "비고"],
-        ...targets.map(({ item }, i) => {
-          const inv = invMap[item.색상코드];
-          return [
-            i + 1,
-            item.색상코드,
-            item.제조사,
-            inv?.qty ?? item.재고 ?? 0,
-            inv?.sectors.join(", ") ?? "-",
-            item.신규 ?? 0,
-            item.비고 ?? "",
-          ];
-        }),
+      ws.columns = [
+        { width: 6 },
+        { width: 16 },
+        { width: 14 },
+        { width: 10 },
+        { width: 22 },
+        { width: 14 },
+        { width: 14 },
       ];
 
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "입고예정");
-      const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+      const HEADER_FILL: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2F3542" } };
+      const SUM_FILL: ExcelJS.Fill   = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDFE4EA" } };
+      const THIN: ExcelJS.Border = { style: "thin", color: { argb: "FFBFBFBF" } };
+      const BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
+      const CENTER: Partial<ExcelJS.Alignment> = { horizontal: "center", vertical: "middle", wrapText: true };
+
+      // 헤더
+      const hdr = ws.addRow(["No.", "품목코드", "제조사", "재고수량", "현재위치", "입고예정수량", "비고"]);
+      hdr.height = 20;
+      hdr.eachCell(cell => {
+        cell.fill = HEADER_FILL;
+        cell.font = { name: "맑은 고딕", size: 11, bold: true, color: { argb: "FFFFFFFF" } };
+        cell.alignment = CENTER;
+        cell.border = BORDER;
+      });
+
+      // 데이터
+      targets.forEach(({ item }, i) => {
+        const inv = invMap[item.색상코드];
+        const row = ws.addRow([
+          i + 1,
+          item.색상코드,
+          item.제조사,
+          inv?.qty ?? item.재고 ?? 0,
+          inv?.sectors.join(", ") ?? "-",
+          item.신규 ?? 0,
+          item.비고 ?? "",
+        ]);
+        row.eachCell(cell => {
+          cell.font = { name: "맑은 고딕", size: 10 };
+          cell.alignment = CENTER;
+          cell.border = BORDER;
+        });
+      });
+
+      // 합계
+      const n = targets.length;
+      const sumRow = ws.addRow(["합계", "", "", { formula: `SUM(D2:D${n + 1})` }, "", { formula: `SUM(F2:F${n + 1})` }, ""]);
+      sumRow.eachCell(cell => {
+        cell.fill = SUM_FILL;
+        cell.font = { name: "맑은 고딕", size: 10, bold: true };
+        cell.alignment = CENTER;
+        cell.border = BORDER;
+      });
+
+      ws.views = [{ state: "frozen", ySplit: 1 }];
+
+      const buf = await wb.xlsx.writeBuffer();
       const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
