@@ -18,7 +18,8 @@ import json
 import os
 import time
 
-TOKEN_TTL_SEC = 24 * 60 * 60  # 24시간
+TOKEN_TTL_SEC = 24 * 60 * 60  # 24시간 (기본, 모바일)
+WEB_TOKEN_TTL_SEC = 8 * 60 * 60  # 8시간 (웹 로그인: client="web")
 
 
 def _secret() -> bytes:
@@ -39,14 +40,16 @@ def legacy_token(employee_id: str, password: str) -> str:
     return hashlib.sha256(f"{employee_id}:{password}".encode()).hexdigest()[:32]
 
 
-def create_token(employee_id: str, name: str, role: str, legacy_password: str = "") -> str:
+def create_token(employee_id: str, name: str, role: str, legacy_password: str = "",
+                 ttl_sec: int | None = None) -> str:
     key = _secret()
     if not key:
         return legacy_token(employee_id, legacy_password)
-    payload = _b64(json.dumps(
-        {"eid": employee_id, "name": name, "role": role, "exp": int(time.time()) + TOKEN_TTL_SEC},
-        ensure_ascii=False, separators=(",", ":"),
-    ).encode())
+    ttl = ttl_sec if ttl_sec and 0 < ttl_sec <= TOKEN_TTL_SEC else TOKEN_TTL_SEC
+    body = {"eid": employee_id, "name": name, "role": role, "exp": int(time.time()) + ttl}
+    if ttl != TOKEN_TTL_SEC:
+        body["ttl"] = ttl  # 기본(24h)이 아닌 수명은 갱신 시 유지하려고 토큰에 기록
+    payload = _b64(json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode())
     sig = _b64(hmac.new(key, payload.encode(), hashlib.sha256).digest())
     return f"{payload}.{sig}"
 
@@ -76,10 +79,14 @@ def renew_token(user: dict, min_interval_sec: int = 600) -> str | None:
     try:
         if not _secret():
             return None
+        ttl = int(user.get("ttl") or TOKEN_TTL_SEC)
+        if not 0 < ttl <= TOKEN_TTL_SEC:
+            ttl = TOKEN_TTL_SEC
         remaining = int(user.get("exp", 0)) - time.time()
-        if remaining > TOKEN_TTL_SEC - min_interval_sec:
+        if remaining > ttl - min_interval_sec:
             return None
-        return create_token(str(user["eid"]), str(user.get("name", "")), str(user.get("role", "user")))
+        return create_token(str(user["eid"]), str(user.get("name", "")), str(user.get("role", "user")),
+                            ttl_sec=ttl)
     except Exception:
         return None
 

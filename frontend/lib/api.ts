@@ -17,7 +17,22 @@ api.interceptors.request.use((config) => {
 
 // 토큰 만료/무효 시 로그인 화면으로 이동 (서버 AUTH_MODE=enforce 일 때만 발생)
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    // 서버가 내려준 갱신 토큰 저장 (쓰는 동안 만료가 계속 연장됨)
+    try {
+      const fresh = res.headers?.["x-refresh-token"];
+      if (typeof window !== "undefined" && fresh) {
+        localStorage.setItem("kg_token", fresh);
+        const raw = localStorage.getItem("kg_user");
+        if (raw) {
+          const user = JSON.parse(raw);
+          user.token = fresh;
+          localStorage.setItem("kg_user", JSON.stringify(user));
+        }
+      }
+    } catch {}
+    return res;
+  },
   (error) => {
     if (
       typeof window !== "undefined" &&
@@ -35,7 +50,7 @@ api.interceptors.response.use(
 
 // ── Auth ──
 export async function login(employee_id: string, password: string) {
-  const { data } = await api.post("/api/login", { employee_id, password });
+  const { data } = await api.post("/api/login", { employee_id, password, client: "web" });
   return data;
 }
 
