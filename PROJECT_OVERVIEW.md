@@ -104,7 +104,7 @@ paint-crosschecker/
 | `AUTH_MODE` | `off`(기본, 검증 안 함) / `warn`(실패를 로그만) / `enforce`(401·403 차단). §5 참고 |
 | `AUTH_MOBILE_EXEMPT` | 기본 `1`: 모바일 앱이 쓰는 엔드포인트는 토큰 없이 허용. 모바일이 토큰을 보내게 된 뒤 `0` |
 | `AUTH_SECRET` | 토큰 HMAC 서명 키 (없으면 `SUPABASE_SERVICE_KEY` 사용, 둘 다 없으면 구형 토큰) |
-| `ADMIN_PASSWORD` | 폴백 `admin` 계정 비밀번호 (미설정 시 코드 기본값 + 기동 시 경고) |
+| `ADMIN_PASSWORD` | 폴백 `admin` 계정 비밀번호. **설정된 경우에만 폴백 admin이 활성화**된다(미설정 시 비활성 + 기동 시 경고). 운영(Railway)에는 설정됨 |
 | `CORS_ORIGINS` | 쉼표 구분 허용 도메인 (미설정 시 `*`) |
 
 ### 프론트 / 모바일 설정
@@ -204,7 +204,7 @@ paint-crosschecker/
 
 ### 로그인 흐름 (`POST /api/login`, `server.py:70`)
 1. Supabase `app_users`에서 `authenticate_app_user(employee_id, password)` (PBKDF2 검증).
-2. 실패 시 폴백: 코드에 하드코딩된 `admin` 계정 + 환경변수 `STAFF_<사번>="비밀번호,이름"`.
+2. 실패 시 폴백: 환경변수 `ADMIN_PASSWORD`가 설정돼 있을 때만 `admin` 계정(소스에 기본 비밀번호 없음) + 환경변수 `STAFF_<사번>="비밀번호,이름"`.
 3. 둘 다 실패 → 401 `사번 또는 비밀번호가 올바르지 않습니다.`
 4. 응답: `{success, token, name, employee_id, role, menu_permissions}`.
    - 토큰: `backend/utils/auth_token.py`의 HMAC-SHA256 서명 토큰 `base64url(payload).base64url(sig)`, payload=`{eid,name,role,exp}`, 유효 24시간. 서명 키(`AUTH_SECRET`/`SUPABASE_SERVICE_KEY`)가 없으면 구형 `sha256(id:pw)[:32]` 토큰으로 폴백(검증 불가).
@@ -222,7 +222,8 @@ paint-crosschecker/
 
 ### ⚠️ 남은 보안 사항
 - `AUTH_MODE`가 `off`인 동안은 모든 `/api/*`가 여전히 무인증이다. 모바일 엔드포인트는 `AUTH_MOBILE_EXEMPT=1` 동안 enforce에서도 무인증.
-- `ADMIN_PASSWORD` 미설정이면 소스의 기본 admin 비밀번호가 그대로 유효하다.
+- 폴백 계정(`admin`, `STAFF_*`)으로 로그인하면 서버는 항상 `role: admin`으로 처리한다. `STAFF_kg`처럼 `app_users`에도 있는 사번은 비밀번호가 두 개로 동작한다. `AUTH_MODE=enforce` 전에 재검토 필요.
+- 과거 커밋(8/19~)에 예전 기본 admin 비밀번호가 남아 있다. 운영 비밀번호는 이미 교체됐지만 기록 자체는 남는다.
 - `CORS_ORIGINS` 미설정이면 전체 허용.
 
 ### 프론트 권한 모델 (`frontend/lib/auth.ts`)
@@ -421,7 +422,7 @@ POST /api/worklog → work_items 교체 + daily_detail upsert
 ## 11. 알려진 이슈 / 주의사항 (현재 코드 기준)
 
 1. **서버 인증은 구현됐으나 기본 꺼짐**(`AUTH_MODE=off`). 활성화 전까지 무인증, CORS 전체 허용. 모바일 앱은 토큰을 안 보냄. (§5)
-2. **하드코딩 `admin` 기본 비밀번호**: `ADMIN_PASSWORD` 환경변수 설정 시 대체됨.
+2. **폴백 `admin`은 `ADMIN_PASSWORD` 환경변수가 있어야만 동작**(소스 기본값 제거됨). 비밀번호는 Railway 변수로만 관리.
 3. `supabase_schema.sql`이 실제 스키마와 불일치(누락 테이블·컬럼). 새 환경 구축 시 코드 기준으로 보완해야 함.
 4. 백엔드 `SECTORS` 상수와 프론트 `SECTORS` 불일치(`창고주위` vs `창고뒤` 등). 등록 시 서버가 섹터명을 검증하지 않아 임의 문자열 저장 가능.
 5. `leaves`/`work_items` 저장은 "전체(또는 날짜) 삭제 후 재삽입" 방식 → 동시 편집 시 덮어쓰기 위험.
