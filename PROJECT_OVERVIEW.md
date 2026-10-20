@@ -103,6 +103,7 @@ paint-crosschecker/
 | `TEAM_NAME` | 작업일지 엑셀 제목에 들어가는 팀명 |
 | `AUTH_MODE` | `off`(기본, 검증 안 함) / `warn`(실패를 로그만) / `enforce`(401·403 차단). §5 참고 |
 | `AUTH_MOBILE_EXEMPT` | 기본 `1`: 모바일 앱이 쓰는 엔드포인트는 토큰 없이 허용. 모바일이 토큰을 보내게 된 뒤 `0` |
+| `READONLY_IDS` | 쉼표 구분 계정 ID 목록(예: `hermes`). 이 계정은 조회(GET)만 가능하고 POST/PUT/PATCH/DELETE는 403 `READ_ONLY`. `AUTH_MODE=enforce`에서만 차단(warn은 로그). 외부 에이전트(Hermes)용 계정은 `STAFF_<id>="비밀번호,이름"`으로 만들고 여기에 ID를 넣는다 |
 | `AUTH_SECRET` | 토큰 HMAC 서명 키 (없으면 `SUPABASE_SERVICE_KEY` 사용, 둘 다 없으면 구형 토큰) |
 | `ADMIN_PASSWORD` | 폴백 `admin` 계정 비밀번호. **설정된 경우에만 폴백 admin이 활성화**된다(미설정 시 비활성 + 기동 시 경고). 운영(Railway)에는 설정됨 |
 | `CORS_ORIGINS` | 쉼표 구분 허용 도메인 (미설정 시 `*`) |
