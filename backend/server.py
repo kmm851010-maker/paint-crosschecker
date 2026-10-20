@@ -157,12 +157,12 @@ def get_api_key(api_key: str = "") -> str:
 
 
 # --- 로그인 ---
-STAFF_ACCOUNTS = {
-    # ADMIN_PASSWORD 환경변수로 교체 가능. 미설정 시 기존 기본값 유지(잠김 방지).
-    "admin": {"password": os.getenv("ADMIN_PASSWORD") or "kgsteel1234", "name": "관리자"},
-}
-if not os.getenv("ADMIN_PASSWORD"):
-    print("[WARN] ADMIN_PASSWORD 미설정: 기본 관리자 비밀번호 사용 중. Railway 환경변수로 설정하세요.")
+STAFF_ACCOUNTS = {}
+# 폴백 admin 은 ADMIN_PASSWORD 환경변수가 설정된 경우에만 활성화 (소스에 기본 비밀번호 없음).
+if os.getenv("ADMIN_PASSWORD"):
+    STAFF_ACCOUNTS["admin"] = {"password": os.getenv("ADMIN_PASSWORD"), "name": "관리자"}
+else:
+    print("[WARN] ADMIN_PASSWORD 미설정: 폴백 admin 계정이 비활성화되었습니다.")
 
 for key, val in os.environ.items():
     if key.startswith("STAFF_"):
