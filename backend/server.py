@@ -199,20 +199,25 @@ async def login(req: LoginRequest):
         if user:
             role = user.get("role", "user")
             token = create_token(req.employee_id, user["name"], role, req.password)
+            logger.warning("[LOGIN] 성공 id=%s 경로=app_users role=%s", req.employee_id, role)
             return {
                 "success": True, "token": token,
                 "name": user["name"], "employee_id": req.employee_id,
                 "role": role,
                 "menu_permissions": user.get("menu_permissions"),
             }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[LOGIN] app_users 조회 오류 id=%s (%s) - 폴백 계정으로 진행", req.employee_id, type(e).__name__)
     # 2) 하드코딩 계정 폴백 (admin 등)
     account = STAFF_ACCOUNTS.get(req.employee_id)
     if not account or account["password"] != req.password:
+        logger.warning("[LOGIN] 실패 id=%s", req.employee_id)
         raise HTTPException(status_code=401, detail="사번 또는 비밀번호가 올바르지 않습니다.")
-    token = create_token(req.employee_id, account["name"], "admin", account["password"])
-    return {"success": True, "token": token, "name": account["name"], "employee_id": req.employee_id, "role": "admin"}
+    # 폴백 계정 중 관리자는 admin 하나뿐. 그 외(STAFF_kg 등)는 일반 권한.
+    role = "admin" if req.employee_id == "admin" else "user"
+    token = create_token(req.employee_id, account["name"], role, account["password"])
+    logger.warning("[LOGIN] 성공 id=%s 경로=폴백(STAFF/ADMIN) role=%s", req.employee_id, role)
+    return {"success": True, "token": token, "name": account["name"], "employee_id": req.employee_id, "role": role}
 
 
 @app.get("/health")
