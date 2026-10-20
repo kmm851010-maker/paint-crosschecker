@@ -32,6 +32,7 @@ import { APPROVED_PRODUCTS } from "../src/constants/approvedProducts";
 const ASYNC_KEY_APPROVED = "user_approved_products_v1";
 const ASYNC_KEY_SECTOR_CACHE = "sector_inventory_cache_v1";
 const ASYNC_KEY_KNOWN_DRUMS_CACHE = "known_drums_cache_v1";
+import { authFetch } from "../src/services/authFetch";
 import { registerDrums, getSectorInventory, setDrumReturnStatus, getProductWhitelist, getKnownLots, getKnownLotsMap, type DrumItem } from "../src/services/api";
 
 // ── 제조사 코드 ──
@@ -1449,7 +1450,7 @@ export default function InventoryScreen() {
                     const [y, m, d] = histToDate.split("-").map(Number);
                     const nextDay = new Date(y, m - 1, d + 1);
                     const toDateStr = `${nextDay.getFullYear()}-${String(nextDay.getMonth()+1).padStart(2,"0")}-${String(nextDay.getDate()).padStart(2,"0")}`;
-                    const res = await fetch(`${API_BASE_URL}/api/inventory/history?from_dt=${encodeURIComponent(histFromDate + " 06:30")}&to_dt=${encodeURIComponent(toDateStr + " 06:30")}`);
+                    const res = await authFetch(`${API_BASE_URL}/api/inventory/history?from_dt=${encodeURIComponent(histFromDate + " 06:30")}&to_dt=${encodeURIComponent(toDateStr + " 06:30")}`);
                     const json = await res.json();
                     setHistData(json.history ?? []);
                   } catch { Alert.alert("오류", "이력 조회 실패"); }
