@@ -72,3 +72,11 @@ CREATE INDEX IF NOT EXISTS idx_leaves_name             ON leaves (name);
 CREATE INDEX IF NOT EXISTS idx_work_items_date         ON work_items (date);
 CREATE INDEX IF NOT EXISTS idx_inventory_sector        ON inventory (sector);
 CREATE INDEX IF NOT EXISTS idx_inventory_history_lot   ON inventory_history (lot);
+
+-- 권한 (Supabase 2026-10-30 변경: public 새 테이블은 명시적 GRANT 필요)
+-- 백엔드는 service_role 키만 사용하므로 anon/authenticated 에는 부여하지 않는다.
+-- 새 테이블을 추가할 때마다 아래 GRANT 를 같은 SQL 에 함께 넣을 것.
+GRANT SELECT, INSERT, UPDATE, DELETE ON
+    schedule_notes, leaves, daily_detail, work_items, inventory, inventory_history
+TO service_role;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO service_role;
