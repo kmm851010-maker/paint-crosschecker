@@ -33,6 +33,7 @@ const ASYNC_KEY_APPROVED = "user_approved_products_v1";
 const ASYNC_KEY_SECTOR_CACHE = "sector_inventory_cache_v1";
 const ASYNC_KEY_KNOWN_DRUMS_CACHE = "known_drums_cache_v1";
 import { authFetch } from "../src/services/authFetch";
+import { VERSION_LABEL } from "../src/constants/version";
 import { registerDrums, getSectorInventory, setDrumReturnStatus, getProductWhitelist, getKnownLots, getKnownLotsMap, type DrumItem } from "../src/services/api";
 
 // ── 제조사 코드 ──
@@ -378,6 +379,14 @@ const SECTORS = [
 ];
 const CHECKOUT = "라인입고";
 type Mode = "idle" | "scanning" | "sectorPick" | "status";
+
+// 헤더 제목 + 작은 버전 표시 (OTA 적용 여부 확인용)
+const renderMainHeaderTitle = () => (
+  <View>
+    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 17 }}>KG OPS — 재고 관리</Text>
+    {!!VERSION_LABEL && <Text style={{ color: "#C4B5FD", fontSize: 10 }}>{VERSION_LABEL}</Text>}
+  </View>
+);
 
 export default function InventoryScreen() {
   const insets = useSafeAreaInsets();
@@ -1887,7 +1896,7 @@ export default function InventoryScreen() {
   if (!dataReady) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#111827" }}>
-        <Stack.Screen options={{ title: "KG OPS — 재고 관리" }} />
+        <Stack.Screen options={{ title: "KG OPS — 재고 관리", headerTitle: renderMainHeaderTitle }} />
         <ActivityIndicator size="large" color={COLORS.primary} />
         <Text style={{ color: "#9CA3AF", marginTop: 16, fontSize: 15 }}>데이터 로드 중...</Text>
       </View>
@@ -1897,7 +1906,7 @@ export default function InventoryScreen() {
   // ── 메인(idle) 화면 ──
   return (
     <>
-      <Stack.Screen options={{ title: "KG OPS — 재고 관리" }} />
+      <Stack.Screen options={{ title: "KG OPS — 재고 관리", headerTitle: renderMainHeaderTitle }} />
       {knownLotsError && (
         <View style={styles.knownLotsErrorBanner}>
           <Text style={styles.knownLotsErrorText}>⚠ 입고 기준 LOT 로드 실패 — LOT 검증 없이 동작 중</Text>

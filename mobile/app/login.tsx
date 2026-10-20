@@ -14,6 +14,7 @@ import {
 import { router, Stack } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS, API_BASE_URL } from "../src/constants/config";
+import { VERSION_LABEL } from "../src/constants/version";
 
 export default function LoginScreen() {
   const [employeeId, setEmployeeId] = useState("");
@@ -140,6 +141,7 @@ export default function LoginScreen() {
 
           {/* 하단 */}
           <Text style={styles.footer}>KG Steel Co., Ltd.</Text>
+          {!!VERSION_LABEL && <Text style={styles.version}>{VERSION_LABEL}</Text>}
         </View>
       </KeyboardAvoidingView>
     </>
@@ -226,5 +228,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 40,
     letterSpacing: 1,
+  },
+  version: {
+    textAlign: "center",
+    color: COLORS.textSecondary,
+    fontSize: 10,
+    marginTop: 6,
+    opacity: 0.7,
   },
 });
