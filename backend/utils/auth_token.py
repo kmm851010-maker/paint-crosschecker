@@ -91,6 +91,12 @@ def renew_token(user: dict, min_interval_sec: int = 600) -> str | None:
         return None
 
 
+def is_readonly(user: dict) -> bool:
+    """READONLY_IDS(쉼표 구분 환경변수)에 든 계정은 조회(GET)만 가능. 예: READONLY_IDS=hermes"""
+    ids = {s.strip() for s in os.getenv("READONLY_IDS", "").split(",") if s.strip()}
+    return user.get("eid") in ids
+
+
 def is_admin(user: dict) -> bool:
     """관리자는 'admin' 계정 하나뿐 (프론트 isAdmin()과 동일).
     app_users.role 값은 화면에서 변경할 수 없고 kg 등에 'admin'이 저장돼 있어 신뢰하지 않는다.

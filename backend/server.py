@@ -28,7 +28,7 @@ from modules.matcher import cross_check
 from modules.excel_generator import generate_report
 from modules.excel_converter import generate_incoming_plan_excel, convert_to_excel, convert_erp_filled_to_excel
 from utils.formatter import format_summary
-from utils.auth_token import create_token, verify_token, renew_token, is_admin, WEB_TOKEN_TTL_SEC
+from utils.auth_token import create_token, verify_token, renew_token, is_admin, is_readonly, WEB_TOKEN_TTL_SEC
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
@@ -98,6 +98,15 @@ class AuthGuard:
             user = verify_token(token) if token else None
         except Exception:
             user = None
+
+        # 읽기 전용 계정(READONLY_IDS)은 조회(GET/HEAD) 외 모든 요청 거부 (모바일 면제 경로 포함)
+        if user and method not in ("GET", "HEAD") and is_readonly(user):
+            if mode == "enforce":
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "읽기 전용 계정입니다.", "code": "READ_ONLY"},
+                ), None
+            logger.warning("[AUTH warn] 읽기 전용 계정의 쓰기 시도: %s %s (%s)", method, path, user.get("eid"))
 
         if os.getenv("AUTH_MOBILE_EXEMPT", "1") != "0" and (method, path) in _MOBILE_EXEMPT:
             if not user and mode == "warn":
