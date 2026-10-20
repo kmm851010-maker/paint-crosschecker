@@ -71,7 +71,7 @@ def _is_admin_only(method: str, path: str) -> bool:
 
 class AuthGuard:
     """순수 ASGI 미들웨어. AUTH_MODE=off 면 요청을 그대로 통과(오버헤드/동작 변화 없음).
-    판정 중 예외가 나면 로그만 남기고 요청을 그대로 통과시킨다(서버 가용성 우선).
+    판정 중 예외: off/warn 은 로그만 남기고 통과(가용성 우선), enforce 는 503 으로 거부.
     유효한 토큰이 오면 응답 헤더 X-Refresh-Token 으로 만료가 연장된 새 토큰을 내려준다."""
 
     def __init__(self, app):
@@ -88,12 +88,16 @@ class AuthGuard:
         if method == "OPTIONS" or not path.startswith("/api/") or path in _AUTH_PUBLIC:
             return None, None
 
-        token = ""
-        for k, v in scope.get("headers", []):
-            if k == b"x-auth-token":
-                token = v.decode("latin-1")
-                break
-        user = verify_token(token) if token else None
+        # 토큰 파싱 중 어떤 예외가 나도 "유효하지 않은 토큰"(=토큰 없음)으로 취급한다.
+        try:
+            token = ""
+            for k, v in scope.get("headers", []):
+                if k == b"x-auth-token":
+                    token = v.decode("latin-1")
+                    break
+            user = verify_token(token) if token else None
+        except Exception:
+            user = None
 
         if os.getenv("AUTH_MOBILE_EXEMPT", "1") != "0" and (method, path) in _MOBILE_EXEMPT:
             if not user and mode == "warn":
@@ -121,8 +125,18 @@ class AuthGuard:
         try:
             blocked, new_token = self._check(scope)
         except Exception:
-            logger.exception("[AUTH] 미들웨어 내부 오류 - 요청 그대로 통과")
-            blocked, new_token = None, None
+            if os.getenv("AUTH_MODE", "off").strip().lower() == "enforce":
+                # enforce: 판정 불가 요청은 통과시키지 않고 거부한다.
+                logger.exception("[AUTH] 미들웨어 내부 오류 - enforce 모드라 요청 거부")
+                blocked = JSONResponse(
+                    status_code=503,
+                    content={"detail": "인증 처리 중 오류가 발생했습니다.", "code": "AUTH_ERROR"},
+                )
+            else:
+                # off/warn: 서버 가용성 우선, 로그만 남기고 통과
+                logger.exception("[AUTH] 미들웨어 내부 오류 - 요청 그대로 통과")
+                blocked = None
+            new_token = None
         if blocked is not None:
             return await blocked(scope, receive, send)
         if new_token:
