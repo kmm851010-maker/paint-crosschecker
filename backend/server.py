@@ -28,7 +28,7 @@ from modules.matcher import cross_check
 from modules.excel_generator import generate_report
 from modules.excel_converter import generate_incoming_plan_excel, convert_to_excel, convert_erp_filled_to_excel
 from utils.formatter import format_summary
-from utils.auth_token import create_token, verify_token, renew_token, is_admin
+from utils.auth_token import create_token, verify_token, renew_token, is_admin, WEB_TOKEN_TTL_SEC
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
@@ -160,6 +160,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Refresh-Token"],  # 웹(브라우저)이 갱신된 토큰 헤더를 읽을 수 있도록
 )
 
 
@@ -188,17 +189,19 @@ for key, val in os.environ.items():
 class LoginRequest(BaseModel):
     employee_id: str
     password: str
+    client: str = ""  # "web" 이면 토큰 수명 8시간(쓰는 동안 연장), 그 외(모바일 등)는 24시간
 
 
 @app.post("/api/login")
 async def login(req: LoginRequest):
+    ttl = WEB_TOKEN_TTL_SEC if req.client == "web" else None
     # 1) Supabase app_users 테이블 인증 시도
     try:
         from utils.supabase_db import authenticate_app_user
         user = authenticate_app_user(req.employee_id, req.password)
         if user:
             role = user.get("role", "user")
-            token = create_token(req.employee_id, user["name"], role, req.password)
+            token = create_token(req.employee_id, user["name"], role, req.password, ttl_sec=ttl)
             logger.warning("[LOGIN] 성공 id=%s 경로=app_users role=%s", req.employee_id, role)
             return {
                 "success": True, "token": token,
@@ -215,7 +218,7 @@ async def login(req: LoginRequest):
         raise HTTPException(status_code=401, detail="사번 또는 비밀번호가 올바르지 않습니다.")
     # 폴백 계정 중 관리자는 admin 하나뿐. 그 외(STAFF_kg 등)는 일반 권한.
     role = "admin" if req.employee_id == "admin" else "user"
-    token = create_token(req.employee_id, account["name"], role, account["password"])
+    token = create_token(req.employee_id, account["name"], role, account["password"], ttl_sec=ttl)
     logger.warning("[LOGIN] 성공 id=%s 경로=폴백(STAFF/ADMIN) role=%s", req.employee_id, role)
     return {"success": True, "token": token, "name": account["name"], "employee_id": req.employee_id, "role": role}
 
