@@ -85,5 +85,7 @@ def renew_token(user: dict, min_interval_sec: int = 600) -> str | None:
 
 
 def is_admin(user: dict) -> bool:
-    """프론트 isAdmin()(employee_id == 'admin')과 서버 role 을 모두 인정."""
-    return user.get("role") == "admin" or user.get("eid") == "admin"
+    """관리자는 'admin' 계정 하나뿐 (프론트 isAdmin()과 동일).
+    app_users.role 값은 화면에서 변경할 수 없고 kg 등에 'admin'이 저장돼 있어 신뢰하지 않는다.
+    부분 권한 관리자가 필요해지면 이 함수를 기능별 권한 검사로 확장할 것."""
+    return user.get("eid") == "admin"

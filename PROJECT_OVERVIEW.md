@@ -213,7 +213,7 @@ paint-crosschecker/
 - `AUTH_MODE` 환경변수로 단계 제어. **기본 `off`라 동작 변화 없음.**
 - 검사 제외: OPTIONS, `/api/` 아닌 경로, `/api/login`, `/api/version`, `/health`, docs. `AUTH_MOBILE_EXEMPT!=0`이면 모바일 엔드포인트(GET history/known-lots/known-lots-map/product-whitelist/sectors, POST inventory/register·return-status)도 제외.
 - `warn`: 토큰 무효/관리자 아님을 로그만 남김. `enforce`: 401 `{code:"AUTH_REQUIRED"}`, 관리자 전용은 403.
-- 관리자 전용(서버 강제): `/api/employees*` 전체, `POST /api/inventory/delete-drums`, `DELETE /api/plan-history/{id}`. 관리자 판정 `is_admin()` = role=="admin" 또는 eid=="admin".
+- 관리자 전용(서버 강제): `/api/employees*` 전체, `POST /api/inventory/delete-drums`, `DELETE /api/plan-history/{id}`. 관리자 판정 `is_admin()` = eid=="admin" 하나뿐(app_users.role 값은 신뢰하지 않음 — kg 등에 role=admin이 저장돼 있으나 화면에서 변경 불가). 부분 권한 관리자가 필요해지면 기능별 권한 검사로 확장.
 - 구현은 순수 ASGI 미들웨어 `AuthGuard`(`off`면 요청을 그대로 통과, 판정 중 예외: off/warn은 로그만 남기고 통과, enforce는 503 `AUTH_ERROR`로 거부. 토큰 헤더 파싱 예외는 모두 "무효 토큰"으로 처리). CORS 미들웨어가 가장 바깥 레이어라 401/403에도 CORS 헤더가 붙는다.
 - **슬라이딩 만료**: 유효한 토큰으로 요청하면(마지막 발급 후 10분 이상 지났을 때) 응답 헤더 `X-Refresh-Token`으로 만료가 24시간 연장된 새 토큰을 내려준다. 모바일 `mobile/src/services/authFetch.ts`가 이를 저장하고 `X-Auth-Token`을 전송하며, 401(`AUTH_REQUIRED`)이면 로그인 화면으로 보낸다. 모바일 앱을 쓰는 동안은 계속 로그인이 유지되고, 24시간 이상 안 쓰면 재로그인 필요.
 - `warn` 모드에서는 모바일 면제 엔드포인트에 토큰이 없거나 무효인 요청도 로그로 남긴다(모든 기기가 토큰을 보내는지 확인용).
@@ -222,7 +222,7 @@ paint-crosschecker/
 
 ### ⚠️ 남은 보안 사항
 - `AUTH_MODE`가 `off`인 동안은 모든 `/api/*`가 여전히 무인증이다. 모바일 엔드포인트는 `AUTH_MOBILE_EXEMPT=1` 동안 enforce에서도 무인증.
-- 폴백 계정(`admin`, `STAFF_*`)으로 로그인하면 서버는 항상 `role: admin`으로 처리한다. `STAFF_kg`처럼 `app_users`에도 있는 사번은 비밀번호가 두 개로 동작한다. `AUTH_MODE=enforce` 전에 재검토 필요.
+- 폴백 계정은 `admin` 아이디만 `role: admin`, `STAFF_*`는 `role: user`로 처리한다. `STAFF_kg`처럼 `app_users`에도 있는 사번은 비밀번호가 두 개로 동작한다. `AUTH_MODE=enforce` 전에 재검토 필요.
 - 과거 커밋(8/19~)에 예전 기본 admin 비밀번호가 남아 있다. 운영 비밀번호는 이미 교체됐지만 기록 자체는 남는다.
 - `CORS_ORIGINS` 미설정이면 전체 허용.
 
