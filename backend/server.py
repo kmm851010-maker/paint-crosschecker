@@ -28,15 +28,121 @@ from modules.matcher import cross_check
 from modules.excel_generator import generate_report
 from modules.excel_converter import generate_incoming_plan_excel, convert_to_excel, convert_erp_filled_to_excel
 from utils.formatter import format_summary
+from utils.auth_token import create_token, verify_token, renew_token, is_admin
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
+import logging
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+logger = logging.getLogger("auth")
+
 app = FastAPI(title="페인트 입고 검증 API", version="2.0.0")
 
+# CORS_ORIGINS="https://a.com,https://b.com" 로 제한. 미설정 시 기존대로 전체 허용.
+_cors_env = os.getenv("CORS_ORIGINS", "").strip()
+_cors_origins = [o.strip() for o in _cors_env.split(",") if o.strip()] or ["*"]
+
+# --- 인증 미들웨어 (AUTH_MODE: off(기본) / warn / enforce) ---
+# 모바일 앱이 아직 토큰을 보내지 않으므로 AUTH_MOBILE_EXEMPT(기본 1)로 모바일 엔드포인트는 면제.
+_AUTH_PUBLIC = {"/api/login", "/api/version", "/health", "/docs", "/openapi.json", "/redoc"}
+_MOBILE_EXEMPT = {
+    ("GET", "/api/inventory/history"),
+    ("GET", "/api/inventory/known-lots"),
+    ("GET", "/api/inventory/known-lots-map"),
+    ("GET", "/api/inventory/product-whitelist"),
+    ("GET", "/api/inventory/sectors"),
+    ("POST", "/api/inventory/register"),
+    ("POST", "/api/inventory/return-status"),
+}
+
+
+def _is_admin_only(method: str, path: str) -> bool:
+    if path == "/api/employees" or path.startswith("/api/employees/"):
+        return True
+    if method == "POST" and path == "/api/inventory/delete-drums":
+        return True
+    if method == "DELETE" and path.startswith("/api/plan-history/"):
+        return True
+    return False
+
+
+class AuthGuard:
+    """순수 ASGI 미들웨어. AUTH_MODE=off 면 요청을 그대로 통과(오버헤드/동작 변화 없음).
+    판정 중 예외가 나면 로그만 남기고 요청을 그대로 통과시킨다(서버 가용성 우선).
+    유효한 토큰이 오면 응답 헤더 X-Refresh-Token 으로 만료가 연장된 새 토큰을 내려준다."""
+
+    def __init__(self, app):
+        self.app = app
+
+    def _check(self, scope):
+        """(차단 응답 또는 None, 갱신 토큰 또는 None) 반환."""
+        mode = os.getenv("AUTH_MODE", "off").strip().lower()
+        if mode not in ("warn", "enforce"):
+            return None, None
+
+        method = scope.get("method", "GET")
+        path = (scope.get("path") or "/").rstrip("/") or "/"
+        if method == "OPTIONS" or not path.startswith("/api/") or path in _AUTH_PUBLIC:
+            return None, None
+
+        token = ""
+        for k, v in scope.get("headers", []):
+            if k == b"x-auth-token":
+                token = v.decode("latin-1")
+                break
+        user = verify_token(token) if token else None
+
+        if os.getenv("AUTH_MOBILE_EXEMPT", "1") != "0" and (method, path) in _MOBILE_EXEMPT:
+            if not user and mode == "warn":
+                logger.warning("[AUTH warn] 모바일 면제 엔드포인트 토큰 없음/무효: %s %s", method, path)
+            return None, (renew_token(user) if user else None)
+
+        if not user:
+            if mode == "enforce":
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "로그인이 필요합니다.", "code": "AUTH_REQUIRED"},
+                ), None
+            logger.warning("[AUTH warn] 토큰 없음/무효: %s %s", method, path)
+            return None, None
+
+        if _is_admin_only(method, path) and not is_admin(user):
+            if mode == "enforce":
+                return JSONResponse(status_code=403, content={"detail": "관리자 권한이 필요합니다."}), None
+            logger.warning("[AUTH warn] 관리자 아님: %s %s (%s)", method, path, user.get("eid"))
+        return None, renew_token(user)
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            return await self.app(scope, receive, send)
+        try:
+            blocked, new_token = self._check(scope)
+        except Exception:
+            logger.exception("[AUTH] 미들웨어 내부 오류 - 요청 그대로 통과")
+            blocked, new_token = None, None
+        if blocked is not None:
+            return await blocked(scope, receive, send)
+        if new_token:
+            async def send_with_token(message):
+                if message.get("type") == "http.response.start":
+                    message["headers"] = list(message.get("headers", [])) + [
+                        (b"x-refresh-token", new_token.encode("latin-1"))
+                    ]
+                await send(message)
+            return await self.app(scope, receive, send_with_token)
+        return await self.app(scope, receive, send)
+
+
+app.add_middleware(AuthGuard)
+
+# CORS는 반드시 AuthGuard 보다 나중에 등록(= 가장 바깥 레이어)해야
+# AuthGuard 가 반환하는 401/403 응답에도 CORS 헤더가 붙어 브라우저가 응답을 읽을 수 있다.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -52,8 +158,11 @@ def get_api_key(api_key: str = "") -> str:
 
 # --- 로그인 ---
 STAFF_ACCOUNTS = {
-    "admin": {"password": "kgsteel1234", "name": "관리자"},
+    # ADMIN_PASSWORD 환경변수로 교체 가능. 미설정 시 기존 기본값 유지(잠김 방지).
+    "admin": {"password": os.getenv("ADMIN_PASSWORD") or "kgsteel1234", "name": "관리자"},
 }
+if not os.getenv("ADMIN_PASSWORD"):
+    print("[WARN] ADMIN_PASSWORD 미설정: 기본 관리자 비밀번호 사용 중. Railway 환경변수로 설정하세요.")
 
 for key, val in os.environ.items():
     if key.startswith("STAFF_"):
@@ -74,11 +183,12 @@ async def login(req: LoginRequest):
         from utils.supabase_db import authenticate_app_user
         user = authenticate_app_user(req.employee_id, req.password)
         if user:
-            token = hashlib.sha256(f"{req.employee_id}:{req.password}".encode()).hexdigest()[:32]
+            role = user.get("role", "user")
+            token = create_token(req.employee_id, user["name"], role, req.password)
             return {
                 "success": True, "token": token,
                 "name": user["name"], "employee_id": req.employee_id,
-                "role": user.get("role", "user"),
+                "role": role,
                 "menu_permissions": user.get("menu_permissions"),
             }
     except Exception:
@@ -87,7 +197,7 @@ async def login(req: LoginRequest):
     account = STAFF_ACCOUNTS.get(req.employee_id)
     if not account or account["password"] != req.password:
         raise HTTPException(status_code=401, detail="사번 또는 비밀번호가 올바르지 않습니다.")
-    token = hashlib.sha256(f"{req.employee_id}:{account['password']}".encode()).hexdigest()[:32]
+    token = create_token(req.employee_id, account["name"], "admin", account["password"])
     return {"success": True, "token": token, "name": account["name"], "employee_id": req.employee_id, "role": "admin"}
 
 

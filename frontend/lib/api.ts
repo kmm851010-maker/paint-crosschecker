@@ -15,6 +15,24 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// 토큰 만료/무효 시 로그인 화면으로 이동 (서버 AUTH_MODE=enforce 일 때만 발생)
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    if (
+      typeof window !== "undefined" &&
+      error?.response?.status === 401 &&
+      error?.response?.data?.code === "AUTH_REQUIRED" &&
+      !window.location.pathname.startsWith("/login")
+    ) {
+      localStorage.removeItem("kg_token");
+      localStorage.removeItem("kg_user");
+      window.location.href = "/login";
+    }
+    return Promise.reject(error);
+  }
+);
+
 // ── Auth ──
 export async function login(employee_id: string, password: string) {
   const { data } = await api.post("/api/login", { employee_id, password });
