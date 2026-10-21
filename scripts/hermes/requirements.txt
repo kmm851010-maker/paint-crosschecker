@@ -1,0 +1,1 @@
+# kg_daily_report.py 는 표준 라이브러리만 사용합니다. (Railway 크론 서비스의 파이썬 감지용 파일)
