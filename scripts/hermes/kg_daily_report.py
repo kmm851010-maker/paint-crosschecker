@@ -1,18 +1,24 @@
 """
 KG OPS 일일 아침 리포트 (Hermes 용, 조회 전용)
 
-사용:  python kg_daily_report.py [--date YYYY-MM-DD]
- - 기본: 오늘 영업일 기준 (06:30 이전이면 전날). 매일 07:30 발송이면 옵션 없이 실행.
- - 로그인 정보: 환경변수 또는 %LOCALAPPDATA%/hermes/.env 의
-   MYAPP_LOGIN_ID / MYAPP_LOGIN_PASSWORD (값은 절대 출력하지 않음)
- - 서버 주소: 환경변수 KG_API_URL (기본 https://kgcounter.up.railway.app)
-표준 라이브러리만 사용. 서버에는 로그인 POST 1회와 GET 1회만 보낸다.
+사용:
+  python kg_daily_report.py                 리포트를 화면에 출력 (확인용)
+  python kg_daily_report.py --send          리포트를 텔레그램 단체방으로 발송 (매일 07:30 스케줄용)
+  python kg_daily_report.py --find-chat-id  보고용 봇이 속한 대화방의 chat_id 확인 (최초 1회)
+  옵션: --date YYYY-MM-DD  (기본: 오늘 영업일, 06:30 이전이면 전날)
+
+설정값(환경변수, 없으면 이 스크립트와 같은 폴더의 .env, 그다음 %LOCALAPPDATA%/hermes/.env):
+  MYAPP_LOGIN_ID / MYAPP_LOGIN_PASSWORD   KG OPS 조회용 계정 (hermes)
+  KG_REPORT_BOT_TOKEN / KG_REPORT_CHAT_ID  보고용 텔레그램 봇 토큰 / 단체방 ID
+  KG_API_URL                               기본 https://kgcounter.up.railway.app
+값(비밀번호, 토큰)은 어떤 경우에도 출력하지 않는다. 표준 라이브러리만 사용.
 """
 import argparse
 import datetime as dt
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -25,16 +31,90 @@ def _env(name: str) -> str:
     v = os.getenv(name)
     if v:
         return v.strip()
-    path = os.path.join(os.getenv("LOCALAPPDATA", ""), "hermes", ".env")
-    try:
-        with open(path, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith(name + "="):
-                    return line.split("=", 1)[1].strip().strip('"').strip("'")
-    except OSError:
-        pass
+    paths = [os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"),
+             os.path.join(os.getenv("LOCALAPPDATA", ""), "hermes", ".env")]
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith(name + "="):
+                        return line.split("=", 1)[1].strip().strip('"').strip("'")
+        except OSError:
+            pass
     return ""
+
+
+def _tg(method: str, payload: dict) -> dict:
+    """텔레그램 Bot API 호출. 토큰이 URL에 들어가므로 오류 시 URL/토큰은 절대 출력하지 않는다."""
+    token = _env("KG_REPORT_BOT_TOKEN")
+    if not token:
+        raise RuntimeError("KG_REPORT_BOT_TOKEN 이 설정되지 않았습니다.")
+    r = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/{method}",
+        data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(r, timeout=30) as resp:
+        return json.loads(resp.read().decode())
+
+
+def _chunks(text: str, limit: int = 3800) -> list[str]:
+    """텔레그램 4096자 제한 대비: 줄 단위로 나눈다."""
+    out, cur = [], ""
+    for line in text.split("\n"):
+        while len(line) > limit:  # 한 줄이 너무 긴 경우 강제 분할
+            if cur:
+                out.append(cur)
+                cur = ""
+            out.append(line[:limit])
+            line = line[limit:]
+        if len(cur) + len(line) + 1 > limit and cur:
+            out.append(cur)
+            cur = line
+        else:
+            cur = f"{cur}\n{line}" if cur else line
+    if cur:
+        out.append(cur)
+    return out
+
+
+def find_chat_id() -> int:
+    try:
+        res = _tg("getUpdates", {"timeout": 0})
+    except urllib.error.HTTPError as e:
+        print(f"텔레그램 오류: HTTP {e.code} (토큰이 올바른지 확인하세요)")
+        return 1
+    except Exception as e:
+        print(f"조회 실패: {type(e).__name__} {e if isinstance(e, RuntimeError) else ''}")
+        return 1
+    seen = {}
+    for u in res.get("result", []):
+        m = u.get("message") or u.get("channel_post") or (u.get("my_chat_member") or {})
+        chat = m.get("chat") if m else None
+        if chat:
+            seen[chat["id"]] = f"{chat.get('type')} / {chat.get('title') or chat.get('username') or chat.get('first_name', '')}"
+    if not seen:
+        print("대화방을 찾지 못했습니다. 단체방에 봇을 초대한 뒤, 방에서 아무 메시지나 보내고 다시 실행하세요.")
+        return 1
+    for cid, desc in seen.items():
+        print(f"chat_id={cid}  ({desc})")
+    return 0
+
+
+def send_telegram(text: str) -> int:
+    chat_id = _env("KG_REPORT_CHAT_ID")
+    if not chat_id:
+        print("KG_REPORT_CHAT_ID 가 설정되지 않았습니다.")
+        return 1
+    try:
+        for part in _chunks(text):
+            _tg("sendMessage", {"chat_id": chat_id, "text": part})
+    except urllib.error.HTTPError as e:
+        print(f"텔레그램 발송 오류: HTTP {e.code}")
+        return 1
+    except Exception as e:
+        print(f"텔레그램 발송 실패: {type(e).__name__} {e if isinstance(e, RuntimeError) else ''}")
+        return 1
+    return 0
 
 
 def _req(path: str, token: str = "", body: dict | None = None):
@@ -53,7 +133,7 @@ def _by_product(items: list, with_lots: bool) -> list[str]:
         groups.setdefault(it.get("product") or "미상", []).append(it.get("lot", ""))
     out = []
     for product, lots in sorted(groups.items()):
-        line = f"  - {product} {len(lots)}통"
+        line = f"  - {product} {len(lots)}드럼"
         if with_lots:
             line += ": " + ", ".join(lots)
         out.append(line)
@@ -61,7 +141,7 @@ def _by_product(items: list, with_lots: bool) -> list[str]:
 
 
 def _section(title: str, items: list, with_lots: bool = True, split_key: str = "", split_label: str = "") -> list[str]:
-    head = f"\n■ {title}: {len(items)}통"
+    head = f"\n■ {title}: {len(items)}드럼"
     if split_key and items:
         cnt: dict[str, int] = {}
         for it in items:
@@ -88,22 +168,38 @@ def _worker_lines(shift: dict) -> list[str]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", default="")
+    ap.add_argument("--send", action="store_true")
+    ap.add_argument("--find-chat-id", action="store_true")
     args = ap.parse_args()
+    if args.find_chat_id:
+        return find_chat_id()
+
+    def fail(msg: str) -> int:
+        print(msg)
+        if args.send:  # 무인 실행 시 조용히 누락되지 않도록 단체방에 실패 알림
+            send_telegram(f"[KG OPS 일일 리포트] 오늘 리포트 생성 실패 ({msg}). 관리자 확인이 필요합니다.")
+        return 1
 
     uid, pw = _env("MYAPP_LOGIN_ID"), _env("MYAPP_LOGIN_PASSWORD")
     if not uid or not pw:
-        print("로그인 정보(MYAPP_LOGIN_ID / MYAPP_LOGIN_PASSWORD)를 찾지 못했습니다.")
-        return 1
-    try:
-        token = _req("/api/login", body={"employee_id": uid, "password": pw})["token"]
-        q = "?" + urllib.parse.urlencode({"date": args.date}) if args.date else ""
-        rep = _req("/api/report/daily" + q, token)
-    except urllib.error.HTTPError as e:
-        print(f"서버 응답 오류: HTTP {e.code}")
-        return 1
-    except Exception as e:
-        print(f"조회 실패: {type(e).__name__}")
-        return 1
+        return fail("로그인 정보 없음")
+    rep, err = None, ""
+    for attempt in range(3):  # 서버 재시작 등 일시 오류 대비 최대 3회
+        try:
+            token = _req("/api/login", body={"employee_id": uid, "password": pw})["token"]
+            q = "?" + urllib.parse.urlencode({"date": args.date}) if args.date else ""
+            rep = _req("/api/report/daily" + q, token)
+            break
+        except urllib.error.HTTPError as e:
+            err = f"서버 응답 오류 HTTP {e.code}"
+            if e.code in (400, 401, 403):  # 재시도해도 소용없는 오류
+                break
+        except Exception as e:
+            err = f"조회 실패 {type(e).__name__}"
+        if attempt < 2:
+            time.sleep(20)
+    if rep is None:
+        return fail(err)
 
     d = dt.date.fromisoformat(rep["date"])
     p = dt.date.fromisoformat(rep["prev_date"])
@@ -125,14 +221,14 @@ def main() -> int:
         lines.append("  내역 없음")
     for g in groups:
         entries = g.get("entries", [])
-        lines.append(f"[{g.get('shift')}] {g.get('worker') or '-'} - {len(entries)}통")
+        lines.append(f"[{g.get('shift')}] {g.get('worker') or '-'} - {len(entries)}드럼")
         remarks = g.get("remarks", {})
         groups_p: dict[str, list[str]] = {}
         for e in entries:
             groups_p.setdefault(e["product"], []).append(e["lot"])
         for product, lots in sorted(groups_p.items()):
             rm = remarks.get(product, "")
-            lines.append(f"  - {product} {len(lots)}통: " + ", ".join(lots) + (f"  ({rm})" if rm else ""))
+            lines.append(f"  - {product} {len(lots)}드럼: " + ", ".join(lots) + (f"  ({rm})" if rm else ""))
 
     lines.append("\n■ 신나 재고")
     thinner = rep.get("thinner", [])
@@ -142,7 +238,13 @@ def main() -> int:
         qty = it.get("qty")
         lines.append(f"  - {it.get('name')}: {'-' if qty is None else qty}")
 
-    print("\n".join(lines))
+    text = "\n".join(lines)
+    if args.send:
+        rc = send_telegram(text)
+        if rc == 0:
+            print("텔레그램 발송 완료")
+        return rc
+    print(text)
     return 0
 
 
