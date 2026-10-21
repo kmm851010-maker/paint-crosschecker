@@ -2017,6 +2017,70 @@ async def save_daily_thinner_endpoint(req: SaveThinnerRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/report/daily")
+async def get_daily_report(date: str = ""):
+    """일일 아침 리포트(읽기 전용). date=기준 영업일(기본: 오늘, 06:30 이전이면 전날).
+    금일 근무자 + 전일(전날 06:30 ~ 기준일 06:30) 신규입고/반품완료/반품·무적 발생/무적 라인입고/일일재고 + 신나 재고."""
+    import datetime as _dt
+    from utils.supabase_db import get_history_in_range, get_daily_thinner
+    if date:
+        try:
+            base = _dt.date.fromisoformat(date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="날짜 형식이 올바르지 않습니다.")
+    else:
+        now = _dt.datetime.utcnow() + _dt.timedelta(hours=9)
+        base = now.date() if (now.hour, now.minute) >= (6, 30) else now.date() - _dt.timedelta(days=1)
+    prev = base - _dt.timedelta(days=1)
+    start, end = f"{prev} 06:30:00", f"{base} 06:30:00"
+
+    try:
+        today_inv = await get_daily_inventory(base.isoformat())
+        prev_inv = await get_daily_inventory(prev.isoformat())
+        rows = get_history_in_range(start, end)
+        thinner = get_daily_thinner(base.isoformat())
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    def _item(r: dict, **extra) -> dict:
+        return {"lot": r.get("lot", ""), "product": r.get("product", ""), "maker": r.get("maker", ""),
+                "sector": r.get("prev_sector", ""), "recorded_at": r.get("recorded_at", ""), **extra}
+
+    incoming: dict[str, dict] = {}
+    return_done, return_flag, ghost_flag, ghost_checkout = [], [], [], []
+    for r in rows:
+        src = r.get("source") or ""
+        ns = r.get("new_sector") or ""
+        if src == "incoming":
+            incoming[r.get("lot", "")] = _item(r, sector=ns)
+        elif src.startswith("return_flag:"):
+            status = src.split(":", 1)[1]
+            if status.startswith("무적"):
+                ghost_flag.append(_item(r, sector=ns, zone=status.split(":", 1)[1] if ":" in status else ""))
+            else:
+                return_flag.append(_item(r, sector=ns, status=status))
+        elif src == "ghost_checkout":
+            ghost_checkout.append(_item(r))
+        elif ns == "반품완료" or ns.startswith("반품완료:"):
+            return_done.append(_item(r, status=ns.split(":", 1)[1] if ":" in ns else ""))
+
+    return {
+        "success": True,
+        "date": base.isoformat(), "prev_date": prev.isoformat(),
+        "window": {"start": start, "end": end},
+        "today_shift": today_inv.get("shift_data", {}),
+        "prev_shift_groups": prev_inv.get("shift_groups", []),
+        "incoming": list(incoming.values()),
+        "return_done": return_done,
+        "return_flag": return_flag,
+        "ghost_flag": ghost_flag,
+        "ghost_checkout": ghost_checkout,
+        "thinner": thinner,
+    }
+
+
 @app.post("/api/daily-inventory/export")
 async def export_daily_inventory(req: DailyInventoryExportRequest):
     """일일 재고기록 서식 적용 엑셀 생성."""

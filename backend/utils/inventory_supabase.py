@@ -204,8 +204,9 @@ def checkout_drums(drums: list, sector: str = CHECKOUT_SECTOR):
     lots = list(drum_map.keys())
 
     # 1) 현재 섹터 일괄 조회
-    existing = sb.table("inventory").select("lot,sector").in_("lot", lots).execute()
+    existing = sb.table("inventory").select("lot,sector,return_status").in_("lot", lots).execute()
     sector_map = {r["lot"]: r["sector"] for r in existing.data}
+    ghost_lots = {r["lot"] for r in existing.data if (r.get("return_status") or "").startswith("무적")}
 
     lots_to_delete = [lot for lot in lots if lot in sector_map]
     if not lots_to_delete:
@@ -230,6 +231,7 @@ def checkout_drums(drums: list, sector: str = CHECKOUT_SECTOR):
             "prev_sector": sector_map[lot],
             "new_sector": _build_new_sector(lot),
             "recorded_at": now,
+            **({"source": "ghost_checkout"} if sector == CHECKOUT_SECTOR and lot in ghost_lots else {}),
         }
         for lot in lots_to_delete
     ]
@@ -301,6 +303,8 @@ def get_inventory_history(from_dt: str, to_dt: str):
         to_sector = r.get("new_sector", "")
         if from_sector == "미등록":
             continue
+        if (r.get("source") or "").startswith("return_flag:"):
+            continue  # 일일 리포트용 발생 기록 - 이력 화면에는 표시하지 않음
         if r.get("source") == "admin_delete" or to_sector.startswith("삭제"):
             action = "삭제"
         elif to_sector == CHECKOUT_SECTOR:
@@ -421,9 +425,29 @@ def set_return_status(drums: list, status: str):
     """반품상태 플래그 설정/해제 (배치 처리)."""
     now = _kst_now()
     lots = [d["lot"] for d in drums]
-    _sb().table("inventory").update({
+    sb = _sb()
+    # 리포트용 발생 기록: 새 상태가 지정되고 기존 상태와 달라진 드럼만 (실패해도 본 작업엔 영향 없음)
+    flag_rows = []
+    if status and status != "Y":
+        try:
+            cur = sb.table("inventory").select("lot,product,maker,sector,return_status") \
+                .in_("lot", lots).execute()
+            flag_rows = [{
+                "lot": r["lot"], "product": r.get("product", ""), "maker": r.get("maker", ""),
+                "prev_sector": r.get("sector", ""), "new_sector": r.get("sector", ""),
+                "recorded_at": now, "source": f"return_flag:{status}",
+            } for r in (cur.data or []) if (r.get("return_status") or "") != status]
+        except Exception:
+            flag_rows = []
+    sb.table("inventory").update({
         "return_status": status, "updated_at": now,
     }).in_("lot", lots).execute()
+    if flag_rows:
+        try:
+            for i in range(0, len(flag_rows), 500):
+                sb.table("inventory_history").insert(flag_rows[i:i + 500]).execute()
+        except Exception:
+            pass
     return True
 
 
