@@ -204,32 +204,37 @@ class LoginRequest(BaseModel):
 @app.post("/api/login")
 async def login(req: LoginRequest):
     ttl = WEB_TOKEN_TTL_SEC if req.client == "web" else None
+    # 아이디는 대소문자를 구분하지 않는다. 성공하면 실제 등록된 표기로 통일해 토큰/응답에 사용한다.
+    login_id = req.employee_id.strip()
     # 1) Supabase app_users 테이블 인증 시도
     try:
         from utils.supabase_db import authenticate_app_user
-        user = authenticate_app_user(req.employee_id, req.password)
+        user = authenticate_app_user(login_id, req.password)
         if user:
+            eid = user.get("employee_id") or login_id
             role = user.get("role", "user")
-            token = create_token(req.employee_id, user["name"], role, req.password, ttl_sec=ttl)
-            logger.warning("[LOGIN] 성공 id=%s 경로=app_users role=%s", req.employee_id, role)
+            token = create_token(eid, user["name"], role, req.password, ttl_sec=ttl)
+            logger.warning("[LOGIN] 성공 id=%s 경로=app_users role=%s", eid, role)
             return {
                 "success": True, "token": token,
-                "name": user["name"], "employee_id": req.employee_id,
+                "name": user["name"], "employee_id": eid,
                 "role": role,
                 "menu_permissions": user.get("menu_permissions"),
             }
     except Exception as e:
-        logger.warning("[LOGIN] app_users 조회 오류 id=%s (%s) - 폴백 계정으로 진행", req.employee_id, type(e).__name__)
-    # 2) 하드코딩 계정 폴백 (admin 등)
-    account = STAFF_ACCOUNTS.get(req.employee_id)
+        logger.warning("[LOGIN] app_users 조회 오류 id=%s (%s) - 폴백 계정으로 진행", login_id, type(e).__name__)
+    # 2) 하드코딩 계정 폴백 (admin 등): 정확히 일치 우선, 없으면 대소문자 무시
+    eid = login_id if login_id in STAFF_ACCOUNTS else next(
+        (k for k in STAFF_ACCOUNTS if k.lower() == login_id.lower()), login_id)
+    account = STAFF_ACCOUNTS.get(eid)
     if not account or account["password"] != req.password:
-        logger.warning("[LOGIN] 실패 id=%s", req.employee_id)
+        logger.warning("[LOGIN] 실패 id=%s", login_id)
         raise HTTPException(status_code=401, detail="사번 또는 비밀번호가 올바르지 않습니다.")
     # 폴백 계정 중 관리자는 admin 하나뿐. 그 외(STAFF_kg 등)는 일반 권한.
-    role = "admin" if req.employee_id == "admin" else "user"
-    token = create_token(req.employee_id, account["name"], role, account["password"], ttl_sec=ttl)
-    logger.warning("[LOGIN] 성공 id=%s 경로=폴백(STAFF/ADMIN) role=%s", req.employee_id, role)
-    return {"success": True, "token": token, "name": account["name"], "employee_id": req.employee_id, "role": role}
+    role = "admin" if eid == "admin" else "user"
+    token = create_token(eid, account["name"], role, account["password"], ttl_sec=ttl)
+    logger.warning("[LOGIN] 성공 id=%s 경로=폴백(STAFF/ADMIN) role=%s", eid, role)
+    return {"success": True, "token": token, "name": account["name"], "employee_id": eid, "role": role}
 
 
 @app.get("/health")

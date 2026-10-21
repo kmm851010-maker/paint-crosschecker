@@ -206,6 +206,7 @@ paint-crosschecker/
 ### 로그인 흐름 (`POST /api/login`, `server.py:70`)
 1. Supabase `app_users`에서 `authenticate_app_user(employee_id, password)` (PBKDF2 검증).
 2. 실패 시 폴백: 환경변수 `ADMIN_PASSWORD`가 설정돼 있을 때만 `admin` 계정(소스에 기본 비밀번호 없음) + 환경변수 `STAFF_<사번>="비밀번호,이름"`.
+   - 로그인 아이디는 대소문자를 구분하지 않는다: 정확히 일치하는 계정을 먼저 찾고, 없으면 대소문자 무시(ilike, `%`/`_` 이스케이프)로 찾아 DB에 저장된 표기로 통일해 토큰·응답(`employee_id`)에 쓴다(웹의 `isAdmin()` 등이 정확한 표기를 비교하므로 필수). 폴백 계정도 동일.
 3. 둘 다 실패 → 401 `사번 또는 비밀번호가 올바르지 않습니다.`
 4. 응답: `{success, token, name, employee_id, role, menu_permissions}`.
    - 토큰: `backend/utils/auth_token.py`의 HMAC-SHA256 서명 토큰 `base64url(payload).base64url(sig)`, payload=`{eid,name,role,exp}`, 유효 24시간. 서명 키(`AUTH_SECRET`/`SUPABASE_SERVICE_KEY`)가 없으면 구형 `sha256(id:pw)[:32]` 토큰으로 폴백(검증 불가).
