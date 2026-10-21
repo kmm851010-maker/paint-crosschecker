@@ -136,7 +136,7 @@ paint-crosschecker/
 | `daily_thinner` | date(unique), items(JSON) | 신나 재고. 해당 날짜 데이터가 없으면 **가장 최근 이전 날짜 데이터를 자동 이월**해서 반환 |
 
 ### `inventory_history.source` 값
-`incoming`(신규 입고 등록) / `daily`(생산 후 재고 이동) / `location`(단순 위치이동, 일일재고 집계에서 제외) / `edit`(정보수정) / `revert`(라인입고 철회) / `admin_delete`(관리자 삭제)
+`incoming`(신규 입고 등록) / `daily`(생산 후 재고 이동) / `location`(단순 위치이동, 일일재고 집계에서 제외) / `edit`(정보수정) / `revert`(라인입고 철회) / `admin_delete`(관리자 삭제) / `ghost_checkout`(무적 드럼 라인입고, `new_sector`=라인입고) / `return_flag:<상태>`(반품·무적 상태 지정 발생 기록, 예 `return_flag:불량`, `return_flag:무적:인천`; prev/new_sector=현재 섹터, 재고 이력 화면에서는 숨김). 마지막 두 값은 일일 리포트용(`GET /api/report/daily`)이며 배포 이후 건부터 기록된다.
 
 ### `inventory_history.new_sector` 특수값
 - `라인입고`: 라인(생산 투입)으로 출고. 재고에서 삭제됨.
@@ -334,6 +334,7 @@ paint-crosschecker/
 
 ### 6.7 일일재고기록
 - `GET /api/daily-inventory?date`: 그 날의 근무조(저장값/자동계산+휴가 반영)에 맞춰 시간대별(3교대 06:30/14:30/22:30, 2인 06:30/18:30) 구간을 만들고 `inventory_history`에서 **`source == "daily"`, `new_sector ∉ {라인입고, 반품완료}`** 인 이동만 모아 근별로 그룹화(LOT 중복 제거, 숨김 처리 항목 제외, 품목별 비고 결합). 응답 `shift_groups[{shift, worker, entries[{lot, product, recorded_at}], remarks{품목:비고}}]`.
+- `GET /api/report/daily?date`(읽기 전용, Hermes 아침 07:30 텔레그램 리포트용): 기준 영업일(기본 오늘, 06:30 이전이면 전날)의 금일 근무자(`today_shift`) + 전일 구간(전날 06:30~기준일 06:30) 이력에서 `incoming`(신규입고) / `return_done`(반품완료) / `return_flag`(반품 발생) / `ghost_flag`(무적 발생) / `ghost_checkout`(무적 라인입고) + `prev_shift_groups`(전일 일일재고) + `thinner`(신나 재고). 클라이언트 스크립트: `scripts/hermes/kg_daily_report.py`.
 - `POST /remark`(upsert), `POST /hide`(soft delete), `GET /hidden`, `GET/POST /thinner`(신나 재고, 이월 로직), `POST /export`(근별 시트: 보라색 헤더, 품목별 LOT 세로 병합, 교차 음영, 합계행).
 
 ---
