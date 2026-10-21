@@ -133,7 +133,7 @@ def _by_product(items: list, with_lots: bool) -> list[str]:
         groups.setdefault(it.get("product") or "미상", []).append(it.get("lot", ""))
     out = []
     for product, lots in sorted(groups.items()):
-        line = f"  - {product} {len(lots)}통"
+        line = f"  - {product} {len(lots)}드럼"
         if with_lots:
             line += ": " + ", ".join(lots)
         out.append(line)
@@ -141,7 +141,7 @@ def _by_product(items: list, with_lots: bool) -> list[str]:
 
 
 def _section(title: str, items: list, with_lots: bool = True, split_key: str = "", split_label: str = "") -> list[str]:
-    head = f"\n■ {title}: {len(items)}통"
+    head = f"\n■ {title}: {len(items)}드럼"
     if split_key and items:
         cnt: dict[str, int] = {}
         for it in items:
@@ -221,14 +221,14 @@ def main() -> int:
         lines.append("  내역 없음")
     for g in groups:
         entries = g.get("entries", [])
-        lines.append(f"[{g.get('shift')}] {g.get('worker') or '-'} - {len(entries)}통")
+        lines.append(f"[{g.get('shift')}] {g.get('worker') or '-'} - {len(entries)}드럼")
         remarks = g.get("remarks", {})
         groups_p: dict[str, list[str]] = {}
         for e in entries:
             groups_p.setdefault(e["product"], []).append(e["lot"])
         for product, lots in sorted(groups_p.items()):
             rm = remarks.get(product, "")
-            lines.append(f"  - {product} {len(lots)}통: " + ", ".join(lots) + (f"  ({rm})" if rm else ""))
+            lines.append(f"  - {product} {len(lots)}드럼: " + ", ".join(lots) + (f"  ({rm})" if rm else ""))
 
     lines.append("\n■ 신나 재고")
     thinner = rep.get("thinner", [])
