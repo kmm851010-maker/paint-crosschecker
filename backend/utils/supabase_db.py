@@ -104,18 +104,23 @@ def set_menu_permissions(employee_id: str, permissions: list) -> bool:
 
 def authenticate_app_user(employee_id: str, password: str):
     """사번+비밀번호로 인증. 성공 시 user dict 반환, 실패 시 None."""
-    try:
-        rows = _sb().table("app_users") \
-            .select("employee_id,name,role,department,team,menu_permissions") \
-            .eq("employee_id", employee_id) \
-            .limit(1).execute().data
-    except Exception:
-        rows = _sb().table("app_users") \
-            .select("employee_id,name,role,department,team") \
-            .eq("employee_id", employee_id) \
-            .limit(1).execute().data
+    def _find(match):
+        cols = "employee_id,name,role,department,team,menu_permissions"
+        try:
+            return match(_sb().table("app_users").select(cols)).limit(1).execute().data
+        except Exception:
+            # menu_permissions 컬럼이 없는 경우 폴백
+            return match(_sb().table("app_users").select(cols.replace(",menu_permissions", ""))).limit(1).execute().data
+
+    # 1) 정확히 일치하는 사번 우선 (기존 동작 그대로)
+    rows = _find(lambda q: q.eq("employee_id", employee_id))
+    if not rows:
+        # 2) 없으면 대소문자 무시로 재조회 (ilike 와일드카드 문자는 이스케이프)
+        safe = employee_id.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        rows = _find(lambda q: q.ilike("employee_id", safe))
     if not rows:
         return None
+    employee_id = rows[0]["employee_id"]  # DB에 저장된 실제 사번 표기로 통일
     # password_hash 별도 조회 (select에서 제외 후 verify)
     pw_rows = _sb().table("app_users") \
         .select("password_hash") \
