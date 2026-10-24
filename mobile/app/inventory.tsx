@@ -406,11 +406,11 @@ export default function InventoryScreen() {
   const [actionBarHeight, setActionBarHeight] = useState(120);
   const [scanManual, setScanManual] = useState(false);
   const [ingoScanDisabled, setIngoScanDisabled] = useState(false);
-  const [showIngoPrompt, setShowIngoPrompt] = useState(false);
+  const [batchScanDisabled, setBatchScanDisabled] = useState(false);
   const [returnType, setReturnType] = useState<"불량"|"기술"|"무상"|"무적:인천"|"무적:당진"|"">(""); // 섹터 선택 시 반품 종류
   const [moveType, setMoveType] = useState<"daily"|"location">("daily"); // 생산 후 재고 / 위치이동
   const [showBatchMoveModal, setShowBatchMoveModal] = useState(false);
-  const [sectorConfirm, setSectorConfirm] = useState<{ sector: string; moveType: "daily"|"location"; returnType: string; count: number; onConfirm: () => void } | null>(null);
+  const [sectorConfirm, setSectorConfirm] = useState<{ sector: string; moveType: "daily"|"location"; returnType: string; count: number; scanDisabled: boolean; onConfirm: () => void } | null>(null);
   const [expandedSectors, setExpandedSectors] = useState<Set<string>>(new Set());
   const [statusTab, setStatusTab] = useState<"sector"|"history">("sector");
   const [histFromDate, setHistFromDate] = useState(() => {
@@ -717,14 +717,10 @@ export default function InventoryScreen() {
   };
 
   // ── 섹터 선택 후 저장 ──
-  const handleSectorSelect = async (sector: string, scanDis?: boolean) => {
+  const handleSectorSelect = async (sector: string) => {
     if (batch.length === 0) return;
-    // 입고존 선택 시 스캔불가 여부 확인 프롬프트
-    if (sector === "입고존" && scanDis === undefined) {
-      setShowIngoPrompt(true);
-      return;
-    }
-    setShowIngoPrompt(false);
+    // 입고존일 때만 섹터 목록의 '스캔불가' 체크박스 값을 적용
+    const scanDis = sector === "입고존" && ingoScanDisabled;
 
     // 저장 실행 함수
     const doSave = async () => {
@@ -736,7 +732,7 @@ export default function InventoryScreen() {
       setMoveType("daily");
       try {
         const drumsToSend = sector === "입고존"
-          ? batch.map(d => ({ ...d, scanDisabled: scanDis ?? false }))
+          ? batch.map(d => ({ ...d, scanDisabled: scanDis }))
           : batch;
         const result = await registerDrums(drumsToSend, sector, sector === CHECKOUT ? "daily" : savedMoveType);
         const count = batch.length;
@@ -764,7 +760,7 @@ export default function InventoryScreen() {
 
     // 확인 팝업 (커스텀 Modal)
     if (sector !== CHECKOUT) {
-      setSectorConfirm({ sector, moveType, returnType, count: batch.length, onConfirm: doSave });
+      setSectorConfirm({ sector, moveType, returnType, count: batch.length, scanDisabled: scanDis, onConfirm: doSave });
     } else {
       doSave();
     }
@@ -967,34 +963,7 @@ export default function InventoryScreen() {
     <Modal visible={mode === "sectorPick" && sectorConfirm === null} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
         <View style={styles.modalCard}>
-          {showIngoPrompt ? (
-            <>
-              <Text style={styles.modalTitle}>입고존 등록 옵션</Text>
-              <Text style={{ color: "#ccc", marginBottom: 16, textAlign: "center" }}>
-                {batch.length}드럼을 입고존에 등록합니다.{"\n"}스캔불가 드럼인 경우 아래를 선택하세요.
-              </Text>
-              <TouchableOpacity
-                style={[styles.sectorBtn, { backgroundColor: ingoScanDisabled ? "#EF4444" : "#374151", marginBottom: 8 }]}
-                onPress={() => setIngoScanDisabled(v => !v)}
-              >
-                <Text style={[styles.sectorBtnText, { color: ingoScanDisabled ? "#fff" : "#aaa" }]}>
-                  {ingoScanDisabled ? "✔ 스캔불가" : "스캔불가 (선택)"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.sectorBtn, { backgroundColor: "#2563EB", marginTop: 8 }]}
-                onPress={() => handleSectorSelect("입고존", ingoScanDisabled)}
-              >
-                <Text style={[styles.sectorBtnText, { color: "#fff" }]}>
-                  {ingoScanDisabled ? "스캔불가로 입고존 등록" : "일반 입고존 등록"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalCancelBtn, { paddingBottom: 14 + insets.bottom }]} onPress={() => setShowIngoPrompt(false)}>
-                <Text style={styles.modalCancelText}>← 섹터 선택으로</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
+          <>
               <Text style={styles.modalTitle}>{batch.length}드럼 → 섹터 선택</Text>
               {/* 이동 종류 선택 (생산 후 재고 / 위치이동) + 라인입고 버튼 */}
               <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 16, marginBottom: 10 }}>
@@ -1079,17 +1048,40 @@ export default function InventoryScreen() {
                 })}
               </View>
               <ScrollView>
-                {SECTORS.map((s) => (
+                {SECTORS.map((s) => s === "입고존" ? (
+                  <View key={s} style={{ flexDirection: "row", alignItems: "stretch", gap: 8, marginBottom: 8 }}>
+                    <TouchableOpacity style={[styles.sectorBtn, { flex: 1, marginBottom: 0 }]} onPress={() => handleSectorSelect(s)}>
+                      <Text style={styles.sectorBtnText}>{s}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setIngoScanDisabled(v => !v)}
+                      style={{
+                        flexDirection: "row", alignItems: "center", gap: 6,
+                        paddingHorizontal: 12, borderRadius: 10, borderWidth: 1.5,
+                        borderColor: ingoScanDisabled ? "#EF4444" : COLORS.border,
+                        backgroundColor: ingoScanDisabled ? "#FEE2E2" : "transparent",
+                      }}>
+                      <View style={{
+                        width: 18, height: 18, borderRadius: 4, borderWidth: 1.5,
+                        borderColor: ingoScanDisabled ? "#EF4444" : "#6B7280",
+                        backgroundColor: ingoScanDisabled ? "#EF4444" : "transparent",
+                        alignItems: "center", justifyContent: "center",
+                      }}>
+                        {ingoScanDisabled && <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>✓</Text>}
+                      </View>
+                      <Text style={{ color: ingoScanDisabled ? "#DC2626" : "#6B7280", fontSize: 14, fontWeight: "700" }}>스캔불가</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
                   <TouchableOpacity key={s} style={styles.sectorBtn} onPress={() => handleSectorSelect(s)}>
                     <Text style={styles.sectorBtnText}>{s}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
-              <TouchableOpacity style={[styles.modalCancelBtn, { paddingBottom: 14 + insets.bottom }]} onPress={() => setMode("scanning")}>
+              <TouchableOpacity style={[styles.modalCancelBtn, { paddingBottom: 14 + insets.bottom }]} onPress={() => { setIngoScanDisabled(false); setMode("scanning"); }}>
                 <Text style={styles.modalCancelText}>돌아가기</Text>
               </TouchableOpacity>
-            </>
-          )}
+          </>
         </View>
       </View>
     </Modal>
@@ -1676,7 +1668,7 @@ export default function InventoryScreen() {
                             })}
                           >
                             <Text style={styles.checkBox}>{isSelected ? "☑" : "☐"}</Text>
-                            <Text style={styles.statusProduct}>{drum.returnStatus?.startsWith("무적") ? "⚫ " : ""}{drum.product}</Text>
+                            <Text style={styles.statusProduct}>{drum.returnStatus?.startsWith("무적") ? "⚫ " : ""}{(drum.scanDisabled === "Y" || drum.scanDisabled === true) ? "🚫 " : ""}{drum.product}</Text>
                             <Text style={styles.statusLot}>{drum.lot}</Text>
                             <Text style={[styles.drumMaker, { flex: 1.5 }]}>{drum.maker}</Text>
                             {sortMode !== "sector" && sortMode !== "lot" && (
@@ -1865,23 +1857,55 @@ export default function InventoryScreen() {
               <View style={styles.modalCard}>
                 <Text style={styles.modalTitle}>이동할 섹터 선택</Text>
                 <ScrollView>
-                  {SECTORS.map(s => (
-                    <TouchableOpacity key={s} style={styles.sectorBtn} onPress={async () => {
+                  {SECTORS.map(s => {
+                    const moveTo = async () => {
+                      const scanDis = s === "입고존" && batchScanDisabled;
                       setShowBatchMoveModal(false);
+                      setBatchScanDisabled(false);
                       setLoading(true);
                       try {
-                        await registerDrums(selectedDrums, s);
+                        await registerDrums(scanDis ? selectedDrums.map(d => ({ ...d, scanDisabled: true })) : selectedDrums, s);
                         setSelectedLots(new Set());
                         setSectorData(await getSectorInventory());
-                        Alert.alert("완료", `${selectedDrums.length}드럼 → ${s} 이동 완료`);
+                        Alert.alert("완료", `${selectedDrums.length}드럼 → ${s}${scanDis ? " (스캔불가)" : ""} 이동 완료`);
                       } catch (e: any) { Alert.alert("실패", e.message); }
                       finally { setLoading(false); }
-                    }}>
-                      <Text style={styles.sectorBtnText}>{s}</Text>
-                    </TouchableOpacity>
-                  ))}
+                    };
+                    if (s !== "입고존") {
+                      return (
+                        <TouchableOpacity key={s} style={styles.sectorBtn} onPress={moveTo}>
+                          <Text style={styles.sectorBtnText}>{s}</Text>
+                        </TouchableOpacity>
+                      );
+                    }
+                    return (
+                      <View key={s} style={{ flexDirection: "row", alignItems: "stretch", gap: 8, marginBottom: 8 }}>
+                        <TouchableOpacity style={[styles.sectorBtn, { flex: 1, marginBottom: 0 }]} onPress={moveTo}>
+                          <Text style={styles.sectorBtnText}>{s}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => setBatchScanDisabled(v => !v)}
+                          style={{
+                            flexDirection: "row", alignItems: "center", gap: 6,
+                            paddingHorizontal: 12, borderRadius: 10, borderWidth: 1.5,
+                            borderColor: batchScanDisabled ? "#EF4444" : COLORS.border,
+                            backgroundColor: batchScanDisabled ? "#FEE2E2" : "transparent",
+                          }}>
+                          <View style={{
+                            width: 18, height: 18, borderRadius: 4, borderWidth: 1.5,
+                            borderColor: batchScanDisabled ? "#EF4444" : "#6B7280",
+                            backgroundColor: batchScanDisabled ? "#EF4444" : "transparent",
+                            alignItems: "center", justifyContent: "center",
+                          }}>
+                            {batchScanDisabled && <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>✓</Text>}
+                          </View>
+                          <Text style={{ color: batchScanDisabled ? "#DC2626" : "#6B7280", fontSize: 14, fontWeight: "700" }}>스캔불가</Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
                 </ScrollView>
-                <TouchableOpacity style={[styles.modalCancelBtn, { paddingBottom: 14 + insets.bottom }]} onPress={() => setShowBatchMoveModal(false)}>
+                <TouchableOpacity style={[styles.modalCancelBtn, { paddingBottom: 14 + insets.bottom }]} onPress={() => { setBatchScanDisabled(false); setShowBatchMoveModal(false); }}>
                   <Text style={styles.modalCancelText}>취소</Text>
                 </TouchableOpacity>
               </View>
@@ -1912,7 +1936,7 @@ export default function InventoryScreen() {
           <Text style={styles.knownLotsErrorText}>⚠ 입고 기준 LOT 로드 실패 — LOT 검증 없이 동작 중</Text>
         </View>
       )}
-      <SectorModal />
+      {SectorModal()}
 
       {/* 섹터 저장 확인 모달 */}
       <Modal visible={sectorConfirm !== null} animationType="fade" transparent>
@@ -1925,6 +1949,9 @@ export default function InventoryScreen() {
               <Text style={{ fontSize: 22, fontWeight: "900", color: "#DC2626", marginBottom: 6 }}>생산 후 재고</Text>
             ) : (
               <Text style={{ fontSize: 22, fontWeight: "900", color: "#2563EB", marginBottom: 6 }}>위치이동</Text>
+            )}
+            {sectorConfirm?.scanDisabled && (
+              <Text style={{ fontSize: 18, fontWeight: "900", color: "#EF4444", marginBottom: 6 }}>🚫 스캔불가</Text>
             )}
             {sectorConfirm?.returnType ? (
               <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>
