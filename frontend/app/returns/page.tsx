@@ -115,6 +115,8 @@ export default function ReturnsPage() {
   const [matcherSel, setMatcherSel] = useState<Set<string>>(new Set());
   const [confirmMatcher, setConfirmMatcher] = useState(false);
   const [matcherLoading, setMatcherLoading] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewImages, setPreviewImages] = useState<{ name: string; url: string }[]>([]);
 
   useEffect(() => { fetchDrums(); }, []);
 
@@ -253,6 +255,13 @@ export default function ReturnsPage() {
   async function handleRlFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
     setRlLoading(true);
+    setConfirmMatcher(false);
+    previewImages.forEach(i => URL.revokeObjectURL(i.url));
+    setPreviewImages(
+      Array.from(files)
+        .filter(f => /\.(jpe?g|png)$/i.test(f.name))
+        .map(f => ({ name: f.name, url: URL.createObjectURL(f) }))
+    );
     const allItems: ParsedReturnItem[] = [];
     const seen = new Set<string>();
     for (const file of Array.from(files)) {
@@ -286,7 +295,34 @@ export default function ReturnsPage() {
     setUnmatchedItems(unmatched);
     setMatcherSel(new Set(matched.map(d => d.lot)));
     setRlLoading(false);
+    if (allItems.length > 0) setShowPreview(true);
   }
+
+  function setItemType(lot: string, t: "불량" | "기술" | "무상") {
+    setParsedItems(p => p.map(i => i.lot_no === lot ? { ...i, return_type: t } : i));
+    setUnmatchedItems(p => p.map(i => i.lot_no === lot ? { ...i, return_type: t } : i));
+    setMatchedDrums(p => p.map(d => d.lot === lot ? { ...d, new_return_type: t } : d));
+  }
+
+  function toggleMatcherLot(lot: string) {
+    setMatcherSel(prev => {
+      const next = new Set(prev);
+      if (next.has(lot)) next.delete(lot); else next.add(lot);
+      return next;
+    });
+  }
+
+  const matchedMap = useMemo(() => new Map(matchedDrums.map(d => [d.lot, d])), [matchedDrums]);
+  const parsedCounts = useMemo(() => {
+    const c = { 기술: 0, 무상: 0, 불량: 0 };
+    for (const i of parsedItems) c[i.return_type] = (c[i.return_type] ?? 0) + 1;
+    return c;
+  }, [parsedItems]);
+  const selectedCounts = useMemo(() => {
+    const c = { 기술: 0, 무상: 0, 불량: 0 };
+    for (const d of matchedDrums) if (matcherSel.has(d.lot)) c[d.new_return_type] = (c[d.new_return_type] ?? 0) + 1;
+    return c;
+  }, [matchedDrums, matcherSel]);
 
   async function doMatcherApply() {
     const selected = matchedDrums.filter(d => matcherSel.has(d.lot));
@@ -306,6 +342,9 @@ export default function ReturnsPage() {
       toast.success(`${selected.length}드럼 반품대기 전환 완료!`);
       setParsedItems([]); setMatchedDrums([]); setUnmatchedItems([]);
       setMatcherSel(new Set()); setConfirmMatcher(false);
+      setShowPreview(false);
+      previewImages.forEach(i => URL.revokeObjectURL(i.url));
+      setPreviewImages([]);
       setShowMatcher(false);
       await fetchDrums();
     } catch {
@@ -363,79 +402,12 @@ export default function ReturnsPage() {
               </label>
               {rlLoading && <p className="text-sm text-gray-500">분석 중...</p>}
 
-              {matchedDrums.length > 0 && (
-                <div>
-                  <p className="text-sm font-medium text-gray-700 mb-2">
+              {parsedItems.length > 0 && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="text-sm font-medium text-gray-700">
                     추출 {parsedItems.length}건 | 일반 재고 매칭 <strong>{matchedDrums.length}건</strong> | 미매칭 {unmatchedItems.length}건
                   </p>
-
-                  <div className="flex items-center gap-2 mb-2">
-                    <Button variant="secondary" size="sm" onClick={() => {
-                      const allSel = matchedDrums.every(d => matcherSel.has(d.lot));
-                      if (allSel) setMatcherSel(new Set());
-                      else setMatcherSel(new Set(matchedDrums.map(d => d.lot)));
-                    }}>
-                      {matchedDrums.every(d => matcherSel.has(d.lot)) ? "전체 해제" : "전체 선택"}
-                    </Button>
-                  </div>
-
-                  <div className="overflow-x-auto max-h-56 overflow-y-auto rounded border border-purple-200 mb-3">
-                    <table className="w-full text-sm">
-                      <thead className="bg-purple-100 sticky top-0">
-                        <tr>
-                          <th className="py-2 px-2 w-8"></th>
-                          {["품명", "LOT", "제조사", "반품유형"].map(h => (
-                            <th key={h} className="py-2 px-3 text-left text-xs font-semibold text-purple-700">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {matchedDrums.map(d => (
-                          <tr key={d.lot} className="border-t border-purple-100">
-                            <td className="py-1.5 px-2 text-center">
-                              <input type="checkbox" checked={matcherSel.has(d.lot)} onChange={() => {
-                                setMatcherSel(prev => {
-                                  const next = new Set(prev);
-                                  next.has(d.lot) ? next.delete(d.lot) : next.add(d.lot);
-                                  return next;
-                                });
-                              }} />
-                            </td>
-                            <td className="py-1.5 px-3 text-sm">{d.product}</td>
-                            <td className="py-1.5 px-3 font-mono text-xs">{d.lot}</td>
-                            <td className="py-1.5 px-3 text-xs text-gray-600">{d.maker}</td>
-                            <td className="py-1.5 px-3 text-xs">{RETURN_TYPE_LABEL[d.new_return_type] ?? d.new_return_type}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {unmatchedItems.length > 0 && (
-                    <details className="mb-3">
-                      <summary className="text-sm text-yellow-700 cursor-pointer">⚠️ 미매칭 {unmatchedItems.length}건 (일반 재고에 없어 제외)</summary>
-                      <div className="mt-1 text-xs text-gray-500 pl-4">
-                        {unmatchedItems.map(i => `${i.lot_no} (${i.product})`).join(", ")}
-                      </div>
-                    </details>
-                  )}
-
-                  {matcherSel.size > 0 && !confirmMatcher && (
-                    <Button onClick={() => setConfirmMatcher(true)}>
-                      {matcherSel.size}드럼 → 반품대기 전환
-                    </Button>
-                  )}
-                  {confirmMatcher && (
-                    <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <p className="text-sm text-yellow-800 mb-2">
-                        선택된 <strong>{matcherSel.size}드럼</strong>을 반품대기 상태로 전환하시겠습니까?
-                      </p>
-                      <div className="flex gap-2">
-                        <Button onClick={doMatcherApply} loading={matcherLoading}>✅ 예, 전환합니다</Button>
-                        <Button variant="secondary" onClick={() => setConfirmMatcher(false)}>❌ 취소</Button>
-                      </div>
-                    </div>
-                  )}
+                  <Button size="sm" onClick={() => setShowPreview(true)}>미리보기 / 확인</Button>
                 </div>
               )}
             </div>
@@ -643,6 +615,116 @@ export default function ReturnsPage() {
           </>
         )}
       </div>
+
+      {/* ── 반품 리스트 미리보기 (실제 서류와 대조) ── */}
+      {showPreview && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[92vh] flex flex-col">
+            <div className="flex items-start justify-between px-4 py-3 border-b border-gray-200">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">반품 리스트 미리보기</h2>
+                <p className="text-xs text-gray-500">실제 서류와 행마다 비교해 보세요. 반품유형이 틀리면 직접 바꿀 수 있습니다.</p>
+              </div>
+              <button onClick={() => setShowPreview(false)} className="text-gray-400 hover:text-gray-700 text-lg leading-none px-2">✕</button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 bg-purple-50 border-b border-purple-100 text-sm">
+              <span>추출 <strong>{parsedItems.length}</strong>건</span>
+              <span>🟡 기술 <strong>{parsedCounts.기술}</strong></span>
+              <span>🔵 무상 <strong>{parsedCounts.무상}</strong></span>
+              {parsedCounts.불량 > 0 && <span>🔴 불량 <strong>{parsedCounts.불량}</strong></span>}
+              <span className="text-gray-400">|</span>
+              <span>재고 매칭 <strong>{matchedDrums.length}</strong></span>
+              <span className={unmatchedItems.length > 0 ? "text-yellow-700" : ""}>미매칭 <strong>{unmatchedItems.length}</strong></span>
+            </div>
+
+            <div className="flex flex-col lg:flex-row gap-3 p-3 overflow-hidden flex-1 min-h-0">
+              {previewImages.length > 0 && (
+                <div className="lg:w-2/5 overflow-auto max-h-[35vh] lg:max-h-none border border-gray-200 rounded-lg bg-gray-50 p-2 space-y-2">
+                  <p className="text-xs text-gray-500">업로드한 서류 (클릭하면 새 창에서 크게 보기)</p>
+                  {previewImages.map(img => (
+                    <a key={img.url} href={img.url} target="_blank" rel="noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={img.url} alt={img.name} className="w-full rounded border border-gray-200" />
+                    </a>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex-1 min-w-0 overflow-auto border border-gray-200 rounded-lg">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100 sticky top-0">
+                    <tr>
+                      <th className="py-2 px-2 w-8">
+                        <input
+                          type="checkbox"
+                          checked={matchedDrums.length > 0 && matchedDrums.every(d => matcherSel.has(d.lot))}
+                          onChange={() => {
+                            const allSel = matchedDrums.every(d => matcherSel.has(d.lot));
+                            setMatcherSel(allSel ? new Set() : new Set(matchedDrums.map(d => d.lot)));
+                          }}
+                        />
+                      </th>
+                      {["#", "품명", "LOT", "제조사", "반품유형", "재고"].map(h => (
+                        <th key={h} className="py-2 px-3 text-left text-xs font-semibold text-gray-600 whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parsedItems.map((item, idx) => {
+                      const drum = matchedMap.get(item.lot_no);
+                      const rt = drum ? drum.new_return_type : item.return_type;
+                      return (
+                        <tr key={item.lot_no} className={cn("border-t border-gray-100", !drum && "bg-yellow-50/60 text-gray-500")}>
+                          <td className="py-1.5 px-2 text-center">
+                            {drum && <input type="checkbox" checked={matcherSel.has(item.lot_no)} onChange={() => toggleMatcherLot(item.lot_no)} />}
+                          </td>
+                          <td className="py-1.5 px-3 text-xs text-gray-400">{idx + 1}</td>
+                          <td className="py-1.5 px-3 font-medium">{item.product}</td>
+                          <td className="py-1.5 px-3 font-mono text-xs">{item.lot_no}</td>
+                          <td className="py-1.5 px-3 text-xs text-gray-600">{drum?.maker ?? ""}</td>
+                          <td className="py-1.5 px-3">
+                            <select
+                              value={rt}
+                              onChange={e => setItemType(item.lot_no, e.target.value as "불량" | "기술" | "무상")}
+                              className="border border-gray-300 rounded px-1.5 py-0.5 text-xs bg-white"
+                            >
+                              {(["기술", "무상", "불량"] as const).map(t => <option key={t} value={t}>{RETURN_TYPE_LABEL[t]}</option>)}
+                            </select>
+                          </td>
+                          <td className="py-1.5 px-3 text-xs whitespace-nowrap">{drum ? "✅ 매칭" : "⚠️ 재고 없음 (제외)"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="px-4 py-3 border-t border-gray-200">
+              {confirmMatcher ? (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800 mb-2">
+                    선택된 <strong>{matcherSel.size}드럼</strong>(🟡 기술 {selectedCounts.기술} / 🔵 무상 {selectedCounts.무상}
+                    {selectedCounts.불량 > 0 && ` / 🔴 불량 ${selectedCounts.불량}`})을 반품대기 상태로 전환하시겠습니까?
+                  </p>
+                  <div className="flex gap-2">
+                    <Button onClick={doMatcherApply} loading={matcherLoading}>✅ 예, 전환합니다</Button>
+                    <Button variant="secondary" onClick={() => setConfirmMatcher(false)}>❌ 취소</Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  {matcherSel.size > 0 && (
+                    <Button onClick={() => setConfirmMatcher(true)}>{matcherSel.size}드럼 → 반품대기 전환</Button>
+                  )}
+                  <Button variant="secondary" onClick={() => setShowPreview(false)}>닫기</Button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }
