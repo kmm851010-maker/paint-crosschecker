@@ -248,6 +248,7 @@ export default function InventoryPage() {
   const [moveLoading, setMoveLoading] = useState(false);
   const [batchMoveSector, setBatchMoveSector] = useState("창고");
   const [batchMoveType, setBatchMoveType] = useState<"daily" | "location">("daily");
+  const [batchScanDisabled, setBatchScanDisabled] = useState(false);
 
   // ── 무적관리 state ──
   const [ghostSortMode, setGhostSortMode] = useState<"섹터별" | "제조사별" | "품목별" | "등록시간순">("섹터별");
@@ -413,13 +414,27 @@ export default function InventoryPage() {
 
   async function doBatchMove() {
     setActionLoading(true);
+    const markScanDisabled = batchMoveSector === "입고존" && batchScanDisabled;
+    let moved = false;
     try {
       const result = await registerDrums(selectedDrums, batchMoveSector, "", false, batchMoveType);
-      toast.success(`${result.moved ?? selectedDrums.length}드럼 [${batchMoveSector}]으로 이동!`);
+      moved = true;
+      if (markScanDisabled) await setScanDisabled(selectedDrums, true);
+      toast.success(
+        `${result.moved ?? selectedDrums.length}드럼 [${batchMoveSector}]으로 이동!` +
+        (markScanDisabled ? " (스캔불가 설정)" : "")
+      );
+      setBatchScanDisabled(false);
       clearSelection();
       fetchSectors();
     } catch {
-      toast.error("이동 실패");
+      if (moved) {
+        toast.error("이동은 완료됐지만 스캔불가 설정에 실패했습니다. 스캔불가 설정 버튼으로 다시 시도해 주세요.");
+        clearSelection();
+        fetchSectors();
+      } else {
+        toast.error("이동 실패");
+      }
     } finally {
       setActionLoading(false);
     }
@@ -801,6 +816,17 @@ export default function InventoryPage() {
             className="border border-gray-300 rounded px-2 py-1.5 text-sm">
             {SECTORS.map(s => <option key={s}>{s}</option>)}
           </select>
+          {batchMoveSector === "입고존" && (
+            <label className={cn(
+              "flex items-center gap-1.5 cursor-pointer rounded border px-2 py-1.5 text-sm",
+              batchScanDisabled ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-700 border-gray-300"
+            )}>
+              <input type="checkbox" checked={batchScanDisabled}
+                onChange={e => setBatchScanDisabled(e.target.checked)}
+                className="w-3.5 h-3.5" />
+              스캔불가로 이동
+            </label>
+          )}
           <Button size="sm" onClick={doBatchMove} loading={actionLoading}>
             이동 ({selectedLots.size}드럼)
           </Button>
