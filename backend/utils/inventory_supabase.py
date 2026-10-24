@@ -101,10 +101,13 @@ def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existi
     to_update_keep  = []  # 기존 존재 + 섹터 다름 + remark!="신규" → 유지
     to_insert = []
     history_rows = []
+    scan_set_lots = []    # 입고존으로 이동/재스캔하면서 스캔불가 체크된 기존 드럼 (설정만, 해제는 하지 않음)
 
     for lot, drum in drum_map.items():
         scan_dis = "Y" if drum.get("scanDisabled") else ""
         if lot in existing_map:
+            if sector == "입고존" and scan_dis and not skip_existing:
+                scan_set_lots.append(lot)
             prev = existing_map[lot]
             prev_sector = prev["sector"]
             if prev_sector == sector:
@@ -161,6 +164,10 @@ def save_drums_to_sector(drums: list, sector: str, remark: str = "", skip_existi
         sb.table("inventory").update({
             "sector": sector, "registered_at": now, "updated_at": now,
         }).in_("lot", to_update_keep).execute()
+
+    # 3-1) 입고존 + 스캔불가 체크된 기존 드럼에 스캔불가 설정
+    if scan_set_lots:
+        sb.table("inventory").update({"scan_disabled": "Y", "updated_at": now}).in_("lot", scan_set_lots).execute()
 
     # 4) skip_existing 시 이미 라인입고된 LOT 차단 (재고에서 사라진 뒤 재등록 방지)
     if skip_existing and to_insert:
